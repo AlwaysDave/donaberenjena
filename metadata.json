@@ -1,0 +1,6 @@
+{
+  "name": "Doña Berenjena - Asociación Gastronómica",
+  "description": "Web app de la Asociación Gastronómica Doña Berenjena con catálogo de catas, cursos y viajes, y panel de administración.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

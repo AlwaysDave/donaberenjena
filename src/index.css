@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "Playfair Display", Georgia, serif;
+  --font-display: "Cinzel", serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  
+  --color-berenjena-900: #290824;
+  --color-berenjena-800: #3E1037;
+  --color-berenjena-700: #521849;
+  --color-berenjena-600: #68205C;
+  --color-berenjena-500: #842A76;
+  --color-berenjena-100: #F6EDF4;
+  --color-berenjena-50: #FCF7FB;
+
+  --color-vino-800: #4D1219;
+  --color-vino-700: #681C26;
+  --color-vino-600: #7E2430;
+  
+  --color-terracota-700: #9B3E26;
+  --color-terracota-600: #B84E33;
+  --color-terracota-500: #C96043;
+  --color-terracota-100: #F9ECE8;
+
+  --color-oliva-700: #3B4B27;
+  --color-oliva-600: #4D6233;
+  --color-oliva-500: #627C42;
+  --color-oliva-100: #EFF4E9;
+
+  --color-lino-50: #FCFAF7;
+  --color-lino-100: #F6F1EA;
+  --color-lino-200: #EDE4D7;
+  --color-lino-300: #DFD3C2;
+
+  --color-carbon-900: #191412;
+  --color-carbon-800: #26201D;
+  --color-carbon-700: #3D3430;
+  --color-carbon-600: #574B45;
+}
+
+/* Base custom styles */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-lino-50);
+  color: var(--color-carbon-800);
+}
+
+h1, h2, h3, .font-serif-heading {
+  font-family: var(--font-serif);
+}
+
+.font-brand-display {
+  font-family: var(--font-display);
+}
+
+/* Custom scrollbar for aesthetic feel */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F4EFEA;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D8CEBF;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #B35338;
+}
+
