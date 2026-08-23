@@ -18,6 +18,31 @@ const METRICS_DOC_ID = 'summary';
 const ADMINS_COLLECTION = 'admins';
 
 /**
+ * Deep sanitization helper that recursively removes undefined fields and cleans arrays,
+ * preventing Firestore "Unsupported field value: undefined" errors.
+ */
+export function sanitizeForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return null as any;
+  }
+  if (Array.isArray(data)) {
+    return data
+      .filter((item) => item !== undefined)
+      .map((item) => sanitizeForFirestore(item)) as any;
+  }
+  if (typeof data === 'object') {
+    const cleaned: any = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) {
+        cleaned[key] = sanitizeForFirestore(value);
+      }
+    }
+    return cleaned;
+  }
+  return data;
+}
+
+/**
  * Fetch role of an authenticated user from Firestore `admins/{uid}`
  */
 export async function fetchAdminRole(uid: string): Promise<{ role: AdminRole; name?: string } | null> {
@@ -103,7 +128,8 @@ export function subscribeToMetricsFirestore(
 export async function saveActivityFirestore(activity: Activity): Promise<void> {
   if (!db) throw new Error('Firestore is not initialized');
   const activityDocRef = doc(db, ACTIVITIES_COLLECTION, activity.id);
-  await setDoc(activityDocRef, activity);
+  const cleanData = sanitizeForFirestore(activity);
+  await setDoc(activityDocRef, cleanData);
 }
 
 /**
@@ -112,8 +138,9 @@ export async function saveActivityFirestore(activity: Activity): Promise<void> {
 export async function updateActivityFirestore(id: string, updates: Partial<Activity>): Promise<void> {
   if (!db) throw new Error('Firestore is not initialized');
   const activityDocRef = doc(db, ACTIVITIES_COLLECTION, id);
+  const cleanUpdates = sanitizeForFirestore(updates);
   await updateDoc(activityDocRef, {
-    ...updates,
+    ...cleanUpdates,
     updatedAt: new Date().toISOString().split('T')[0]
   });
 }

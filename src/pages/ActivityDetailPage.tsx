@@ -1,102 +1,106 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
-import { CataActivity, CursoActivity, ViajeActivity } from '../types';
-import { StatusBadge } from '../components/common/StatusBadge';
+import { Activity, CataActivity, CursoActivity, ViajeActivity } from '../types';
 import { ReservationBlock } from '../components/common/ReservationBlock';
+import { StatusBadge } from '../components/common/StatusBadge';
 import { PdfDownloadButton } from '../components/common/PdfDownloadButton';
 import { 
   Calendar, 
-  Clock, 
   MapPin, 
-  ArrowLeft, 
+  Users, 
+  Clock, 
+  Euro, 
+  FileText, 
   Wine, 
   ChefHat, 
   Compass, 
-  Utensils, 
-  CheckCircle2, 
-  FileText, 
-  Camera, 
+  Check, 
   Share2, 
-  Check,
-  Building,
-  UserCheck
+  ArrowLeft, 
+  Building, 
+  Award,
+  Sparkles,
+  UtensilsCrossed,
+  Droplets,
+  HeartHandshake
 } from 'lucide-react';
 
 export const ActivityDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { getActivityById, incrementViews } = useData();
-  const [selectedImage, setSelectedImage] = useState<string>('');
-  const [copiedLink, setCopiedLink] = useState(false);
+  
+  const [copied, setCopied] = useState(false);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
 
   const activity = id ? getActivityById(id) : undefined;
 
   useEffect(() => {
-    if (activity) {
-      setSelectedImage(activity.images[0] || '');
-      incrementViews(activity.id);
-      window.scrollTo(0, 0);
+    if (id) {
+      incrementViews(id);
     }
-  }, [id, activity]);
+    window.scrollTo(0, 0);
+  }, [id]);
 
   if (!activity) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-24 text-center">
-        <h2 className="text-2xl font-bold font-serif text-[#26201D]">
-          Actividad no encontrada
-        </h2>
-        <p className="text-sm text-[#574B45] mt-2">
-          La actividad solicitada no existe o ha sido trasladada.
+      <div className="max-w-4xl mx-auto px-4 py-20 text-center space-y-4">
+        <div className="w-16 h-16 rounded-full bg-[#F6EDF4] text-[#521849] flex items-center justify-center mx-auto">
+          <Wine className="w-8 h-8" />
+        </div>
+        <h1 className="text-2xl font-bold font-serif text-[#26201D]">Actividad no encontrada</h1>
+        <p className="text-sm text-[#574B45]">
+          La ficha que estás buscando no existe o ha sido dada de baja.
         </p>
         <Link
           to="/"
-          className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#521849] text-white text-xs font-semibold"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#521849] text-white text-xs font-semibold hover:bg-[#3E1037] transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Volver a la página principal</span>
+          <span>Volver a la portada</span>
         </Link>
       </div>
     );
   }
 
-  const isHeld = activity.status === 'celebrada';
-
   const handleShare = () => {
-    navigator.clipboard.writeText(window.location.href);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2500);
-  };
-
-  const getParentRoute = () => {
-    switch (activity.type) {
-      case 'cata': return { name: 'Catas', path: '/catas' };
-      case 'curso': return { name: 'Cursos', path: '/cursos' };
-      case 'viaje': return { name: 'Viajes', path: '/viajes' };
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
     }
   };
 
-  const parent = getParentRoute();
+  const cata = activity.type === 'cata' ? (activity as CataActivity) : null;
+  const curso = activity.type === 'curso' ? (activity as CursoActivity) : null;
+  const viaje = activity.type === 'viaje' ? (activity as ViajeActivity) : null;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12 space-y-10">
-      {/* Breadcrumbs and Top Actions */}
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8">
+      {/* Top Breadcrumb & Share Navigation */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#EDE4D7] pb-4">
-        <div className="flex items-center gap-2 text-xs text-[#574B45]">
-          <Link to="/" className="hover:text-[#521849]">Inicio</Link>
+        <nav className="flex items-center space-x-2 text-xs text-[#574B45]">
+          <Link to="/" className="hover:text-[#521849] transition-colors">Inicio</Link>
           <span>/</span>
-          <Link to={parent.path} className="hover:text-[#521849]">{parent.name}</Link>
+          <Link 
+            to={activity.type === 'cata' ? '/catas' : activity.type === 'curso' ? '/cursos' : '/viajes'} 
+            className="hover:text-[#521849] transition-colors capitalize"
+          >
+            {activity.type === 'cata' ? 'Catas' : activity.type === 'curso' ? 'Cursos' : 'Viajes'}
+          </Link>
           <span>/</span>
-          <span className="text-[#26201D] font-medium truncate max-w-xs">{activity.title}</span>
-        </div>
+          <span className="text-[#26201D] font-medium truncate max-w-xs sm:max-w-md">{activity.title}</span>
+        </nav>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={handleShare}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium text-[#574B45] hover:text-[#521849] hover:bg-[#F6F1EA] transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-[#EDE4D7] text-[#574B45] text-xs font-medium hover:bg-[#F6F1EA] transition-colors cursor-pointer shadow-2xs"
+            title="Copiar enlace de esta ficha"
           >
-            {copiedLink ? (
+            {copied ? (
               <>
                 <Check className="w-3.5 h-3.5 text-emerald-600" />
                 <span className="text-emerald-700">Enlace copiado</span>
@@ -132,9 +136,9 @@ export const ActivityDetailPage: React.FC = () => {
                 bookedSpots={activity.bookedSpots}
               />
               <span className="px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider bg-[#F6EDF4] text-[#521849]">
-                {activity.type === 'cata' && `Cata • ${(activity as CataActivity).category}`}
+                {activity.type === 'cata' && `Cata • ${cata?.category || 'Vinos'}`}
                 {activity.type === 'curso' && 'Curso de Cocina'}
-                {activity.type === 'viaje' && `Viaje • ${(activity as ViajeActivity).durationDays} días`}
+                {activity.type === 'viaje' && `Viaje • ${viaje?.durationDays} días`}
               </span>
             </div>
 
@@ -167,26 +171,24 @@ export const ActivityDetailPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Photo Gallery Banner */}
+          {/* Image Gallery */}
           <div className="space-y-3">
-            <div className="relative aspect-16/10 sm:aspect-16/9 rounded-2xl overflow-hidden bg-[#F6F1EA] shadow-md border border-[#EDE4D7]">
+            <div className="relative aspect-16/9 rounded-3xl overflow-hidden shadow-md bg-[#EDE4D7]">
               <img
-                src={selectedImage || activity.images[0]}
+                src={activity.images[activeImageIndex] || activity.images[0]}
                 alt={activity.title}
                 className="w-full h-full object-cover transition-all duration-300"
               />
             </div>
-
-            {/* Thumbnails (visible if multiple images) */}
             {activity.images.length > 1 && (
-              <div className="flex items-center gap-3 overflow-x-auto pb-2">
+              <div className="flex items-center gap-2 overflow-x-auto pb-2">
                 {activity.images.map((img, idx) => (
                   <button
                     key={idx}
                     type="button"
-                    onClick={() => setSelectedImage(img)}
-                    className={`relative w-20 h-14 sm:w-24 sm:h-16 rounded-lg overflow-hidden shrink-0 border-2 transition-all cursor-pointer ${
-                      selectedImage === img
+                    onClick={() => setActiveImageIndex(idx)}
+                    className={`relative w-20 h-14 rounded-xl overflow-hidden shrink-0 border-2 transition-all cursor-pointer ${
+                      activeImageIndex === idx
                         ? 'border-[#521849] scale-105 shadow-xs'
                         : 'border-transparent opacity-75 hover:opacity-100'
                     }`}
@@ -219,66 +221,143 @@ export const ActivityDetailPage: React.FC = () => {
           {/* ========================================================================= */}
           {/* TYPE-SPECIFIC SECTION: CATA */}
           {/* ========================================================================= */}
-          {activity.type === 'cata' && (
+          {activity.type === 'cata' && cata && (
             <div className="space-y-6">
-              {/* Bodega / Productor Card */}
-              <div className="rounded-2xl bg-[#FBF9F5] p-6 sm:p-8 border border-[#EDE4D7] space-y-3">
+              {/* Bodega / Sumiller Header Card */}
+              <div className="rounded-2xl bg-gradient-to-br from-[#FBF9F5] to-white p-6 sm:p-8 border border-[#EDE4D7] space-y-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#521849]">
                   <Building className="w-4 h-4" />
-                  <span>Bodega & Productor Protagonista</span>
+                  <span>Bodega & Protagonistas de la Cata</span>
                 </div>
-                <h3 className="text-lg font-bold font-serif text-[#26201D]">
-                  {(activity as CataActivity).bodegaProductor.name}
-                </h3>
-                <p className="text-xs sm:text-sm text-[#574B45]">
-                  <strong className="text-[#26201D]">Región / D.O.:</strong> {(activity as CataActivity).bodegaProductor.region}
-                  {(activity as CataActivity).bodegaProductor.enologo && (
-                    <span> • <strong className="text-[#26201D]">Enólogo:</strong> {(activity as CataActivity).bodegaProductor.enologo}</span>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <h3 className="text-lg font-bold font-serif text-[#26201D]">
+                      {cata.bodegaProductor?.name || 'Bodega Invitada'}
+                    </h3>
+                    <p className="text-xs text-[#574B45] mt-1">
+                      <strong className="text-[#26201D]">Procedencia:</strong> {cata.bodegaProductor?.region || 'Castilla-La Mancha'}
+                    </p>
+                  </div>
+
+                  {cata.sumiller && (
+                    <div className="p-3 rounded-xl bg-white border border-[#EDE4D7]/80">
+                      <span className="text-[11px] uppercase font-bold text-[#521849] block">
+                        Sumiller Conductor/a
+                      </span>
+                      <p className="text-sm font-semibold text-[#26201D] mt-0.5">
+                        {cata.sumiller}
+                      </p>
+                    </div>
                   )}
-                </p>
-                {(activity as CataActivity).bodegaProductor.description && (
-                  <p className="text-xs sm:text-sm text-[#3D3430] italic">
-                    {(activity as CataActivity).bodegaProductor.description}
-                  </p>
+                </div>
+
+                {cata.bodegaProductor?.colaboradores && (
+                  <div className="pt-2 text-xs text-[#574B45] flex items-center gap-2 border-t border-[#EDE4D7]/50">
+                    <HeartHandshake className="w-4 h-4 text-[#C96043] shrink-0" />
+                    <span><strong>Colaboración Especial:</strong> {cata.bodegaProductor.colaboradores}</span>
+                  </div>
+                )}
+
+                {cata.aove && (
+                  <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200/80 text-xs text-amber-950 flex items-center gap-2">
+                    <Droplets className="w-4 h-4 text-amber-700 shrink-0" />
+                    <span><strong>AOVE de Bienvenida:</strong> {cata.aove}</span>
+                  </div>
                 )}
               </div>
 
-              {/* Pairing Menu / Menú de Maridaje */}
-              {(activity as CataActivity).pairingMenu && (activity as CataActivity).pairingMenu.length > 0 && (
+              {/* Structured Wine & Pairing Menu */}
+              {cata.wines && cata.wines.length > 0 ? (
                 <div className="rounded-2xl bg-white p-6 sm:p-8 border border-[#EDE4D7] space-y-5">
                   <div className="flex items-center justify-between border-b border-[#F6F1EA] pb-4">
                     <h3 className="text-lg font-bold font-serif text-[#26201D] flex items-center gap-2">
-                      <Utensils className="w-5 h-5 text-[#521849]" />
-                      <span>Menú de Maridaje y Armonías</span>
+                      <UtensilsCrossed className="w-5 h-5 text-[#521849]" />
+                      <span>Menú de Cata y Maridajes</span>
                     </h3>
-                    <span className="text-xs text-[#574B45]">
-                      {(activity as CataActivity).pairingMenu.length} pases
+                    <span className="text-xs font-semibold text-[#521849] bg-[#F6EDF4] px-2.5 py-1 rounded-full">
+                      {cata.wines.length} armonías
                     </span>
                   </div>
 
                   <div className="space-y-4">
-                    {(activity as CataActivity).pairingMenu.map((item, i) => (
+                    {cata.wines.map((wine, idx) => (
                       <div
-                        key={i}
-                        className="p-4 rounded-xl bg-[#FCFAF7] border border-[#EDE4D7] space-y-1.5"
+                        key={idx}
+                        className="p-4 rounded-xl bg-[#FCFAF7] border border-[#EDE4D7] flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-[#521849]/40 transition-colors"
                       >
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                          <h4 className="text-sm font-bold text-[#26201D]">
-                            {i + 1}. {item.dish}
-                          </h4>
-                          <span className="text-xs font-semibold text-[#521849] bg-[#F6EDF4] px-2.5 py-0.5 rounded-md w-fit">
-                            {item.pairing}
-                          </span>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold uppercase px-2 py-0.5 rounded bg-[#521849] text-white">
+                              {wine.type}
+                            </span>
+                            <span className="font-serif font-bold text-sm text-[#26201D]">
+                              {wine.name}
+                            </span>
+                          </div>
+                          {wine.grape && (
+                            <p className="text-xs text-[#574B45]">
+                              Variedad de uva: <strong className="text-[#26201D]">{wine.grape}</strong>
+                            </p>
+                          )}
                         </div>
-                        {item.notes && (
-                          <p className="text-xs text-[#574B45] pt-1">
-                            <em>Nota de cata:</em> {item.notes}
-                          </p>
+
+                        {wine.pairing && (
+                          <div className="sm:text-right pt-2 sm:pt-0 border-t sm:border-t-0 border-[#EDE4D7]">
+                            <span className="text-[10px] uppercase tracking-wider font-bold text-[#C96043] block">
+                              Plato de Maridaje
+                            </span>
+                            <span className="text-xs font-medium text-[#26201D]">
+                              {wine.pairing}
+                            </span>
+                          </div>
                         )}
                       </div>
                     ))}
                   </div>
                 </div>
+              ) : (
+                cata.pairingMenu && cata.pairingMenu.length > 0 && (
+                  <div className="rounded-2xl bg-white p-6 sm:p-8 border border-[#EDE4D7] space-y-5">
+                    <div className="flex items-center justify-between border-b border-[#F6F1EA] pb-4">
+                      <h3 className="text-lg font-bold font-serif text-[#26201D] flex items-center gap-2">
+                        <UtensilsCrossed className="w-5 h-5 text-[#521849]" />
+                        <span>Menú de Maridaje Diseñado</span>
+                      </h3>
+                      <span className="text-xs font-semibold text-[#521849] bg-[#F6EDF4] px-2.5 py-1 rounded-full">
+                        {cata.pairingMenu.length} pases
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                      {cata.pairingMenu.map((item, idx) => (
+                        <div
+                          key={idx}
+                          className="p-4 rounded-xl bg-[#FCFAF7] border border-[#EDE4D7] flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:border-[#521849]/40 transition-colors"
+                        >
+                          <div>
+                            <span className="text-xs font-semibold text-[#26201D] block">
+                              {idx + 1}. {item.dish}
+                            </span>
+                            {item.notes && (
+                              <span className="text-xs text-[#574B45] italic mt-0.5 block">
+                                {item.notes}
+                              </span>
+                            )}
+                          </div>
+                          <div className="sm:text-right">
+                            <span className="text-[11px] uppercase tracking-wider font-bold text-[#521849] block">
+                              Maridaje
+                            </span>
+                            <span className="text-xs font-medium text-[#C96043]">
+                              {item.pairing}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
               )}
             </div>
           )}
@@ -286,37 +365,38 @@ export const ActivityDetailPage: React.FC = () => {
           {/* ========================================================================= */}
           {/* TYPE-SPECIFIC SECTION: CURSO */}
           {/* ========================================================================= */}
-          {activity.type === 'curso' && (
+          {activity.type === 'curso' && curso && (
             <div className="space-y-6">
-              {/* Chef Bio */}
+              {/* Chef Card */}
               <div className="rounded-2xl bg-[#F9ECE8] p-6 sm:p-8 border border-[#C96043]/30 space-y-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#C96043]">
                   <ChefHat className="w-4 h-4" />
-                  <span>Chef Docente Invitado</span>
+                  <span>Chef Formador / Ponente</span>
                 </div>
                 <h3 className="text-lg font-bold font-serif text-[#26201D]">
-                  {(activity as CursoActivity).chef.name}
+                  {curso.chef.name}
                 </h3>
-                {(activity as CursoActivity).chef.restaurant && (
-                  <p className="text-xs text-[#9B3E26] font-medium">
-                    {(activity as CursoActivity).chef.restaurant}
+                {curso.chef.restaurant && (
+                  <p className="text-xs text-[#574B45]">
+                    <strong className="text-[#26201D]">Restaurante / Trayectoria:</strong> {curso.chef.restaurant}
                   </p>
                 )}
                 <p className="text-xs sm:text-sm text-[#3D3430] leading-relaxed">
-                  {(activity as CursoActivity).chef.bio}
+                  {curso.chef.bio}
                 </p>
               </div>
 
               {/* Syllabus / Temario */}
-              {(activity as CursoActivity).syllabus && (
+              {curso.syllabus && curso.syllabus.length > 0 && (
                 <div className="rounded-2xl bg-white p-6 sm:p-8 border border-[#EDE4D7] space-y-4">
-                  <h3 className="text-lg font-bold font-serif text-[#26201D]">
-                    Temario y Técnicas que Aprenderás
+                  <h3 className="text-lg font-bold font-serif text-[#26201D] flex items-center gap-2">
+                    <Award className="w-5 h-5 text-[#C96043]" />
+                    <span>Contenidos y Aprendizajes del Curso</span>
                   </h3>
-                  <ul className="space-y-2.5">
-                    {(activity as CursoActivity).syllabus.map((point, i) => (
-                      <li key={i} className="flex items-start gap-3 text-xs sm:text-sm text-[#3D3430]">
-                        <CheckCircle2 className="w-4 h-4 text-[#C96043] shrink-0 mt-0.5" />
+                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                    {curso.syllabus.map((point, idx) => (
+                      <li key={idx} className="flex items-start gap-2 text-xs sm:text-sm text-[#3D3430]">
+                        <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                         <span>{point}</span>
                       </li>
                     ))}
@@ -329,19 +409,19 @@ export const ActivityDetailPage: React.FC = () => {
           {/* ========================================================================= */}
           {/* TYPE-SPECIFIC SECTION: VIAJE */}
           {/* ========================================================================= */}
-          {activity.type === 'viaje' && (
+          {activity.type === 'viaje' && viaje && (
             <div className="space-y-6">
               {/* Included Services */}
-              {(activity as ViajeActivity).includedServices && (
-                <div className="rounded-2xl bg-[#EFF4E9] p-6 sm:p-8 border border-[#4D6233]/30 space-y-3">
-                  <h3 className="text-base font-bold font-serif text-[#26201D] flex items-center gap-2">
-                    <CheckCircle2 className="w-5 h-5 text-[#4D6233]" />
-                    <span>Servicios Incluidos en el Viaje</span>
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                    {(activity as ViajeActivity).includedServices.map((service, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs text-[#3B4B27]">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#4D6233]" />
+              {viaje.includedServices && viaje.includedServices.length > 0 && (
+                <div className="rounded-2xl bg-[#EFF4E9] p-6 sm:p-8 border border-[#4D6233]/30 space-y-4">
+                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#4D6233]">
+                    <Compass className="w-4 h-4" />
+                    <span>Servicios y Experiencias Incluidas</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {viaje.includedServices.map((service, idx) => (
+                      <div key={idx} className="flex items-center gap-2 text-xs text-[#26201D] font-medium">
+                        <span className="w-2 h-2 rounded-full bg-[#4D6233]" />
                         <span>{service}</span>
                       </div>
                     ))}
@@ -349,34 +429,29 @@ export const ActivityDetailPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Itinerary Day by Day */}
-              {(activity as ViajeActivity).itinerary && (activity as ViajeActivity).itinerary.length > 0 && (
+              {/* Itinerary */}
+              {viaje.itinerary && viaje.itinerary.length > 0 && (
                 <div className="rounded-2xl bg-white p-6 sm:p-8 border border-[#EDE4D7] space-y-6">
-                  <h3 className="text-lg font-bold font-serif text-[#26201D] flex items-center gap-2">
-                    <Compass className="w-5 h-5 text-[#4D6233]" />
-                    <span>Itinerario Detallado Día a Día</span>
+                  <h3 className="text-lg font-bold font-serif text-[#26201D]">
+                    Itinerario de la Experiencia
                   </h3>
-
-                  <div className="space-y-6">
-                    {(activity as ViajeActivity).itinerary.map((day) => (
-                      <div
-                        key={day.day}
-                        className="p-5 rounded-xl bg-[#FCFAF7] border border-[#EDE4D7] space-y-2 relative pl-6 border-l-4 border-l-[#4D6233]"
-                      >
-                        <h4 className="text-sm font-bold text-[#26201D]">
-                          {day.title}
+                  <div className="space-y-6 relative before:absolute before:left-3 before:top-3 before:bottom-3 before:w-0.5 before:bg-[#EDE4D7]">
+                    {viaje.itinerary.map((day) => (
+                      <div key={day.day} className="relative pl-8 space-y-1">
+                        <span className="absolute left-0 top-1 w-6 h-6 rounded-full bg-[#521849] text-white text-[10px] font-bold flex items-center justify-center ring-4 ring-white">
+                          {day.day}
+                        </span>
+                        <h4 className="text-sm font-bold font-serif text-[#26201D]">
+                          Día {day.day}: {day.title}
                         </h4>
-                        <p className="text-xs sm:text-sm text-[#574B45] leading-relaxed">
+                        <p className="text-xs text-[#574B45] leading-relaxed">
                           {day.description}
                         </p>
                         {day.highlights && day.highlights.length > 0 && (
-                          <div className="pt-2 flex flex-wrap gap-2">
-                            {day.highlights.map((h, hi) => (
-                              <span
-                                key={hi}
-                                className="px-2.5 py-1 rounded-md bg-[#EDE4D7]/70 text-[11px] font-medium text-[#26201D]"
-                              >
-                                • {h}
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {day.highlights.map((h, i) => (
+                              <span key={i} className="text-[10px] px-2 py-0.5 rounded bg-[#FCFAF7] border border-[#EDE4D7] text-[#574B45]">
+                                {h}
                               </span>
                             ))}
                           </div>
@@ -388,67 +463,31 @@ export const ActivityDetailPage: React.FC = () => {
               )}
             </div>
           )}
-
-          {/* ========================================================================= */}
-          {/* PAST EVENT ARCHIVE / MEMORIA (IF CELEBRADA) */}
-          {/* ========================================================================= */}
-          {isHeld && (
-            <div className="rounded-2xl bg-white p-6 sm:p-8 border border-[#EDE4D7] space-y-5">
-              <h3 className="text-xl font-bold font-serif text-[#26201D] flex items-center gap-2">
-                <Camera className="w-5 h-5 text-[#521849]" />
-                <span>Memoria y Registro del Evento Celebrado</span>
-              </h3>
-              {activity.pastEventSummary && (
-                <p className="text-sm text-[#3D3430] leading-relaxed bg-[#FCFAF7] p-4 rounded-xl border border-[#EDE4D7]">
-                  {activity.pastEventSummary}
-                </p>
-              )}
-              {activity.pastEventGallery && activity.pastEventGallery.length > 0 && (
-                <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#574B45] mb-3">
-                    Galería Fotográfica de la Jornada
-                  </h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {activity.pastEventGallery.map((img, i) => (
-                      <div key={i} className="aspect-4/3 rounded-xl overflow-hidden bg-[#F6F1EA]">
-                        <img src={img} alt={`Foto evento ${i + 1}`} className="w-full h-full object-cover hover:scale-105 transition-transform" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
-        {/* Right Sidebar Column: Reservation Block or Archive Notice */}
-        <div className="lg:col-span-4 lg:sticky lg:top-24 space-y-6">
-          {!isHeld ? (
-            <ReservationBlock activity={activity} />
-          ) : (
-            <div className="rounded-2xl border border-[#EDE4D7] bg-white p-6 md:p-8 space-y-4 text-center">
-              <div className="w-12 h-12 rounded-full bg-[#F6F1EA] text-[#521849] flex items-center justify-center mx-auto">
-                <Calendar className="w-6 h-6" />
-              </div>
-              <h3 className="text-lg font-bold font-serif text-[#26201D]">
-                Actividad ya finalizada
-              </h3>
-              <p className="text-xs text-[#574B45]">
-                Esta actividad tuvo lugar el {activity.date}. Permanece archivada en nuestra memoria histórica para consulta de socios.
-              </p>
-              <Link
-                to={parent.path}
-                className="inline-block w-full py-3 px-4 rounded-xl bg-[#521849] text-white text-xs font-semibold hover:bg-[#3E1037] transition-colors"
-              >
-                Ver próximas actividades similares
-              </Link>
-            </div>
-          )}
+        {/* Right Column: Sticky Reservation & Action Sidebar */}
+        <div className="lg:col-span-4 sticky top-24 space-y-6">
+          <ReservationBlock activity={activity} />
 
-          {/* Quick Help & Contact */}
-          <div className="rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7] p-5 text-xs text-[#574B45] space-y-2">
-            <h4 className="font-semibold text-[#26201D]">¿Dudas sobre esta convocatoria?</h4>
-            <p>Escribe a secretaría en <a href="mailto:secretaria@donaberenjena.es" className="text-[#521849] underline">secretaria@donaberenjena.es</a> o llama al <a href="tel:+34912345678" className="text-[#521849] font-medium">+34 912 345 678</a>.</p>
+          {/* Guarantee & Association Quality Box */}
+          <div className="rounded-2xl bg-[#FCFAF7] p-5 border border-[#EDE4D7] space-y-3 text-xs text-[#574B45]">
+            <span className="font-bold text-[#26201D] block">
+              Compromiso Gastronómico Doña Berenjena
+            </span>
+            <ul className="space-y-1.5">
+              <li className="flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-[#521849]" />
+                <span>Productos seleccionados de máxima calidad.</span>
+              </li>
+              <li className="flex items-center gap-1.5">
+                <Wine className="w-3.5 h-3.5 text-[#521849]" />
+                <span>Copas técnicas homologadas y servicio cuidado.</span>
+              </li>
+              <li className="flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-[#521849]" />
+                <span>Grupos reducidos para una experiencia inmersiva.</span>
+              </li>
+            </ul>
           </div>
         </div>
       </div>

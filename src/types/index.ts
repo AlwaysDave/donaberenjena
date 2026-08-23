@@ -14,8 +14,8 @@ export interface BaseActivity {
   title: string;
   subtitle: string;
   description: string;
-  date: string; // e.g. "2026-09-18" or "18 de Septiembre, 2026"
-  time?: string; // e.g. "20:00 h"
+  date: string; // e.g. "2026-04-10"
+  time?: string; // e.g. "20:30 h"
   price: number; // en euros (€)
   totalSpots: number;
   bookedSpots: number;
@@ -35,11 +35,20 @@ export interface PairingMenuItem {
   notes?: string;
 }
 
+export interface WineDetail {
+  type: string; // e.g. "Blanco", "Tinto", "Espumoso", "AOVE"
+  name: string; // e.g. "El Jalbegandero"
+  grape?: string; // e.g. "100% Airén"
+  pairing?: string; // e.g. "Arroz Meloso con Verduritas y Atún en Escabeche"
+  notes?: string;
+}
+
 export interface BodegaProductor {
   name: string;
   region: string;
   description?: string;
   enologo?: string;
+  colaboradores?: string;
 }
 
 export interface CataActivity extends BaseActivity {
@@ -47,6 +56,9 @@ export interface CataActivity extends BaseActivity {
   category: CataCategory;
   bodegaProductor: BodegaProductor;
   pairingMenu: PairingMenuItem[];
+  wines?: WineDetail[];
+  sumiller?: string;
+  aove?: string;
   pastEventGallery?: string[];
   pastEventSummary?: string;
 }
@@ -95,7 +107,6 @@ export interface AdminUser {
   name: string;
   baseRole: AdminRole; // Real role in Firestore (admins/{uid})
   role: AdminRole;     // Current display/working role (advanced view vs simple view)
-  isDemo?: boolean;
 }
 
 export interface WebMetric {

@@ -3,8 +3,7 @@ import {
   signInWithEmailAndPassword, 
   signOut, 
   onAuthStateChanged,
-  User as FirebaseUser,
-  AuthError
+  User as FirebaseUser
 } from 'firebase/auth';
 import { AdminRole, AdminUser } from '../types';
 import { auth, isFirebaseConfigured, getStoredAdminSession, saveStoredAdminSession } from '../services/firebase';
@@ -14,10 +13,8 @@ interface AuthContextType {
   user: AdminUser | null;
   isAuthenticated: boolean;
   isAuthReady: boolean;
-  isDemoAuth: boolean;
   authError: string | null;
   login: (email: string, password?: string) => Promise<void>;
-  loginAsDemo: (role: AdminRole) => void;
   switchRole: (role: AdminRole) => void;
   logout: () => Promise<void>;
 }
@@ -67,18 +64,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               email: firebaseUser.email || '',
               name: adminInfo.name || firebaseUser.email?.split('@')[0] || 'Administrador',
               baseRole: adminInfo.role,
-              role: adminInfo.role,
-              isDemo: false
+              role: adminInfo.role
             };
             setUser(adminUser);
             saveStoredAdminSession(adminUser);
           } else {
-            // User exists in Firebase Auth but has no document in `admins/{uid}`
             console.warn(`User ${firebaseUser.uid} authenticated without an entry in admins/{uid}`);
             await signOut(auth!);
             setUser(null);
             saveStoredAdminSession(null);
-            setAuthError('Esta cuenta no tiene un rol de administrador asignado.');
+            setAuthError('Esta cuenta no tiene un rol de administrador asignado en la colección "admins".');
           }
         } catch (err) {
           console.error('Error resolving admin profile from Firestore:', err);
@@ -86,11 +81,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           saveStoredAdminSession(null);
         }
       } else {
-        // If not in demo mode, clear user when signed out from Firebase Auth
-        if (!user?.isDemo) {
-          setUser(null);
-          saveStoredAdminSession(null);
-        }
+        setUser(null);
+        saveStoredAdminSession(null);
       }
       setIsAuthReady(true);
     });
@@ -122,7 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await signOut(auth);
         setUser(null);
         saveStoredAdminSession(null);
-        const msg = 'Esta cuenta no tiene un rol de administrador asignado en la colección "admins" de la base de datos.';
+        const msg = 'Esta cuenta no tiene un perfil configurado en la colección "admins" de Firestore.';
         setAuthError(msg);
         throw new Error(msg);
       }
@@ -132,8 +124,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: fbUser.email || email,
         name: adminInfo.name || fbUser.email?.split('@')[0] || 'Administrador',
         baseRole: adminInfo.role,
-        role: adminInfo.role, // Defaults to configured role
-        isDemo: false
+        role: adminInfo.role
       };
 
       setUser(loggedUser);
@@ -145,14 +136,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const loginAsDemo = (role: AdminRole) => {
-    // Unused when demo access is disabled
-    setAuthError(null);
-  };
-
   const switchRole = (newRole: AdminRole) => {
     if (!user) return;
-    // Allow any logged-in admin to switch between simple and advanced display views
     const updatedUser: AdminUser = {
       ...user,
       role: newRole
@@ -163,7 +148,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     setAuthError(null);
-    if (hasFirebase && auth && !user?.isDemo) {
+    if (auth) {
       try {
         await signOut(auth);
       } catch (err) {
@@ -179,10 +164,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       user, 
       isAuthenticated: Boolean(user), 
       isAuthReady,
-      isDemoAuth: !hasFirebase || Boolean(user?.isDemo),
       authError,
       login, 
-      loginAsDemo, 
       switchRole, 
       logout 
     }}>

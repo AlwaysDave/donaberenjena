@@ -8,7 +8,7 @@ import { Shield, Layers, Sparkles, LogOut, ExternalLink, AlertTriangle, Database
 
 export const AdminDashboard: React.FC = () => {
   const { user, isAuthenticated, switchRole, logout } = useAuth();
-  const { isDemoMode } = useData();
+  const { isConnected, connectionError } = useData();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -38,12 +38,14 @@ export const AdminDashboard: React.FC = () => {
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#842A76] text-white font-semibold uppercase">
                   {user.baseRole === 'advanced' ? 'Admin Directiva' : 'Coordinador'}
                 </span>
-                {!isDemoMode && (
-                  <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 font-semibold">
-                    <Database className="w-2.5 h-2.5" />
-                    Firestore Conectado
-                  </span>
-                )}
+                <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold border ${
+                  isConnected 
+                    ? 'bg-emerald-950 text-emerald-300 border-emerald-800' 
+                    : 'bg-rose-950 text-rose-300 border-rose-800'
+                }`}>
+                  <Database className="w-2.5 h-2.5" />
+                  {isConnected ? '🟢 Firestore Conectado' : '🔴 Sin Conexión'}
+                </span>
               </div>
               <p className="text-xs text-[#DFD3C2]">
                 Sesión iniciada como: <strong className="text-white">{user.name}</strong> ({user.email})
@@ -107,14 +109,14 @@ export const AdminDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Demo Warning Banner inside Admin Panel */}
-      {isDemoMode && (
-        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5">
-          <div className="max-w-7xl mx-auto flex items-center justify-between text-xs text-amber-900">
+      {/* Disconnection Warning if not connected */}
+      {!isConnected && (
+        <div className="bg-rose-50 border-b border-rose-200 px-4 py-2.5">
+          <div className="max-w-7xl mx-auto flex items-center justify-between text-xs text-rose-900">
             <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
               <span>
-                <strong>Modo Demostración activo:</strong> No se ha podido establecer conexión directa con la base de datos de producción. Los cambios se conservarán solo de forma local en tu navegador.
+                <strong>Atención:</strong> No hay conexión activa con Firestore ({connectionError || 'revisa las credenciales del proyecto'}).
               </span>
             </div>
           </div>

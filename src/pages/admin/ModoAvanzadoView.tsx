@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useData } from '../../context/DataContext';
-import { Activity, ActivityType, CataActivity, CataCategory, CursoActivity, ViajeActivity } from '../../types';
+import { Activity, ActivityType, CataActivity, CataCategory, CursoActivity, ViajeActivity, WineDetail } from '../../types';
+import { extractTextFromPdf, parseCataText, DEFAULT_OFFICIAL_LOCATION, getDefaultStartTime } from '../../services/pdfCataParser';
+import { searchBodegaLogo } from '../../services/bodegaLogoService';
 import { 
   Plus, 
   Trash2, 
@@ -11,7 +13,6 @@ import {
   TrendingUp, 
   FileText, 
   CheckCircle, 
-  RefreshCw, 
   X, 
   Save, 
   Wine, 
@@ -19,94 +20,266 @@ import {
   Compass, 
   Layers, 
   Sparkles,
-  Image as ImageIcon
+  Upload,
+  FileUp,
+  Loader2,
+  Check,
+  AlertTriangle,
+  Calendar,
+  Clock,
+  MapPin,
+  Globe
 } from 'lucide-react';
 
 export const ModoAvanzadoView: React.FC = () => {
-  const { activities, metrics, addActivity, updateActivity, deleteActivity, resetToDefaults, isDemoMode } = useData();
+  const { activities, metrics, addActivity, updateActivity, deleteActivity } = useData();
 
   const [activeTab, setActiveTab] = useState<'gestion' | 'metricas'>('gestion');
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [activityTypeToCreate, setActivityTypeToCreate] = useState<ActivityType>('cata');
   const [notification, setNotification] = useState<string | null>(null);
+  const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Form State for Advanced Editor
   const [formData, setFormData] = useState<Partial<Activity>>({});
   const [imageUrlsText, setImageUrlsText] = useState<string>('');
-  const [pairingText, setPairingText] = useState<string>(''); // For catas: dish | pairing | notes
-  const [syllabusText, setSyllabusText] = useState<string>(''); // For cursos: line by line
-  const [servicesText, setServicesText] = useState<string>(''); // For viajes: line by line
+  const [syllabusText, setSyllabusText] = useState<string>(''); // For cursos
+  const [servicesText, setServicesText] = useState<string>(''); // For viajes
+
+  // Point 1: Two dates
+  const [date1, setDate1] = useState<string>('');
+  const [date2, setDate2] = useState<string>('');
+  const [time1, setTime1] = useState<string>('21:00');
+  const [time2, setTime2] = useState<string>('13:00');
+
+  // Specific cata state
+  const [cataWines, setCataWines] = useState<WineDetail[]>([
+    { type: 'Blanco', name: '', grape: '', pairing: '' },
+    { type: 'Tinto', name: '', grape: '', pairing: '' },
+    { type: 'Tinto', name: '', grape: '', pairing: '' },
+    { type: 'Espumoso', name: '', grape: '', pairing: '' }
+  ]);
+  const [cataSumiller, setCataSumiller] = useState<string>('Ana García');
+  const [cataAove, setCataAove] = useState<string>('');
+  const [cataColaboradores, setCataColaboradores] = useState<string>('');
+  const [isSearchingLogo, setIsSearchingLogo] = useState<boolean>(false);
+
+  // PDF Upload & Parser state
+  const [isParsingPdf, setIsParsingPdf] = useState<boolean>(false);
+  const [pdfSuccessMessage, setPdfSuccessMessage] = useState<string | null>(null);
+  const [pdfErrorMessage, setPdfErrorMessage] = useState<string | null>(null);
 
   const showNotification = (msg: string) => {
     setNotification(msg);
-    setTimeout(() => setNotification(null), 3000);
+    setTimeout(() => setNotification(null), 3500);
+  };
+
+  const handleDate1Change = (val: string) => {
+    setDate1(val);
+    setTime1(getDefaultStartTime(val));
+  };
+
+  const handleDate2Change = (val: string) => {
+    setDate2(val);
+    setTime2(getDefaultStartTime(val));
+  };
+
+  const updateWineField = (index: number, field: keyof WineDetail, val: string) => {
+    setCataWines(prev => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [field]: val };
+      return copy;
+    });
+  };
+
+  const addWineRow = () => {
+    if (cataWines.length < 6) {
+      setCataWines(prev => [...prev, { type: 'Vino', name: '', grape: '', pairing: '' }]);
+    }
+  };
+
+  const removeWineRow = (index: number) => {
+    if (cataWines.length > 1) {
+      setCataWines(prev => prev.filter((_, i) => i !== index));
+    }
+  };
+
+  const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== 'application/pdf' && !file.name.endsWith('.pdf')) {
+      setPdfErrorMessage('Por favor, selecciona un archivo en formato PDF.');
+      return;
+    }
+
+    setIsParsingPdf(true);
+    setPdfErrorMessage(null);
+    setPdfSuccessMessage(null);
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const rawText = await extractTextFromPdf(buffer);
+      const parsed = parseCataText(rawText);
+
+      // Autocomplete form fields with extracted data
+      setFormData((prev) => ({
+        ...prev,
+        type: 'cata',
+        title: parsed.title,
+        subtitle: parsed.subtitle,
+        price: parsed.price || 25.0,
+        totalSpots: parsed.totalSpots || 14,
+        location: parsed.location || DEFAULT_OFFICIAL_LOCATION,
+        description: '', // Point 5: empty description by default
+        bodegaProductor: {
+          name: parsed.bodegaName,
+          region: parsed.bodegaRegion || 'Castilla-La Mancha',
+          colaboradores: parsed.colaboradores
+        }
+      } as any));
+
+      setDate1(parsed.date);
+      setTime1(parsed.time);
+
+      if (parsed.date2) {
+        setDate2(parsed.date2);
+        setTime2(parsed.time2 || getDefaultStartTime(parsed.date2));
+      } else {
+        setDate2('');
+      }
+
+      if (parsed.wines && parsed.wines.length > 0) {
+        setCataWines(parsed.wines);
+      }
+      setCataSumiller(parsed.sumiller || 'Ana García');
+      setCataAove(parsed.aove || '');
+      setCataColaboradores(parsed.colaboradores || '');
+
+      // Point 8: Auto search bodega logo
+      if (parsed.bodegaName) {
+        setIsSearchingLogo(true);
+        const logo = await searchBodegaLogo(parsed.bodegaName);
+        if (logo) {
+          setImageUrlsText(logo);
+        }
+        setIsSearchingLogo(false);
+      }
+
+      setPdfSuccessMessage(`¡Cartel "${file.name}" analizado con éxito! Detectadas ${parsed.dates.length > 1 ? '2 fechas' : '1 fecha'}, ${parsed.wines.length} vinos y sumiller ${parsed.sumiller || 'Ana García'}.`);
+    } catch (err: any) {
+      console.error('Error parsing PDF:', err);
+      setPdfErrorMessage('No se pudo extraer el texto del PDF. Puedes rellenar los datos manualmente.');
+    } finally {
+      setIsParsingPdf(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleManualSearchLogo = async () => {
+    const bodegaName = (formData as CataActivity).bodegaProductor?.name;
+    if (!bodegaName) return;
+    setIsSearchingLogo(true);
+    try {
+      const logo = await searchBodegaLogo(bodegaName);
+      if (logo) {
+        setImageUrlsText(logo);
+      }
+    } finally {
+      setIsSearchingLogo(false);
+    }
   };
 
   const startCreate = (type: ActivityType) => {
     setIsCreatingNew(true);
     setActivityTypeToCreate(type);
+    setPdfSuccessMessage(null);
+    setPdfErrorMessage(null);
+
+    const defaultDate = new Date().toISOString().split('T')[0];
+    setDate1(defaultDate);
+    setDate2('');
+    setTime1(getDefaultStartTime(defaultDate));
+    setTime2('13:00');
+
     const blank: Partial<Activity> = {
       id: `${type}-${Date.now()}`,
       type: type,
       title: '',
       subtitle: '',
-      description: '',
-      date: new Date().toISOString().split('T')[0],
-      time: '20:00 h',
-      price: 45,
-      totalSpots: 20,
+      description: '', // Point 5: empty description
+      date: defaultDate,
+      time: getDefaultStartTime(defaultDate),
+      price: 25.0, // Point 3: 25€ default
+      totalSpots: 14, // Point 3: 14 spots default
       bookedSpots: 0,
       status: 'proxima',
-      location: 'Sede Doña Berenjena (C/ Mayor 14, Planta 1, Madrid)',
-      featured: false,
-      howToReserveInfo: 'Reserva confirmada mediante abono de plaza.',
-      images: ['https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=1200&q=80'],
-      documentPdf: {
-        title: 'Ficha Técnica Informativa.pdf',
-        url: '#',
-        fileSize: '1.2 MB'
-      },
+      location: DEFAULT_OFFICIAL_LOCATION, // Point 2: Sede oficial
+      images: [
+        type === 'cata' 
+          ? 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=1200&q=80'
+          : type === 'curso'
+          ? 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?auto=format&fit=crop&w=1200&q=80'
+          : 'https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?auto=format&fit=crop&w=1200&q=80'
+      ],
       createdAt: new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0]
+      updatedAt: new Date().toISOString().split('T')[0],
+      ...(type === 'cata' ? {
+        category: 'vino' as CataCategory,
+        bodegaProductor: { name: '', region: 'Castilla-La Mancha' },
+        pairingMenu: []
+      } : type === 'curso' ? {
+        theme: '',
+        chef: { name: '', bio: '' },
+        syllabus: [],
+        includesTasting: true
+      } : {
+        destination: '',
+        durationDays: 2,
+        includedServices: [],
+        itinerary: []
+      })
     };
-
-    if (type === 'cata') {
-      (blank as Partial<CataActivity>).category = 'vino';
-      (blank as Partial<CataActivity>).bodegaProductor = { name: '', region: '', enologo: '', description: '' };
-      (blank as Partial<CataActivity>).pairingMenu = [];
-      setPairingText('Terrina de lechal | Tinto Crianza | Maridaje de contraste\nTabla de afinados | Blanco Fermentado en Barrica | Textura untuosa');
-    } else if (type === 'curso') {
-      (blank as Partial<CursoActivity>).theme = 'Técnicas de Cocina';
-      (blank as Partial<CursoActivity>).chef = { name: '', bio: '', restaurant: '' };
-      (blank as Partial<CursoActivity>).syllabus = [];
-      (blank as Partial<CursoActivity>).includesTasting = true;
-      setSyllabusText('Selección de materia prima\nTécnica de fondos oscuros\nCocinado individual en estación\nDegustación en mesa');
-    } else if (type === 'viaje') {
-      (blank as Partial<ViajeActivity>).destination = '';
-      (blank as Partial<ViajeActivity>).durationDays = 3;
-      (blank as Partial<ViajeActivity>).includedServices = [];
-      (blank as Partial<ViajeActivity>).itinerary = [
-        { day: 1, title: 'Llegada y presentación', description: 'Recepción de los socios', highlights: ['Cena inaugural'] }
-      ];
-      setServicesText('Autobús privado exclusivo\nHotel 4* con desayuno\nVisitas a bodegas y catas privadas\nAlmuerzos y cenas maridadas');
-    }
 
     setFormData(blank);
     setImageUrlsText(blank.images?.join('\n') || '');
+    setSyllabusText('');
+    setServicesText('');
+    setCataWines([
+      { type: 'Blanco', name: '', grape: '', pairing: '' },
+      { type: 'Tinto', name: '', grape: '', pairing: '' },
+      { type: 'Tinto', name: '', grape: '', pairing: '' },
+      { type: 'Espumoso', name: '', grape: '', pairing: '' }
+    ]);
+    setCataSumiller('Ana García');
+    setCataAove('');
+    setCataColaboradores('');
     setEditingActivity(blank as Activity);
   };
 
   const startEdit = (act: Activity) => {
     setIsCreatingNew(false);
-    setEditingActivity(act);
-    setFormData({ ...act });
-    setImageUrlsText(act.images.join('\n'));
+    setPdfSuccessMessage(null);
+    setPdfErrorMessage(null);
+    setFormData(act);
+    setDate1(act.date);
+    setDate2('');
+    setTime1(act.time || '21:00');
+    setImageUrlsText(act.images?.join('\n') || '');
 
     if (act.type === 'cata') {
       const cata = act as CataActivity;
-      const pText = cata.pairingMenu?.map(p => `${p.dish} | ${p.pairing} | ${p.notes || ''}`).join('\n') || '';
-      setPairingText(pText);
+      setCataWines(cata.wines && cata.wines.length > 0 ? cata.wines : [
+        { type: 'Blanco', name: '', grape: '', pairing: '' },
+        { type: 'Tinto', name: '', grape: '', pairing: '' },
+        { type: 'Tinto', name: '', grape: '', pairing: '' },
+        { type: 'Espumoso', name: '', grape: '', pairing: '' }
+      ]);
+      setCataSumiller(cata.sumiller || 'Ana García');
+      setCataAove(cata.aove || '');
+      setCataColaboradores(cata.bodegaProductor?.colaboradores || '');
     } else if (act.type === 'curso') {
       const curso = act as CursoActivity;
       setSyllabusText(curso.syllabus?.join('\n') || '');
@@ -114,246 +287,198 @@ export const ModoAvanzadoView: React.FC = () => {
       const viaje = act as ViajeActivity;
       setServicesText(viaje.includedServices?.join('\n') || '');
     }
+
+    setEditingActivity(act);
   };
 
   const handleSaveForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.title) return;
+    if (!formData.title || !date1) return;
 
-    const parsedImages = imageUrlsText.split('\n').map(s => s.trim()).filter(Boolean);
-    const finalImages = parsedImages.length > 0 ? parsedImages : ['https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=1200&q=80'];
+    // Process image URLs
+    const images = imageUrlsText
+      .split('\n')
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
 
-    let finalizedActivity: Activity = {
+    const cleanedWines = cataWines.filter(w => w.name.trim() || w.pairing?.trim());
+    const pairings = cleanedWines.map(w => ({
+      dish: w.pairing || 'Degustación',
+      pairing: `${w.type} ${w.name}`.trim(),
+      notes: w.grape || undefined
+    }));
+
+    // Construct primary record
+    let finalActivity1: Activity = {
       ...formData,
-      images: finalImages,
-      price: Number(formData.price || 0),
-      totalSpots: Number(formData.totalSpots || 1),
-      bookedSpots: Number(formData.bookedSpots || 0),
+      date: date1,
+      time: time1,
+      images: images.length > 0 ? images : ['https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=1200&q=80'],
       updatedAt: new Date().toISOString().split('T')[0]
     } as Activity;
 
-    if (finalizedActivity.type === 'cata') {
-      const pMenu = pairingText.split('\n').map(line => {
-        const [dish, pairing, notes] = line.split('|').map(s => s.trim());
-        if (!dish) return null;
-        return { dish, pairing: pairing || 'Vino armonizado', notes: notes || '' };
-      }).filter(Boolean) as any[];
-      (finalizedActivity as CataActivity).pairingMenu = pMenu;
-    } else if (finalizedActivity.type === 'curso') {
-      const syll = syllabusText.split('\n').map(s => s.trim()).filter(Boolean);
-      (finalizedActivity as CursoActivity).syllabus = syll;
-    } else if (finalizedActivity.type === 'viaje') {
-      const serv = servicesText.split('\n').map(s => s.trim()).filter(Boolean);
-      (finalizedActivity as ViajeActivity).includedServices = serv;
+    if (finalActivity1.type === 'cata') {
+      finalActivity1 = {
+        ...finalActivity1,
+        pairingMenu: pairings,
+        wines: cleanedWines.length > 0 ? cleanedWines : undefined,
+        sumiller: cataSumiller.trim() || 'Ana García',
+        aove: cataAove.trim() || undefined,
+        bodegaProductor: {
+          ...((finalActivity1 as CataActivity).bodegaProductor || { name: 'Bodega', region: 'Castilla-La Mancha' }),
+          colaboradores: cataColaboradores.trim() || undefined
+        }
+      } as CataActivity;
+    } else if (finalActivity1.type === 'curso') {
+      const syllabus = syllabusText
+        .split('\n')
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+      finalActivity1 = {
+        ...finalActivity1,
+        syllabus
+      } as CursoActivity;
+    } else if (finalActivity1.type === 'viaje') {
+      const services = servicesText
+        .split('\n')
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+      finalActivity1 = {
+        ...finalActivity1,
+        includedServices: services
+      } as ViajeActivity;
     }
 
-    if (isCreatingNew) {
-      await addActivity(finalizedActivity);
-      showNotification('¡Actividad creada y registrada en base de datos!');
-    } else {
-      await updateActivity(finalizedActivity);
-      showNotification('¡Cambios guardados con éxito!');
-    }
+    try {
+      if (isCreatingNew) {
+        // Point 1: Create 2 records if Date 2 is provided
+        const recordsToSave: Activity[] = [
+          { ...finalActivity1, id: `${finalActivity1.type}-${Date.now()}-f1` }
+        ];
 
-    setEditingActivity(null);
-  };
+        if (date2 && date2.trim().length > 0) {
+          recordsToSave.push({
+            ...finalActivity1,
+            id: `${finalActivity1.type}-${Date.now()}-f2`,
+            date: date2,
+            time: time2,
+            bookedSpots: 0
+          });
+        }
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm('¿Confirmas que deseas eliminar esta actividad de forma permanente?')) {
-      await deleteActivity(id);
-      showNotification('Actividad eliminada.');
+        for (const rec of recordsToSave) {
+          await addActivity(rec);
+        }
+
+        showNotification(recordsToSave.length === 2 
+          ? '¡2 convocatorias generadas y sincronizadas con Firestore!' 
+          : 'Nueva actividad creada y sincronizada con Firestore.');
+      } else {
+        await updateActivity(finalActivity1);
+        showNotification('Actividad actualizada correctamente en Firestore.');
+      }
+      setEditingActivity(null);
+    } catch (err: any) {
+      console.error('Error saving activity:', err);
+      alert('Error al guardar en Firestore: ' + err.message);
     }
   };
 
   return (
     <div className="space-y-8">
-      {/* Tab Navigation */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#EDE4D7] pb-4">
-        <div className="flex items-center gap-2">
-          <button
-            id="tab-avanzado-gestion"
-            type="button"
-            onClick={() => setActiveTab('gestion')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
-              activeTab === 'gestion'
-                ? 'bg-[#521849] text-white shadow-xs'
-                : 'bg-white text-[#574B45] border border-[#EDE4D7] hover:bg-[#F6F1EA]'
-            }`}
-          >
-            Gestión de Actividades ({activities.length})
-          </button>
-          <button
-            id="tab-avanzado-metricas"
-            type="button"
-            onClick={() => setActiveTab('metricas')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'metricas'
-                ? 'bg-[#521849] text-white shadow-xs'
-                : 'bg-white text-[#574B45] border border-[#EDE4D7] hover:bg-[#F6F1EA]'
-            }`}
-          >
-            <BarChart3 className="w-3.5 h-3.5" />
-            <span>Métricas Web</span>
-          </button>
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <span className="text-xs uppercase tracking-widest font-bold text-[#521849]">
+            Panel de Dirección
+          </span>
+          <h2 className="text-2xl sm:text-3xl font-bold font-serif text-[#26201D]">
+            Modo Avanzado de Gestión
+          </h2>
+          <p className="text-xs text-[#574B45] mt-1">
+            Control integral del catálogo gastronómico, autocompletado con PDF y analíticas de la asociación.
+          </p>
         </div>
 
-        {isDemoMode && (
-          <div className="flex items-center gap-2">
-            <button
-              id="btn-reset-defaults"
-              type="button"
-              onClick={() => {
-                if (window.confirm('¿Restablecer todas las actividades a los datos de muestra iniciales?')) {
-                  resetToDefaults();
-                  showNotification('Base de datos restablecida.');
-                }
-              }}
-              className="px-3 py-1.5 rounded-lg border border-[#EDE4D7] text-xs text-[#574B45] hover:text-[#521849] hover:bg-white flex items-center gap-1 cursor-pointer"
-            >
-              <RefreshCw className="w-3 h-3" />
-              <span>Restablecer Demos</span>
-            </button>
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            id="btn-create-cata"
+            type="button"
+            onClick={() => startCreate('cata')}
+            className="px-4 py-2.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold flex items-center gap-2 transition-all shadow-xs cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Nueva Cata</span>
+          </button>
+          <button
+            id="btn-create-curso"
+            type="button"
+            onClick={() => startCreate('curso')}
+            className="px-4 py-2.5 rounded-xl border border-[#EDE4D7] bg-white text-[#26201D] hover:bg-[#F6F1EA] text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Nuevo Curso</span>
+          </button>
+          <button
+            id="btn-create-viaje"
+            type="button"
+            onClick={() => startCreate('viaje')}
+            className="px-4 py-2.5 rounded-xl border border-[#EDE4D7] bg-white text-[#26201D] hover:bg-[#F6F1EA] text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Nuevo Viaje</span>
+          </button>
+        </div>
       </div>
 
       {notification && (
-        <div className="p-4 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold flex items-center gap-2 animate-fadeIn">
-          <CheckCircle className="w-4 h-4 text-emerald-600" />
+        <div className="p-4 rounded-2xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold flex items-center gap-2 animate-fadeIn">
+          <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
           <span>{notification}</span>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* METRICS VIEW */}
-      {/* ========================================================================= */}
-      {activeTab === 'metricas' && (
-        <div className="space-y-8 animate-fadeIn">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="p-6 rounded-2xl bg-white border border-[#EDE4D7] space-y-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-[#574B45]">
-                Páginas Vistas (Mes)
-              </span>
-              <p className="text-3xl font-bold font-serif text-[#521849]">
-                {metrics.pageViewsThisMonth.toLocaleString()}
-              </p>
-              <p className="text-[11px] text-emerald-700 font-medium">↑ +18% frente al mes anterior</p>
-            </div>
+      {/* Tabs */}
+      <div className="flex items-center gap-3 border-b border-[#EDE4D7] pb-3">
+        <button
+          type="button"
+          onClick={() => setActiveTab('gestion')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+            activeTab === 'gestion'
+              ? 'bg-[#521849] text-white shadow-xs'
+              : 'bg-white text-[#574B45] hover:bg-[#F6F1EA]'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          <span>Catálogo de Actividades ({activities.length})</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('metricas')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+            activeTab === 'metricas'
+              ? 'bg-[#521849] text-white shadow-xs'
+              : 'bg-white text-[#574B45] hover:bg-[#F6F1EA]'
+          }`}
+        >
+          <BarChart3 className="w-4 h-4" />
+          <span>Métricas de Visitas y Reservas</span>
+        </button>
+      </div>
 
-            <div className="p-6 rounded-2xl bg-white border border-[#EDE4D7] space-y-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-[#574B45]">
-                Visitantes Únicos
-              </span>
-              <p className="text-3xl font-bold font-serif text-[#26201D]">
-                {metrics.uniqueVisitorsThisMonth.toLocaleString()}
-              </p>
-              <p className="text-[11px] text-[#574B45]">Tráfico orgánico y recomendaciones</p>
-            </div>
-
-            <div className="p-6 rounded-2xl bg-white border border-[#EDE4D7] space-y-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-[#574B45]">
-                Reservas Gestionadas
-              </span>
-              <p className="text-3xl font-bold font-serif text-[#C96043]">
-                {metrics.activeReservationsCount}
-              </p>
-              <p className="text-[11px] text-emerald-700 font-medium">En proceso de confirmación</p>
-            </div>
-
-            <div className="p-6 rounded-2xl bg-white border border-[#EDE4D7] space-y-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-[#574B45]">
-                Tasa Ocupación Media
-              </span>
-              <p className="text-3xl font-bold font-serif text-[#4D6233]">
-                {metrics.occupancyRateAverage}%
-              </p>
-              <p className="text-[11px] text-[#574B45]">Aforo cubierto en las últimas 5 catas</p>
-            </div>
-          </div>
-
-          {/* Top Visited Activities */}
-          <div className="p-6 rounded-2xl bg-white border border-[#EDE4D7] space-y-4">
-            <h3 className="text-base font-bold font-serif text-[#26201D] flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-[#521849]" />
-              <span>Actividades más visitadas y consultadas</span>
-            </h3>
-
-            <div className="divide-y divide-[#EDE4D7]">
-              {metrics.topVisitedActivities.map((item, idx) => (
-                <div key={item.id} className="py-3 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="w-6 h-6 rounded-full bg-[#F6F1EA] text-[#521849] font-bold text-xs flex items-center justify-center">
-                      {idx + 1}
-                    </span>
-                    <div>
-                      <p className="text-xs font-bold text-[#26201D]">{item.title}</p>
-                      <span className="text-[10px] uppercase font-semibold text-[#574B45]">{item.type}</span>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-xs font-bold text-[#521849]">{item.views}</span>
-                    <span className="text-[10px] text-[#574B45] block">visitas</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* ACTIVITIES MANAGEMENT VIEW */}
-      {/* ========================================================================= */}
+      {/* Tab 1: Gestion */}
       {activeTab === 'gestion' && (
         <div className="space-y-6">
-          {/* Creation Bar with 3 types */}
-          <div className="flex flex-wrap items-center justify-between gap-4 p-5 bg-white rounded-2xl border border-[#EDE4D7]">
-            <div>
-              <h3 className="font-bold text-sm text-[#26201D]">Crear Nueva Actividad Completa</h3>
-              <p className="text-xs text-[#574B45]">Elige el tipo de ficha técnica a confeccionar:</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                id="btn-create-cata"
-                type="button"
-                onClick={() => startCreate('cata')}
-                className="px-3.5 py-2 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
-              >
-                <Wine className="w-3.5 h-3.5" />
-                <span>+ Nueva Cata</span>
-              </button>
-              <button
-                id="btn-create-curso"
-                type="button"
-                onClick={() => startCreate('curso')}
-                className="px-3.5 py-2 rounded-xl bg-[#C96043] hover:bg-[#B84E33] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
-              >
-                <ChefHat className="w-3.5 h-3.5" />
-                <span>+ Nuevo Curso</span>
-              </button>
-              <button
-                id="btn-create-viaje"
-                type="button"
-                onClick={() => startCreate('viaje')}
-                className="px-3.5 py-2 rounded-xl bg-[#4D6233] hover:bg-[#3B4B27] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
-              >
-                <Compass className="w-3.5 h-3.5" />
-                <span>+ Nuevo Viaje</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Table of all activities with comprehensive controls */}
-          <div className="bg-white rounded-2xl border border-[#EDE4D7] overflow-hidden">
+          <div className="bg-white rounded-3xl border border-[#EDE4D7] overflow-hidden shadow-xs">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-[#FCFAF7] border-b border-[#EDE4D7] text-[#574B45] uppercase font-semibold">
-                  <tr>
+                <thead>
+                  <tr className="bg-[#FCFAF7] border-b border-[#EDE4D7] text-[#574B45] uppercase tracking-wider font-semibold">
                     <th className="p-4">Tipo</th>
-                    <th className="p-4">Título & Detalles</th>
-                    <th className="p-4">Fecha & Hora</th>
+                    <th className="p-4">Título / Actividad</th>
+                    <th className="p-4">Fecha y Hora</th>
                     <th className="p-4">Precio</th>
-                    <th className="p-4">Aforo</th>
+                    <th className="p-4">Aforo / Ocupación</th>
                     <th className="p-4">Estado</th>
                     <th className="p-4 text-right">Acciones</th>
                   </tr>
@@ -361,43 +486,64 @@ export const ModoAvanzadoView: React.FC = () => {
                 <tbody className="divide-y divide-[#EDE4D7]">
                   {activities.map((act) => (
                     <tr key={act.id} className="hover:bg-[#FCFAF7] transition-colors">
-                      <td className="p-4 font-bold uppercase text-[10px]">
-                        <span className="px-2 py-1 rounded bg-[#F6EDF4] text-[#521849]">
-                          {act.type}
+                      <td className="p-4">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-semibold text-[11px] ${
+                          act.type === 'cata' 
+                            ? 'bg-[#521849]/10 text-[#521849]' 
+                            : act.type === 'curso'
+                            ? 'bg-[#C96043]/10 text-[#C96043]'
+                            : 'bg-[#4D6233]/10 text-[#4D6233]'
+                        }`}>
+                          {act.type === 'cata' && <Wine className="w-3 h-3" />}
+                          {act.type === 'curso' && <ChefHat className="w-3 h-3" />}
+                          {act.type === 'viaje' && <Compass className="w-3 h-3" />}
+                          <span className="capitalize">{act.type}</span>
                         </span>
                       </td>
-                      <td className="p-4 max-w-xs">
-                        <p className="font-bold text-[#26201D] truncate">{act.title}</p>
-                        <p className="text-[11px] text-[#574B45] truncate">{act.subtitle || act.location}</p>
+                      <td className="p-4 font-semibold text-[#26201D] max-w-xs">
+                        <p className="truncate font-serif text-sm">{act.title}</p>
+                        <p className="text-[11px] text-[#574B45] truncate font-sans font-normal">{act.subtitle}</p>
                       </td>
-                      <td className="p-4 whitespace-nowrap text-[#3D3430]">
-                        {act.date} {act.time && `(${act.time})`}
+                      <td className="p-4 text-[#26201D] font-medium">
+                        {act.date} {act.time ? `(${act.time})` : ''}
                       </td>
-                      <td className="p-4 whitespace-nowrap font-bold text-[#521849]">
-                        {act.price}€
+                      <td className="p-4 font-bold text-[#521849]">
+                        {act.price.toFixed(2)} €
                       </td>
-                      <td className="p-4 whitespace-nowrap">
-                        <span className="font-semibold text-[#26201D]">{act.bookedSpots}</span> / {act.totalSpots}
+                      <td className="p-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-20 bg-[#EDE4D7] h-2 rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full ${act.bookedSpots >= act.totalSpots ? 'bg-rose-500' : 'bg-[#521849]'}`} 
+                              style={{ width: `${Math.min(100, (act.bookedSpots / act.totalSpots) * 100)}%` }}
+                            />
+                          </div>
+                          <span className="text-[11px] text-[#574B45] font-semibold">
+                            {act.bookedSpots}/{act.totalSpots}
+                          </span>
+                        </div>
                       </td>
-                      <td className="p-4 whitespace-nowrap">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                          act.status === 'proxima' ? 'bg-emerald-100 text-emerald-800' : 'bg-[#EDE4D7] text-[#574B45]'
+                      <td className="p-4">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          act.status === 'proxima'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-stone-200 text-stone-700'
                         }`}>
                           {act.status === 'proxima' ? 'Próxima' : 'Celebrada'}
                         </span>
                       </td>
-                      <td className="p-4 whitespace-nowrap text-right space-x-2">
+                      <td className="p-4 text-right space-x-1">
                         <button
                           type="button"
                           onClick={() => startEdit(act)}
-                          className="p-1.5 rounded-lg border border-[#EDE4D7] text-[#521849] hover:bg-white cursor-pointer"
-                          title="Editar ficha completa"
+                          className="p-1.5 rounded-lg border border-[#EDE4D7] text-[#521849] hover:bg-[#F6EDF4] cursor-pointer"
+                          title="Editar actividad completa"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDelete(act.id)}
+                          onClick={() => setActivityToDelete(act)}
                           className="p-1.5 rounded-lg border border-[#EDE4D7] text-[#9B3E26] hover:bg-rose-50 cursor-pointer"
                           title="Eliminar actividad"
                         >
@@ -406,6 +552,13 @@ export const ModoAvanzadoView: React.FC = () => {
                       </td>
                     </tr>
                   ))}
+                  {activities.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="p-8 text-center text-[#574B45]">
+                        No hay actividades registradas en la base de datos todavía. Pulsa en <strong>"Nueva Cata"</strong> para comenzar.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -413,8 +566,53 @@ export const ModoAvanzadoView: React.FC = () => {
         </div>
       )}
 
+      {/* Tab 2: Metricas */}
+      {activeTab === 'metricas' && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          <div className="p-6 rounded-3xl bg-white border border-[#EDE4D7] space-y-2">
+            <div className="flex items-center justify-between text-[#574B45]">
+              <span className="text-xs font-bold uppercase tracking-wider">Visitas a la Web</span>
+              <Eye className="w-4 h-4 text-[#521849]" />
+            </div>
+            <p className="text-3xl font-bold font-serif text-[#26201D]">
+              {metrics.totalVisitors.toLocaleString()}
+            </p>
+            <p className="text-[11px] text-[#4D6233] font-medium flex items-center gap-1">
+              <TrendingUp className="w-3 h-3" />
+              <span>Conteo en tiempo real</span>
+            </p>
+          </div>
+
+          <div className="p-6 rounded-3xl bg-white border border-[#EDE4D7] space-y-2">
+            <div className="flex items-center justify-between text-[#574B45]">
+              <span className="text-xs font-bold uppercase tracking-wider">Total Reservas Solicitadas</span>
+              <Users className="w-4 h-4 text-[#C96043]" />
+            </div>
+            <p className="text-3xl font-bold font-serif text-[#26201D]">
+              {metrics.totalBookings.toLocaleString()}
+            </p>
+            <p className="text-[11px] text-[#574B45]">
+              En todas las actividades
+            </p>
+          </div>
+
+          <div className="p-6 rounded-3xl bg-white border border-[#EDE4D7] space-y-2">
+            <div className="flex items-center justify-between text-[#574B45]">
+              <span className="text-xs font-bold uppercase tracking-wider">Descargas de Catálogos / PDF</span>
+              <FileText className="w-4 h-4 text-[#4D6233]" />
+            </div>
+            <p className="text-3xl font-bold font-serif text-[#26201D]">
+              {metrics.catalogDownloads.toLocaleString()}
+            </p>
+            <p className="text-[11px] text-[#574B45]">
+              Fichas y programas descargados
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ========================================================================= */}
-      {/* ADVANCED MODAL / SLIDEOVER FORM */}
+      {/* ADVANCED MODAL FORM WITH PDF PARSER */}
       {/* ========================================================================= */}
       {editingActivity && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
@@ -428,14 +626,66 @@ export const ModoAvanzadoView: React.FC = () => {
             </button>
 
             <form onSubmit={handleSaveForm} className="space-y-6">
-              <div>
-                <span className="text-xs uppercase tracking-wider font-bold text-[#521849]">
-                  {isCreatingNew ? 'Creación de Nueva Ficha' : 'Edición Avanzada de Ficha'}
-                </span>
-                <h3 className="text-2xl font-bold font-serif text-[#26201D]">
-                  {formData.title || `Nueva ficha de ${formData.type}`}
-                </h3>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <span className="text-xs uppercase tracking-wider font-bold text-[#521849]">
+                    {isCreatingNew ? 'Creación de Nueva Ficha' : 'Edición Avanzada de Ficha'}
+                  </span>
+                  <h3 className="text-2xl font-bold font-serif text-[#26201D]">
+                    {formData.title || `Nueva ficha de ${formData.type}`}
+                  </h3>
+                </div>
               </div>
+
+              {/* PDF Auto-Fill Box for Catas */}
+              {formData.type === 'cata' && (
+                <div className="p-5 rounded-2xl bg-gradient-to-r from-[#F6EDF4] to-[#FCFAF7] border border-[#521849]/20 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs font-bold text-[#521849]">
+                      <FileUp className="w-4 h-4 text-[#C96043]" />
+                      <span>Autocompletar con Cartel en PDF de la Cata</span>
+                    </div>
+                    {isParsingPdf && (
+                      <div className="flex items-center gap-1.5 text-xs text-[#521849] font-medium">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Analizando PDF...</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-[11px] text-[#574B45]">
+                    Sube el cartel o documento PDF de la cata. Se extraerán automáticamente <strong>Fechas 1 y 2</strong>, <strong>Horas inicio automáticas</strong>, <strong>Ubicación oficial</strong>, <strong>Vinos individuales con maridaje</strong>, <strong>Sumiller</strong> y <strong>Logotipo</strong>.
+                  </p>
+
+                  <div className="flex items-center gap-3">
+                    <label className="relative inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold cursor-pointer shadow-xs transition-colors">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Seleccionar Cartel PDF</span>
+                      <input
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        onChange={handlePdfUpload}
+                        className="sr-only"
+                        disabled={isParsingPdf}
+                      />
+                    </label>
+                    <span className="text-[11px] text-[#574B45]">o arrastra el archivo aquí</span>
+                  </div>
+
+                  {pdfSuccessMessage && (
+                    <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+                      <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>{pdfSuccessMessage}</span>
+                    </div>
+                  )}
+
+                  {pdfErrorMessage && (
+                    <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs">
+                      {pdfErrorMessage}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Core Fields */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -460,25 +710,63 @@ export const ModoAvanzadoView: React.FC = () => {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-[#26201D] mb-1">Fecha</label>
-                  <input
-                    type="text"
-                    value={formData.date || ''}
-                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs focus:outline-none focus:border-[#521849] focus:bg-white"
-                  />
+                {/* Point 1: Two dates */}
+                <div className="p-3.5 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7] space-y-2">
+                  <span className="text-xs font-bold text-[#521849] flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-[#C96043]" />
+                    Fecha 1 (Primer Turno) *
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] text-[#574B45] mb-1">Fecha (AAAA-MM-DD)</label>
+                      <input
+                        type="text"
+                        required
+                        value={date1}
+                        onChange={(e) => handleDate1Change(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-[#574B45] mb-1">Hora Inicio</label>
+                      <input
+                        type="text"
+                        value={time1}
+                        onChange={(e) => setTime1(e.target.value)}
+                        placeholder="21:00 / 13:00"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-[#26201D] mb-1">Horario / Duración</label>
-                  <input
-                    type="text"
-                    value={formData.time || ''}
-                    onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                    placeholder="Ej. 20:00 h o 3 días / 2 noches"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs focus:outline-none focus:border-[#521849] focus:bg-white"
-                  />
+                <div className="p-3.5 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7] space-y-2">
+                  <span className="text-xs font-bold text-[#521849] flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-[#C96043]" />
+                    Fecha 2 (Segundo Turno - Opcional)
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] text-[#574B45] mb-1">Fecha (AAAA-MM-DD)</label>
+                      <input
+                        type="text"
+                        value={date2}
+                        onChange={(e) => handleDate2Change(e.target.value)}
+                        placeholder="2026-04-17"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-[#574B45] mb-1">Hora Inicio</label>
+                      <input
+                        type="text"
+                        value={time2}
+                        onChange={(e) => setTime2(e.target.value)}
+                        placeholder="13:00"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-3 gap-2">
@@ -486,18 +774,19 @@ export const ModoAvanzadoView: React.FC = () => {
                     <label className="block text-xs font-semibold text-[#26201D] mb-1">Precio (€)</label>
                     <input
                       type="number"
-                      value={formData.price || 0}
+                      step="0.5"
+                      value={formData.price ?? 25.0}
                       onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-bold text-[#521849]"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-[#26201D] mb-1">Aforo Total</label>
                     <input
                       type="number"
-                      value={formData.totalSpots || 0}
+                      value={formData.totalSpots ?? 14}
                       onChange={(e) => setFormData({ ...formData, totalSpots: Number(e.target.value) })}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-bold"
                     />
                   </div>
                   <div>
@@ -523,31 +812,257 @@ export const ModoAvanzadoView: React.FC = () => {
                   </select>
                 </div>
 
+                {/* Point 2: Sede oficial */}
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-[#26201D] mb-1">Ubicación física</label>
+                  <label className="block text-xs font-semibold text-[#26201D] mb-1 flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-[#C96043]" />
+                    Ubicación física (Sede Oficial)
+                  </label>
                   <input
                     type="text"
-                    value={formData.location || ''}
+                    value={formData.location || DEFAULT_OFFICIAL_LOCATION}
                     onChange={(e) => setFormData({ ...formData, location: e.target.value })}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs"
                   />
                 </div>
 
+                {/* Point 5: Descripción vacía por defecto */}
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-[#26201D] mb-1">Descripción detallada</label>
+                  <label className="block text-xs font-semibold text-[#26201D] mb-1">Descripción detallada (Opcional)</label>
                   <textarea
-                    rows={4}
+                    rows={2}
                     value={formData.description || ''}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    placeholder="Dejar vacía o añadir notas personalizadas..."
                     className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs resize-none"
                   />
                 </div>
               </div>
 
-              {/* URLs de Imágenes */}
+              {/* Specific fields for Catas */}
+              {formData.type === 'cata' && (
+                <div className="p-5 rounded-2xl bg-[#FBF9F5] border border-[#EDE4D7] space-y-5">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#521849]">
+                    Detalles Enológicos y Bodega
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-[#26201D] mb-1">Bodega / Productor</label>
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          value={(formData as CataActivity).bodegaProductor?.name || ''}
+                          onChange={(e) => setFormData({
+                            ...formData,
+                            bodegaProductor: {
+                              ...(formData as CataActivity).bodegaProductor,
+                              name: e.target.value,
+                              region: (formData as CataActivity).bodegaProductor?.region || 'Castilla-La Mancha'
+                            }
+                          } as any)}
+                          placeholder="Ej. Bodega Paco Mulero"
+                          className="w-full px-3 py-2 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleManualSearchLogo}
+                          title="Buscar logotipo en internet"
+                          className="p-2 rounded-lg border border-[#EDE4D7] bg-[#F6EDF4] text-[#521849] hover:bg-[#EBD6E7] cursor-pointer"
+                        >
+                          {isSearchingLogo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Globe className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#26201D] mb-1">Localidad / Región</label>
+                      <input
+                        type="text"
+                        value={(formData as CataActivity).bodegaProductor?.region || ''}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          bodegaProductor: {
+                            ...(formData as CataActivity).bodegaProductor,
+                            name: (formData as CataActivity).bodegaProductor?.name || '',
+                            region: e.target.value
+                          }
+                        } as any)}
+                        placeholder="Ej. Carrión de Calatrava – Ciudad Real"
+                        className="w-full px-3 py-2 rounded-lg border border-[#EDE4D7] bg-white text-xs"
+                      />
+                    </div>
+
+                    {/* Point 6: Sumiller */}
+                    <div>
+                      <label className="block text-xs font-semibold text-[#26201D] mb-1">Sumiller Guía</label>
+                      <input
+                        type="text"
+                        value={cataSumiller}
+                        onChange={(e) => setCataSumiller(e.target.value)}
+                        placeholder="Ana García"
+                        className="w-full px-3 py-2 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-[#26201D] mb-1">Colaboración / Bodegueros</label>
+                      <input
+                        type="text"
+                        value={cataColaboradores}
+                        onChange={(e) => setCataColaboradores(e.target.value)}
+                        placeholder="Ej. Eva Imedio y Venancio Castillo"
+                        className="w-full px-3 py-2 rounded-lg border border-[#EDE4D7] bg-white text-xs"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-semibold text-[#26201D] mb-1">AOVE de Bienvenida</label>
+                      <input
+                        type="text"
+                        value={cataAove}
+                        onChange={(e) => setCataAove(e.target.value)}
+                        placeholder="Ej. Quinto Don Otilio (Bolaños de Calatrava) - AOVE Picual"
+                        className="w-full px-3 py-2 rounded-lg border border-[#EDE4D7] bg-white text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Point 7: Modular Wine and Pairing Cards (3 to 4 wines) */}
+                  <div className="space-y-3 pt-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-[#521849] uppercase tracking-wider">
+                        Vinos y Maridajes Individuales ({cataWines.length} vinos):
+                      </label>
+                      <button
+                        type="button"
+                        onClick={addWineRow}
+                        className="text-xs font-semibold text-[#521849] hover:text-[#3E1037] flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Añadir Vino</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {cataWines.map((wine, idx) => (
+                        <div key={idx} className="p-3.5 rounded-xl bg-white border border-[#EDE4D7] space-y-2.5 shadow-2xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold text-[#521849] bg-[#521849]/10 px-2 py-0.5 rounded-md">
+                              Vino #{idx + 1}
+                            </span>
+                            {cataWines.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeWineRow(idx)}
+                                className="text-[#9B3E26] hover:text-rose-700 p-1 cursor-pointer"
+                                title="Eliminar este vino"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <label className="block text-[10px] text-[#574B45] mb-0.5">Tipo</label>
+                              <input
+                                type="text"
+                                value={wine.type}
+                                onChange={(e) => updateWineField(idx, 'type', e.target.value)}
+                                placeholder="Blanco, Tinto..."
+                                className="w-full px-2 py-1 rounded border border-[#EDE4D7] text-xs"
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <label className="block text-[10px] text-[#574B45] mb-0.5">Nombre del Vino</label>
+                              <input
+                                type="text"
+                                value={wine.name}
+                                onChange={(e) => updateWineField(idx, 'name', e.target.value)}
+                                placeholder="Ej. El Jalbegandero"
+                                className="w-full px-2 py-1 rounded border border-[#EDE4D7] text-xs font-semibold"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[10px] text-[#574B45] mb-0.5">Variedad / Uva</label>
+                              <input
+                                type="text"
+                                value={wine.grape || ''}
+                                onChange={(e) => updateWineField(idx, 'grape', e.target.value)}
+                                placeholder="Ej. 100% Airén"
+                                className="w-full px-2 py-1 rounded border border-[#EDE4D7] text-xs"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] text-[#574B45] mb-0.5 text-[#C96043] font-semibold">Maridaje Propuesto</label>
+                              <input
+                                type="text"
+                                value={wine.pairing || ''}
+                                onChange={(e) => updateWineField(idx, 'pairing', e.target.value)}
+                                placeholder="Ej. Arroz Meloso con Verduritas"
+                                className="w-full px-2 py-1 rounded border border-[#EDE4D7] text-xs"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Specific fields for Cursos */}
+              {formData.type === 'curso' && (
+                <div className="p-5 rounded-2xl bg-[#FBF9F5] border border-[#EDE4D7] space-y-4">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#C96043]">
+                    Detalles del Taller / Curso
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-[#26201D] mb-1">Temática del curso</label>
+                      <input
+                        type="text"
+                        value={(formData as CursoActivity).theme || ''}
+                        onChange={(e) => setFormData({ ...formData, theme: e.target.value } as any)}
+                        placeholder="Ej. Arroces Tradicionales"
+                        className="w-full px-3 py-2 rounded-lg border border-[#EDE4D7] bg-white text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#26201D] mb-1">Chef o Maestro Cocinero</label>
+                      <input
+                        type="text"
+                        value={(formData as CursoActivity).chef?.name || ''}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          chef: { ...(formData as CursoActivity).chef, name: e.target.value, bio: (formData as CursoActivity).chef?.bio || '' }
+                        } as any)}
+                        placeholder="Ej. Chef Invitado"
+                        className="w-full px-3 py-2 rounded-lg border border-[#EDE4D7] bg-white text-xs"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#26201D] mb-1">
+                      Temario / Programa (un punto por línea)
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={syllabusText}
+                      onChange={(e) => setSyllabusText(e.target.value)}
+                      placeholder="Técnicas de sofrito&#10;Punto de cocción&#10;Emplatado y maridaje"
+                      className="w-full px-3 py-2 rounded-lg border border-[#EDE4D7] bg-white text-xs"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Point 8: URLs de Imágenes / Logotipo */}
               <div>
                 <label className="block text-xs font-semibold text-[#26201D] mb-1">
-                  Imágenes de la ficha (una URL por línea)
+                  Logo / Imagen de Portada (URL)
                 </label>
                 <textarea
                   rows={2}
@@ -557,144 +1072,6 @@ export const ModoAvanzadoView: React.FC = () => {
                   className="w-full px-3.5 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-mono"
                 />
               </div>
-
-              {/* Type specific fields */}
-              {formData.type === 'cata' && (
-                <div className="p-5 rounded-2xl bg-[#FBF9F5] border border-[#EDE4D7] space-y-4">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#521849]">
-                    Campos Específicos de Cata
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-[#26201D] mb-1">Categoría</label>
-                      <select
-                        value={(formData as CataActivity).category || 'vino'}
-                        onChange={(e) => setFormData({ ...formData, category: e.target.value as CataCategory } as any)}
-                        className="w-full px-3 py-2 rounded-lg border border-[#EDE4D7] bg-white text-xs"
-                      >
-                        <option value="vino">Vino</option>
-                        <option value="vermut">Vermut</option>
-                        <option value="aceite">Aceite de Oliva</option>
-                        <option value="cerveza">Cerveza</option>
-                        <option value="quesos">Quesos</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-[#26201D] mb-1">Bodega / Productor</label>
-                      <input
-                        type="text"
-                        value={(formData as CataActivity).bodegaProductor?.name || ''}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          bodegaProductor: {
-                            ...(formData as CataActivity).bodegaProductor,
-                            name: e.target.value,
-                            region: (formData as CataActivity).bodegaProductor?.region || 'España'
-                          }
-                        } as any)}
-                        placeholder="Ej. Bodegas Dominio de Atauta"
-                        className="w-full px-3 py-2 rounded-lg border border-[#EDE4D7] bg-white text-xs"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-[#26201D] mb-1">
-                      Menú de Maridaje (Formato: Plato | Vino/Bebida | Notas de cata)
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={pairingText}
-                      onChange={(e) => setPairingText(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-[#EDE4D7] bg-white text-xs"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {formData.type === 'curso' && (
-                <div className="p-5 rounded-2xl bg-[#F9ECE8] border border-[#C96043]/30 space-y-4">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#C96043]">
-                    Campos Específicos de Curso
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-[#26201D] mb-1">Nombre del Chef</label>
-                      <input
-                        type="text"
-                        value={(formData as CursoActivity).chef?.name || ''}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          chef: {
-                            ...(formData as CursoActivity).chef,
-                            name: e.target.value,
-                            bio: (formData as CursoActivity).chef?.bio || ''
-                          }
-                        } as any)}
-                        className="w-full px-3 py-2 rounded-lg border border-[#EDE4D7] bg-white text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-[#26201D] mb-1">Restaurante del Chef</label>
-                      <input
-                        type="text"
-                        value={(formData as CursoActivity).chef?.restaurant || ''}
-                        onChange={(e) => setFormData({
-                          ...formData,
-                          chef: {
-                            ...(formData as CursoActivity).chef,
-                            name: (formData as CursoActivity).chef?.name || '',
-                            bio: (formData as CursoActivity).chef?.bio || '',
-                            restaurant: e.target.value
-                          }
-                        } as any)}
-                        className="w-full px-3 py-2 rounded-lg border border-[#EDE4D7] bg-white text-xs"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-[#26201D] mb-1">
-                      Temario / Puntos que se aprenderán (uno por línea)
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={syllabusText}
-                      onChange={(e) => setSyllabusText(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-[#EDE4D7] bg-white text-xs"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {formData.type === 'viaje' && (
-                <div className="p-5 rounded-2xl bg-[#EFF4E9] border border-[#4D6233]/30 space-y-4">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-[#4D6233]">
-                    Campos Específicos de Viaje
-                  </h4>
-                  <div>
-                    <label className="block text-xs font-semibold text-[#26201D] mb-1">Destino</label>
-                    <input
-                      type="text"
-                      value={(formData as ViajeActivity).destination || ''}
-                      onChange={(e) => setFormData({ ...formData, destination: e.target.value } as any)}
-                      className="w-full px-3 py-2 rounded-lg border border-[#EDE4D7] bg-white text-xs"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-[#26201D] mb-1">
-                      Servicios Incluidos (uno por línea)
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={servicesText}
-                      onChange={(e) => setServicesText(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-[#EDE4D7] bg-white text-xs"
-                    />
-                  </div>
-                </div>
-              )}
 
               {/* Actions */}
               <div className="pt-4 border-t border-[#EDE4D7] flex items-center justify-end gap-3">
@@ -710,10 +1087,61 @@ export const ModoAvanzadoView: React.FC = () => {
                   className="px-6 py-2.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold tracking-wide transition-colors cursor-pointer flex items-center gap-2"
                 >
                   <Save className="w-4 h-4" />
-                  <span>Guardar Cambios en Base de Datos</span>
+                  <span>{isCreatingNew && date2 ? 'Guardar Ficha (Generar 2 Convocatorias en Firestore)' : 'Guardar Ficha en Firestore'}</span>
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {activityToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="relative w-full max-w-md bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-[#EDE4D7] space-y-5 animate-fadeIn">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-2">
+              <h3 className="text-lg font-bold font-serif text-[#26201D]">
+                ¿Eliminar actividad?
+              </h3>
+              <p className="text-xs text-[#574B45] leading-relaxed">
+                Vas a eliminar definitivamente <strong className="text-[#26201D]">"{activityToDelete.title}"</strong> de la base de datos Firestore. Esta acción no se puede deshacer.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setActivityToDelete(null)}
+                className="py-2.5 rounded-xl border border-[#EDE4D7] text-xs font-semibold text-[#574B45] hover:bg-[#F6F1EA] cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={async () => {
+                  try {
+                    setIsDeleting(true);
+                    await deleteActivity(activityToDelete.id);
+                    setActivityToDelete(null);
+                    showNotification('Actividad eliminada definitivamente de Firestore.');
+                  } catch (err: any) {
+                    alert('Error al eliminar de Firestore: ' + err.message);
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                }}
+                className="py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                <span>{isDeleting ? 'Eliminando...' : 'Sí, eliminar'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

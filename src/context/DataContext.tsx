@@ -1,12 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Activity, CataActivity, CursoActivity, ReservationFormData, ViajeActivity, WebMetric } from '../types';
-import { 
-  getStoredActivities, 
-  getStoredMetrics, 
-  saveStoredActivities, 
-  saveStoredMetrics,
-  isFirebaseConfigured
-} from '../services/firebase';
+import { db, isFirebaseConfigured } from '../services/firebase';
 import {
   subscribeToActivitiesFirestore,
   subscribeToMetricsFirestore,
@@ -15,7 +9,6 @@ import {
   deleteActivityFirestore,
   reserveSpotsFirestore
 } from '../services/firestoreService';
-import { INITIAL_CATAS, INITIAL_CURSOS, INITIAL_VIAJES, INITIAL_WEB_METRICS } from '../data/mockData';
 
 interface DataContextType {
   activities: Activity[];
@@ -23,7 +16,8 @@ interface DataContextType {
   cursos: CursoActivity[];
   viajes: ViajeActivity[];
   metrics: WebMetric;
-  isDemoMode: boolean;
+  isConnected: boolean;
+  connectionError: string | null;
   getActivityById: (id: string) => Activity | undefined;
   addActivity: (activity: Activity) => Promise<void>;
   updateActivity: (activity: Activity) => Promise<void>;
@@ -31,20 +25,29 @@ interface DataContextType {
   quickUpdateActivity: (id: string, updates: Partial<Activity>) => Promise<void>;
   reserveSpots: (id: string, spots: number, reservationData: ReservationFormData) => Promise<{ success: boolean; message: string }>;
   incrementViews: (id: string) => void;
-  resetToDefaults: () => void;
 }
+
+const DEFAULT_METRICS: WebMetric = {
+  pageViewsThisMonth: 0,
+  uniqueVisitorsThisMonth: 0,
+  activeReservationsCount: 0,
+  occupancyRateAverage: 0,
+  topVisitedActivities: []
+};
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [activities, setActivities] = useState<Activity[]>(() => getStoredActivities());
-  const [metrics, setMetrics] = useState<WebMetric>(() => getStoredMetrics());
-  const [isDemoMode, setIsDemoMode] = useState<boolean>(!isFirebaseConfigured());
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [metrics, setMetrics] = useState<WebMetric>(DEFAULT_METRICS);
+  const [isConnected, setIsConnected] = useState<boolean>(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
-  // Firestore real-time subscriptions with fallback to localStorage
+  // Firestore real-time subscriptions
   useEffect(() => {
-    if (!isFirebaseConfigured()) {
-      setIsDemoMode(true);
+    if (!isFirebaseConfigured() || !db) {
+      setIsConnected(false);
+      setConnectionError('Variables de Firebase no configuradas en el archivo .env');
       return;
     }
 
@@ -54,25 +57,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       unsubActivities = subscribeToActivitiesFirestore(
         (firestoreActivities) => {
-          // If the Firestore collection has data, update state and disable demo mode
-          if (firestoreActivities.length > 0) {
-            setActivities(firestoreActivities);
-            setIsDemoMode(false);
-          } else {
-            // First time empty collection: seed initial or keep fallback
-            setIsDemoMode(false);
-            setActivities(firestoreActivities);
-          }
+          setActivities(firestoreActivities);
+          setIsConnected(true);
+          setConnectionError(null);
         },
         (err) => {
-          console.warn('Falling back to local demo activities mode due to Firestore error:', err);
-          setIsDemoMode(true);
-          setActivities(getStoredActivities());
+          console.error('Error in Firestore activities subscription:', err);
+          setIsConnected(false);
+          setConnectionError(err.message || 'Error al conectar con la colección de actividades en Firestore.');
         }
       );
-    } catch (err) {
-      console.warn('Could not initialize activities subscription:', err);
-      setIsDemoMode(true);
+    } catch (err: any) {
+      console.error('Could not initialize activities subscription:', err);
+      setIsConnected(false);
+      setConnectionError(err.message || 'Error de inicialización de Firestore.');
     }
 
     try {
@@ -81,7 +79,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setMetrics(firestoreMetrics);
         },
         (err) => {
-          console.warn('Falling back to local demo metrics:', err);
+          console.warn('Metrics subscription notice:', err);
         }
       );
     } catch (err) {
@@ -94,19 +92,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // Save to localStorage ONLY when in Demo mode
-  useEffect(() => {
-    if (isDemoMode) {
-      saveStoredActivities(activities);
-    }
-  }, [activities, isDemoMode]);
-
-  useEffect(() => {
-    if (isDemoMode) {
-      saveStoredMetrics(metrics);
-    }
-  }, [metrics, isDemoMode]);
-
   const catas = activities.filter((a): a is CataActivity => a.type === 'cata');
   const cursos = activities.filter((a): a is CursoActivity => a.type === 'curso');
   const viajes = activities.filter((a): a is ViajeActivity => a.type === 'viaje');
@@ -116,68 +101,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const addActivity = async (activity: Activity) => {
-    if (!isDemoMode) {
-      try {
-        await saveActivityFirestore(activity);
-        // State will update reactively via onSnapshot
-        return;
-      } catch (err) {
-        console.error('Error saving activity to Firestore, falling back to local:', err);
-      }
-    }
-    // Demo mode local update
-    setActivities(prev => [activity, ...prev]);
+    await saveActivityFirestore(activity);
   };
 
   const updateActivity = async (updated: Activity) => {
-    if (!isDemoMode) {
-      try {
-        await saveActivityFirestore(updated);
-        // State will update reactively via onSnapshot
-        return;
-      } catch (err) {
-        console.error('Error updating activity in Firestore, falling back to local:', err);
-      }
-    }
-    // Demo mode local update
-    setActivities(prev => prev.map(a => a.id === updated.id ? updated : a));
+    await saveActivityFirestore(updated);
   };
 
   const quickUpdateActivity = async (id: string, updates: Partial<Activity>) => {
-    if (!isDemoMode) {
-      try {
-        await updateActivityFirestore(id, updates);
-        // State will update reactively via onSnapshot
-        return;
-      } catch (err) {
-        console.error('Error quick-updating activity in Firestore, falling back to local:', err);
-      }
-    }
-    // Demo mode local update
-    setActivities(prev => prev.map(a => {
-      if (a.id === id) {
-        return {
-          ...a,
-          ...updates,
-          updatedAt: new Date().toISOString().split('T')[0]
-        } as Activity;
-      }
-      return a;
-    }));
+    await updateActivityFirestore(id, updates);
   };
 
   const deleteActivity = async (id: string) => {
-    if (!isDemoMode) {
-      try {
-        await deleteActivityFirestore(id);
-        // State will update reactively via onSnapshot
-        return;
-      } catch (err) {
-        console.error('Error deleting activity in Firestore, falling back to local:', err);
-      }
-    }
-    // Demo mode local update
+    // Optimistic local state removal so UI updates immediately
     setActivities(prev => prev.filter(a => a.id !== id));
+    await deleteActivityFirestore(id);
   };
 
   const reserveSpots = async (id: string, requestedSpots: number, reservationData: ReservationFormData) => {
@@ -194,53 +132,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }
 
-    if (!isDemoMode) {
-      try {
-        await reserveSpotsFirestore(id, requestedSpots);
-        // Metric locally updated for UI feedback
-        setMetrics(prev => ({
-          ...prev,
-          activeReservationsCount: prev.activeReservationsCount + 1
-        }));
-        return { 
-          success: true, 
-          message: `¡Plazas reservadas con éxito para ${reservationData.fullName}! En breve recibirás un correo con las instrucciones de acceso.` 
-        };
-      } catch (err: any) {
-        console.error('Error executing reservation on Firestore:', err);
-        return {
-          success: false,
-          message: 'No se pudo completar la reserva en el servidor. Por favor, inténtalo de nuevo o contacta con la asociación.'
-        };
-      }
+    try {
+      await reserveSpotsFirestore(id, requestedSpots);
+      return { 
+        success: true, 
+        message: `¡Plazas reservadas con éxito para ${reservationData.fullName}! En breve recibirás un correo con las instrucciones de acceso.` 
+      };
+    } catch (err: any) {
+      console.error('Error executing reservation on Firestore:', err);
+      return {
+        success: false,
+        message: 'No se pudo completar la reserva en el servidor. Comprueba la conexión o inténtalo más tarde.'
+      };
     }
-
-    // Demo Mode local update
-    const updated = {
-      ...activity,
-      bookedSpots: activity.bookedSpots + requestedSpots,
-      updatedAt: new Date().toISOString().split('T')[0]
-    };
-
-    setActivities(prev => prev.map(a => a.id === updated.id ? updated : a));
-
-    setMetrics(prev => ({
-      ...prev,
-      activeReservationsCount: prev.activeReservationsCount + 1
-    }));
-
-    return { 
-      success: true, 
-      message: `¡Plazas reservadas con éxito para ${reservationData.fullName}! En breve recibirás un correo con las instrucciones de acceso.` 
-    };
   };
 
   const incrementViews = (id: string) => {
     const activity = activities.find(a => a.id === id);
     if (!activity) return;
 
-    // Local client-side tracking (avoiding unauthenticated public writes to aggregated summary document)
-    // Note: In production, aggregate web analytics should be processed via Cloud Functions or server-side telemetry.
     setMetrics(prev => {
       const existing = prev.topVisitedActivities.find(t => t.id === id);
       let updatedTop;
@@ -259,16 +169,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  const resetToDefaults = () => {
-    const defaultList: Activity[] = [...INITIAL_CATAS, ...INITIAL_CURSOS, ...INITIAL_VIAJES];
-    setActivities(defaultList);
-    setMetrics(INITIAL_WEB_METRICS);
-    if (isDemoMode) {
-      saveStoredActivities(defaultList);
-      saveStoredMetrics(INITIAL_WEB_METRICS);
-    }
-  };
-
   return (
     <DataContext.Provider value={{
       activities,
@@ -276,15 +176,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       cursos,
       viajes,
       metrics,
-      isDemoMode,
+      isConnected,
+      connectionError,
       getActivityById,
       addActivity,
       updateActivity,
       deleteActivity,
       quickUpdateActivity,
       reserveSpots,
-      incrementViews,
-      resetToDefaults
+      incrementViews
     }}>
       {children}
     </DataContext.Provider>

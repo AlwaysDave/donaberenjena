@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useData } from '../../context/DataContext';
 import { 
   Menu, 
   X, 
@@ -15,7 +16,9 @@ import {
   Sparkles,
   Phone,
   Clock,
-  Layers
+  Layers,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
@@ -24,6 +27,7 @@ export const Navbar: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuth();
+  const { isConnected, connectionError } = useData();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -69,13 +73,24 @@ export const Navbar: React.FC = () => {
             </span>
           </div>
           <div className="flex items-center gap-4 text-[#DFD3C2]">
+            {/* Traffic Light Status in Top Bar */}
+            <div 
+              className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/30 border border-white/10 text-[10px]"
+              title={isConnected ? "Conexión activa con Firestore (.env verificado)" : (connectionError || "Sin conexión con la base de datos")}
+            >
+              <span className="text-xs">{isConnected ? '🟢' : '🔴'}</span>
+              <span className={isConnected ? "text-emerald-300 font-medium" : "text-rose-300 font-medium"}>
+                {isConnected ? 'BD Conectada' : 'Sin BD'}
+              </span>
+            </div>
+
             <a href="tel:+34912345678" className="hover:text-white flex items-center gap-1 transition-colors">
               <Phone className="w-3 h-3 text-[#C96043]" />
               +34 912 345 678
             </a>
             {isAuthenticated ? (
               <span className="text-[#C96043] font-medium">
-                Modo Admin activo ({user?.role === 'advanced' ? 'Avanzado' : 'Sencillo'})
+                Admin: {user?.name}
               </span>
             ) : (
               <Link to="/admin/login" className="hover:text-white transition-colors">
@@ -145,47 +160,46 @@ export const Navbar: React.FC = () => {
                   <Layers className="w-3.5 h-3.5" />
                   <span>Panel ({user?.role === 'advanced' ? 'Avanzado' : 'Sencillo'})</span>
                 </Link>
+
                 <button
                   id="btn-nav-logout"
                   type="button"
-                  onClick={() => {
-                    logout();
+                  onClick={async () => {
+                    await logout();
                     navigate('/');
                   }}
+                  className="p-2 rounded-lg text-[#574B45] hover:text-red-700 hover:bg-red-50 transition-colors"
                   title="Cerrar sesión"
-                  className="p-2 rounded-lg text-[#574B45] hover:text-[#5C1D24] hover:bg-[#F6F1EA] transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
                 </button>
               </div>
             ) : (
               <Link
-                id="btn-nav-admin-login"
-                to="/admin/login"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#EDE4D7] text-xs font-medium text-[#574B45] hover:text-[#521849] hover:border-[#DFD3C2] hover:bg-[#F6F1EA] transition-all"
+                id="btn-nav-reserve-shortcut"
+                to="/catas"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold tracking-wide transition-all shadow-xs"
               >
-                <Shield className="w-3.5 h-3.5 text-[#521849]" />
-                <span>Acceso Admin</span>
+                <span>Ver Próximas Catas</span>
               </Link>
             )}
           </div>
 
           {/* Mobile Menu Button */}
           <div className="flex items-center gap-2 lg:hidden">
-            {isAuthenticated && (
-              <Link
-                to="/admin"
-                className="px-2.5 py-1 rounded-md bg-[#521849] text-white text-xs font-medium"
-              >
-                Admin
-              </Link>
-            )}
+            <div 
+              className="flex items-center text-sm px-2 py-1 rounded-md bg-white border border-[#EDE4D7]"
+              title={isConnected ? 'BD Conectada' : 'Sin conexión'}
+            >
+              <span>{isConnected ? '🟢' : '🔴'}</span>
+            </div>
+
             <button
               id="btn-mobile-menu-toggle"
               type="button"
               onClick={() => setIsOpen(!isOpen)}
-              className="p-2 rounded-lg text-[#26201D] hover:bg-[#F6F1EA] focus:outline-none"
-              aria-label="Abrir menú de navegación"
+              className="p-2 rounded-xl bg-[#FCFAF7] border border-[#EDE4D7] text-[#26201D] hover:bg-[#F6F1EA] transition-colors"
+              aria-label="Abrir menú"
             >
               {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
@@ -194,60 +208,66 @@ export const Navbar: React.FC = () => {
 
         {/* Mobile Navigation Drawer */}
         {isOpen && (
-          <div
-            id="mobile-nav-drawer"
-            className="lg:hidden border-t border-[#EDE4D7] bg-[#FCFAF7] px-4 pt-3 pb-6 space-y-1 animate-fadeIn"
-          >
+          <div className="lg:hidden border-t border-[#EDE4D7] bg-[#FBF9F5] px-4 pt-3 pb-6 space-y-3 animate-in fade-in slide-in-from-top-4 duration-200">
             <div className="grid grid-cols-1 gap-1">
               {navLinks.map((link) => {
+                const IconComponent = link.icon;
                 const active = isActive(link.path);
-                const Icon = link.icon;
                 return (
                   <Link
                     key={link.path}
                     to={link.path}
-                    className={`flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
                       active
-                        ? 'bg-[#521849] text-white font-semibold'
+                        ? 'bg-[#521849] text-white'
                         : 'text-[#26201D] hover:bg-[#F6F1EA]'
                     }`}
                   >
-                    {Icon && <Icon className="w-4 h-4 shrink-0" />}
+                    <IconComponent className="w-4 h-4" />
                     <span>{link.label}</span>
                   </Link>
                 );
               })}
             </div>
 
-            <div className="pt-4 mt-3 border-t border-[#EDE4D7] flex flex-col gap-2">
+            <div className="pt-3 border-t border-[#EDE4D7] flex flex-col gap-2">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-white border border-[#EDE4D7] text-xs">
+                <span className="text-[#574B45]">Estado de Base de Datos:</span>
+                <span className="font-semibold flex items-center gap-1.5">
+                  <span>{isConnected ? '🟢' : '🔴'}</span>
+                  <span className={isConnected ? "text-emerald-700" : "text-rose-700"}>
+                    {isConnected ? 'Conectado a Firestore' : 'Desconectado'}
+                  </span>
+                </span>
+              </div>
+
               {isAuthenticated ? (
                 <>
                   <Link
                     to="/admin"
-                    className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-[#521849] text-white text-sm font-medium"
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#521849] text-white text-xs font-semibold shadow-xs"
                   >
                     <Layers className="w-4 h-4" />
-                    <span>Ir al Panel de Administración ({user?.role === 'advanced' ? 'Avanzado' : 'Sencillo'})</span>
+                    <span>Ir al Panel de Administración</span>
                   </Link>
                   <button
                     type="button"
-                    onClick={() => {
-                      logout();
+                    onClick={async () => {
+                      await logout();
                       navigate('/');
                     }}
-                    className="flex items-center justify-center gap-2 w-full py-2 rounded-lg border border-[#EDE4D7] text-xs font-medium text-[#5C1D24]"
+                    className="w-full py-2.5 rounded-xl border border-[#EDE4D7] text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
                   >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span>Cerrar sesión de administrador</span>
+                    Cerrar Sesión
                   </button>
                 </>
               ) : (
                 <Link
                   to="/admin/login"
-                  className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg border border-[#EDE4D7] text-[#521849] text-sm font-medium bg-white"
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-semibold text-[#521849] hover:bg-[#F6F1EA]"
                 >
                   <Shield className="w-4 h-4" />
-                  <span>Acceso para Administradores</span>
+                  <span>Acceso Administración</span>
                 </Link>
               )}
             </div>
