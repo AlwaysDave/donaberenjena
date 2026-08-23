@@ -129,18 +129,21 @@ export const ModoAvanzadoView: React.FC = () => {
 
       const contentType = response.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
-        throw new Error("El servidor no devolvió una respuesta válida (posible error de conexión o archivo demasiado grande).");
+        const rawText = await response.text();
+        throw new Error(`Error ${response.status}: El servidor no devolvió JSON válido. Respuesta: ${rawText.substring(0, 500)}`);
       }
 
       if (!response.ok) {
-        let errorMessage = "Error procesando el archivo con IA";
+        let errorMessage = `Error ${response.status}`;
         try {
           const errorData = await response.json();
           if (errorData.error) {
-            errorMessage = errorData.error;
+            errorMessage += `: ${errorData.error}`;
+          } else {
+            errorMessage += `: ${JSON.stringify(errorData)}`;
           }
         } catch (e) {
-          // Ignore
+          errorMessage += `: No se pudo leer el detalle del error.`;
         }
         throw new Error(errorMessage);
       }
