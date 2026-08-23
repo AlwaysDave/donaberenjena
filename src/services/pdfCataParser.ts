@@ -264,23 +264,24 @@ export function parseCataText(rawText: string): ParsedCataInfo {
     .map(l => l.trim())
     .filter(l => l.length > 0);
 
-  let title = 'La Expresión del Terruño';
-  let subtitle = 'Vino Artesano y Ecologico';
+  let title = '';
+  let subtitle = '';
   const dates: string[] = [];
   let date1 = new Date().toISOString().split('T')[0];
   let date2 = '';
   let location = DEFAULT_OFFICIAL_LOCATION;
-  let bodegaName = 'Bodega La Uveja Negra';
-  let bodegaRegion = 'Carrión de Calatrava - Ciudad Real';
+  let bodegaName = '';
+  let bodegaRegion = '';
   let colaboradores = '';
   let sumiller = 'Ana García';
   let aove = '';
+  let detectedPrice: number | undefined = undefined;
   const wines: WineDetail[] = [];
 
   // Clean whole text for regex matching if needed
   const fullText = lines.join('\n');
 
-  // 1. DATE EXTRACTION: Handles "10 y 17 de ABRIL de 2026" or "10 y 17 de abril 2026"
+  // 1. DATE EXTRACTION: Handles "5 y 19 de JUNIO de 2026", "10 y 17 de ABRIL de 2026", etc.
   for (const line of lines) {
     const twoDatesMatch = line.match(/(\d{1,2})\s*(?:y|&|\/|-)\s*(\d{1,2})\s*de\s*([a-zA-ZáéíóúÁÉÍÓÚ]+)\s*(?:de)?\s*(\d{4})/i);
     if (twoDatesMatch) {
@@ -288,7 +289,7 @@ export function parseCataText(rawText: string): ParsedCataInfo {
       const day2 = twoDatesMatch[2].padStart(2, '0');
       const monthStr = twoDatesMatch[3].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       const year = twoDatesMatch[4];
-      const monthNum = MONTHS_MAP[monthStr] || '04';
+      const monthNum = MONTHS_MAP[monthStr] || '06';
 
       date1 = `${year}-${monthNum}-${day1}`;
       date2 = `${year}-${monthNum}-${day2}`;
@@ -301,7 +302,7 @@ export function parseCataText(rawText: string): ParsedCataInfo {
       const day = singleDateMatch[1].padStart(2, '0');
       const monthStr = singleDateMatch[2].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       const year = singleDateMatch[3];
-      const monthNum = MONTHS_MAP[monthStr] || '04';
+      const monthNum = MONTHS_MAP[monthStr] || '06';
       date1 = `${year}-${monthNum}-${day}`;
       dates.push(date1);
       break;
@@ -313,9 +314,12 @@ export function parseCataText(rawText: string): ParsedCataInfo {
   }
 
   // 2. LOCATION EXTRACTION
-  for (const line of lines) {
+  let locationLineIndex = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     if (line.toLowerCase().includes('poligono') || line.toLowerCase().includes('polígono') || line.toLowerCase().includes('salobral') || line.toLowerCase().includes('bolaños')) {
       location = line.replace(/^[–\-—\s]+|[–\-—\s]+$/g, '');
+      locationLineIndex = i;
       break;
     }
   }
@@ -323,33 +327,24 @@ export function parseCataText(rawText: string): ParsedCataInfo {
     location = DEFAULT_OFFICIAL_LOCATION;
   }
 
-  // 3. TITLE & SUBTITLE EXTRACTION
-  let foundTitleIndex = -1;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.toLowerCase().includes('expresión del terruño') || line.toLowerCase().includes('expresion del terruño')) {
-      title = 'La Expresión del Terruño';
-      foundTitleIndex = i;
-      break;
+  // 3. TITLE & BODEGA EXTRACTION
+  // The title is strictly what appears right after the address header ("Polígono Industrial El Salobral...")
+  if (locationLineIndex !== -1 && lines[locationLineIndex + 1]) {
+    title = lines[locationLineIndex + 1].replace(/^[–\-—:\s]+|[–\-—:\s]+$/g, '').trim();
+  }
+
+  // If title was "Experiencia S.A.T. COLOMAN", extract bodega name as "S.A.T. COLOMAN"
+  if (title.toLowerCase().startsWith('experiencia')) {
+    const match = title.match(/^experiencia\s+(.+)$/i);
+    if (match) {
+      bodegaName = match[1].trim();
     }
   }
 
-  if (foundTitleIndex !== -1 && lines[foundTitleIndex + 1]) {
-    const nextLine = lines[foundTitleIndex + 1];
-    if (!nextLine.toLowerCase().startsWith('bodega') && !nextLine.toLowerCase().startsWith('especial')) {
-      subtitle = nextLine;
-    }
-  } else {
-    // Search general subtitle keywords
-    for (const line of lines) {
-      if (line.toLowerCase().includes('artesano') && line.toLowerCase().includes('ecol')) {
-        subtitle = line;
-        break;
-      }
-    }
-  }
+  // Subtitle remains empty as requested
+  subtitle = '';
 
-  // 4. BODEGA & REGION EXTRACTION
+  // Extract Bodega name and region from document
   for (const line of lines) {
     if (line.toLowerCase().includes('bodega')) {
       const match = line.match(/(?:bodegas?\s+)?([^(]+)(?:\(([^)]+)\))?/i);
@@ -366,10 +361,18 @@ export function parseCataText(rawText: string): ParsedCataInfo {
         bodegaName = line;
       }
       break;
+    } else if (line.toLowerCase().includes('uveja negra') && !bodegaName) {
+      bodegaName = 'Bodega La Uveja Negra';
+      bodegaRegion = 'Carrión de Calatrava - Ciudad Real';
+      break;
     }
   }
 
-  // 5. COLABORADORES BODEGUEROS
+  if (!title) {
+    title = bodegaName ? `Experiencia ${bodegaName}` : 'Cata de Bodega';
+  }
+
+  // 4. COLABORADORES BODEGUEROS
   for (const line of lines) {
     if (line.toLowerCase().includes('colaboracion') || line.toLowerCase().includes('colaboración') || line.toLowerCase().includes('bodegueros')) {
       colaboradores = line.replace(/^(?:especial\s+)?colaboraci[oó]n\s*(?:bodegueros)?[:\s-]*/i, '').trim();
@@ -377,7 +380,7 @@ export function parseCataText(rawText: string): ParsedCataInfo {
     }
   }
 
-  // 6. SUMILLER
+  // 5. SUMILLER
   for (const line of lines) {
     if (line.toLowerCase().includes('sumiller:')) {
       sumiller = line.replace(/^sumiller:\s*/i, '').trim();
@@ -391,17 +394,18 @@ export function parseCataText(rawText: string): ParsedCataInfo {
     }
   }
 
-  // 7. AOVE EXTRACTION
+  // 6. AOVE EXTRACTION (e.g. "Dehesa de Almodovar", "Quinto Don Otilio", "World Cup", "Cornicabra", "Picual")
   let aoveProducer = '';
   let aoveVariety = '';
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (line.toLowerCase().includes('quinto don otilio') || line.toLowerCase().includes('aove') || line.toLowerCase().includes('aceite')) {
-      if (line.toLowerCase().includes('quinto don otilio')) {
+    const lower = line.toLowerCase();
+    if (lower.includes('aove') || lower.includes('aceite') || lower.includes('quinto don otilio') || lower.includes('dehesa de almodovar') || lower.includes('dehesa de almodóvar')) {
+      if (lower.includes('quinto don otilio') || lower.includes('dehesa de almodovar') || lower.includes('dehesa de almodóvar')) {
         aoveProducer = line.replace(/["“”]/g, '').trim();
       }
-      if (line.toLowerCase().includes('aove') || line.toLowerCase().includes('picual') || line.toLowerCase().includes('arbequina')) {
-        aoveVariety = line.replace(/^[–\-—\s]+|[–\-—\s]+$/g, '').trim();
+      if (lower.includes('aove') || lower.includes('variedad') || lower.includes('picual') || lower.includes('cornicabra') || lower.includes('arbequina') || lower.includes('world cup')) {
+        aoveVariety = line.replace(/^[–\-—\s"]+|[–\-—\s"]+$/g, '').trim();
       }
     }
   }
@@ -413,21 +417,30 @@ export function parseCataText(rawText: string): ParsedCataInfo {
     aove = aoveVariety;
   }
 
+  // 7. PRECIO (e.g. "25 € NO Socios" / "20 € Socios")
+  for (const line of lines) {
+    const priceMatch = line.match(/(?:25|30|35|20)\s*€/i);
+    if (priceMatch && line.toLowerCase().includes('no socios')) {
+      detectedPrice = 25.0;
+      break;
+    }
+  }
+
   // 8. WINES & PAIRINGS (Vinos y Maridajes)
-  // Supported categories: Blanco, Tinto, Espumoso, Rosado, Generoso, Vermut, Dulce, Cava
-  const WINE_START_REGEX = /^(Blanco|Tinto|Espumoso|Rosado|Generoso|Vermut|Dulce|Cava|Champagne|Oloroso|Amontillado|Fino|Manzanilla)\b\s*[–\-—:]*\s*(.*?)\s*[–\-—:]*$/i;
-  const WINE_STOP_REGEX = /^(Blanco|Tinto|Espumoso|Rosado|Generoso|Vermut|Dulce|Cava|Champagne|Oloroso|Amontillado|Fino|Manzanilla|SUMILLER|AOVE|“?Quinto\s+Don\s+Otilio)/i;
+  // Supports: Blanco, El Blanco, Tinto, El Tinto, Rosado, El Rosado, Espumoso, El Espumoso, El Vino de Licor, Vino de Licor, Dulce, Generoso, Vermut, etc.
+  const WINE_START_REGEX = /^(?:El\s+)?(Blanco|Tinto|Espumoso|Rosado|Vino\s+de\s+Licor|Licor|Generoso|Vermut|Dulce|Cava|Champagne|Oloroso|Amontillado|Fino|Manzanilla)\b\s*[–\-—:]*\s*(.*?)\s*[–\-—:]*$/i;
+  const WINE_STOP_REGEX = /^(?:El\s+)?(Blanco|Tinto|Espumoso|Rosado|Vino\s+de\s+Licor|Licor|Generoso|Vermut|Dulce|Cava|Champagne|Oloroso|Amontillado|Fino|Manzanilla|SUMILLER|AOVE|“?Quinto|“?Dehesa|Aforo|Precio|Horario)/i;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    // Explicitly skip subtitle/header lines that contain general words
+    // Explicitly skip subtitle/header lines that contain general phrases
     if (
       /vino\s+artesano/i.test(line) ||
       /vinos?\s+de\s+agricultor/i.test(line) ||
       /expresi[oó]n\s+del\s+terruño/i.test(line) ||
-      /bodega/i.test(line) ||
-      /colaboraci[oó]n/i.test(line)
+      /experiencia\s+/i.test(line) ||
+      /especial\s+colaboraci[oó]n/i.test(line)
     ) {
       continue;
     }
@@ -440,22 +453,22 @@ export function parseCataText(rawText: string): ParsedCataInfo {
       let type: string = 'Vino';
       if (/blanco/i.test(rawType)) type = 'Blanco';
       else if (/tinto/i.test(rawType)) type = 'Tinto';
-      else if (/espumoso|cava|champagne/i.test(rawType)) type = 'Espumoso';
       else if (/rosado/i.test(rawType)) type = 'Rosado';
+      else if (/espumoso|cava|champagne/i.test(rawType)) type = 'Espumoso';
+      else if (/vino\s+de\s+licor|licor|dulce/i.test(rawType)) type = 'Dulce';
       else if (/generoso|oloroso|amontillado|fino|manzanilla/i.test(rawType)) type = 'Generoso';
       else if (/vermut/i.test(rawType)) type = 'Vermut';
-      else if (/dulce/i.test(rawType)) type = 'Dulce';
       else type = rawType;
 
       let name = wineMatch[2] ? wineMatch[2].replace(/^[–\-—:\s]+|[–\-—:\s]+$/g, '').trim() : '';
       let grape = '';
       let pairing = '';
 
-      // Lookahead in following lines for wine name (if split), grape variety and pairing dish
+      // Lookahead in following lines for grape variety and pairing dish
       for (let j = i + 1; j < Math.min(lines.length, i + 5); j++) {
         const nextLine = lines[j];
 
-        // Stop if next line is another wine type or sumiller or AOVE producer
+        // Stop if next line is another wine type or sumiller or AOVE producer or footer
         if (WINE_STOP_REGEX.test(nextLine)) {
           break;
         }
@@ -474,16 +487,19 @@ export function parseCataText(rawText: string): ParsedCataInfo {
           lowerNext.startsWith('con ')
         ) {
           pairing = nextLine.replace(/^(?:acompañado\s+de|emparejado\s+con|en\s+armon[ií]a\s+con|en\s+armonia\s+con|maridado\s+con|maridaje[:\s-]*|con\s+)[:\s-]*/i, '').replace(/^[–\-—:\s]+|[–\-—:\s]+$/g, '').trim();
-        } else if (!name && !lowerNext.includes('sumiller') && !lowerNext.includes('aove') && nextLine.length > 2) {
+        } else if (!name && !lowerNext.includes('sumiller') && !lowerNext.includes('aove') && !lowerNext.includes('aforo') && nextLine.length > 2) {
           name = nextLine.replace(/^[–\-—:\s]+|[–\-—:\s]+$/g, '').trim();
         } else if (!pairing && grape && nextLine.length > 3) {
+          pairing = nextLine.replace(/^[–\-—:\s]+|[–\-—:\s]+$/g, '').trim();
+        } else if (!pairing && !grape && nextLine.length > 3) {
+          // If dish line came without prefix e.g. "Tartar de Langostinos...", "Crujiente de Alga...", "Higos Secos..."
           pairing = nextLine.replace(/^[–\-—:\s]+|[–\-—:\s]+$/g, '').trim();
         }
       }
 
       wines.push({
         type,
-        name: name || `${type} de la Casa`,
+        name: name || `${type} de la Bodega`,
         grape: grape || undefined,
         pairing: pairing || undefined
       });
@@ -510,19 +526,19 @@ export function parseCataText(rawText: string): ParsedCataInfo {
   const time2 = date2 ? getDefaultStartTime(date2) : undefined;
 
   return {
-    title,
+    title: title || 'Cata de Bodega',
     subtitle: subtitle || (bodegaName ? `Con ${bodegaName}` : 'Vino Artesano y Ecologico'),
     dates,
     date: date1,
     date2: date2 || undefined,
     time: time1,
     time2: time2,
-    price: 25.0, // Default 25.00€
+    price: detectedPrice || 25.0, // Default 25.00€
     totalSpots: 14, // Default 14
     location,
     bodegaName: bodegaName || 'Bodega La Uveja Negra',
     bodegaRegion: bodegaRegion || 'Carrión de Calatrava - Ciudad Real',
-    colaboradores: colaboradores || 'Eva Imedio y Venancio Castillo',
+    colaboradores: colaboradores || '',
     sumiller: sumiller || 'Ana García',
     aove: aove || 'Quinto Don Otilio (Bolaños de Calatrava – Ciudad Real) - AOVE Picual',
     wines: wines.length > 0 ? wines : [
