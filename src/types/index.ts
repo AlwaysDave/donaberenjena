@@ -36,10 +36,13 @@ export interface PairingMenuItem {
 }
 
 export interface WineDetail {
-  type: string; // e.g. "Blanco", "Tinto", "Espumoso", "AOVE"
-  name: string; // e.g. "El Jalbegandero"
-  grape?: string; // e.g. "100% Airén"
-  pairing?: string; // e.g. "Arroz Meloso con Verduritas y Atún en Escabeche"
+  type: string; // e.g. "Blanco", "Tinto", "Espumoso", "Vermut", "Pase I"
+  name: string; // e.g. "El Jalbegandero", "Lustau Rojo", "Vermut 5 Tentaciones"
+  bodega?: string; // e.g. "Bodegas Lustau", "Casa Berger - Democratic Wines", "Bodegas S.A.T. Coloman"
+  region?: string; // e.g. "Jerez de la Frontera – Cadiz", "Pedro Muñoz – Ciudad Real"
+  denominacion?: string; // e.g. "D.O. Jerez-Xérès-Sherry", "D.O. Penedès"
+  grape?: string; // e.g. "Pedro Ximenez – Palomino", "100% Moscatel"
+  pairing?: string; // e.g. "Gilda y un Canape de Ahumados", "Tartar de Fuet..."
   notes?: string;
 }
 
@@ -54,7 +57,9 @@ export interface BodegaProductor {
 export interface CataActivity extends BaseActivity {
   type: 'cata';
   category: CataCategory;
+  cataType?: 'bodega_unica' | 'varias_bodegas';
   bodegaProductor: BodegaProductor;
+  tallerEspecial?: string; // e.g. "VAS A HACER TU PROPIO VERMUT" / "Elaboración de gildas"
   pairingMenu: PairingMenuItem[];
   wines?: WineDetail[];
   sumiller?: string;

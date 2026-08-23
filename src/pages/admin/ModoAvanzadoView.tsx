@@ -65,6 +65,8 @@ export const ModoAvanzadoView: React.FC = () => {
   const [cataSumiller, setCataSumiller] = useState<string>('Ana García');
   const [cataAove, setCataAove] = useState<string>('');
   const [cataColaboradores, setCataColaboradores] = useState<string>('');
+  const [cataType, setCataType] = useState<'bodega_unica' | 'varias_bodegas'>('bodega_unica');
+  const [tallerEspecial, setTallerEspecial] = useState<string>('');
   const [isSearchingLogo, setIsSearchingLogo] = useState<boolean>(false);
   const [isLogoModalOpen, setIsLogoModalOpen] = useState<boolean>(false);
 
@@ -112,19 +114,38 @@ export const ModoAvanzadoView: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.type !== 'application/pdf' && !file.name.endsWith('.pdf')) {
-      setPdfErrorMessage('Por favor, selecciona un archivo en formato PDF.');
-      return;
-    }
-
     setIsParsingPdf(true);
     setPdfErrorMessage(null);
     setPdfSuccessMessage(null);
 
     try {
-      const buffer = await file.arrayBuffer();
-      const rawText = await extractTextFromPdf(buffer);
-      const parsed = parseCataText(rawText);
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/parse-cata", {
+        method: "POST",
+        body: formData,
+      });
+
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("El servidor no devolvió una respuesta válida (posible error de conexión o archivo demasiado grande).");
+      }
+
+      if (!response.ok) {
+        let errorMessage = "Error procesando el archivo con IA";
+        try {
+          const errorData = await response.json();
+          if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+        } catch (e) {
+          // Ignore
+        }
+        throw new Error(errorMessage);
+      }
+
+      const parsed = await response.json();
 
       // Autocomplete form fields with extracted data
       setFormData((prev) => ({
@@ -133,18 +154,18 @@ export const ModoAvanzadoView: React.FC = () => {
         title: parsed.title,
         subtitle: parsed.subtitle,
         price: parsed.price || 25.0,
-        totalSpots: parsed.totalSpots || 14,
+        totalSpots: parsed.spots || 14,
         location: parsed.location || DEFAULT_OFFICIAL_LOCATION,
         description: '', // Point 5: empty description by default
         bodegaProductor: {
-          name: parsed.bodegaName,
-          region: parsed.bodegaRegion || 'Castilla-La Mancha',
-          colaboradores: parsed.colaboradores
+          name: parsed.bodegaProductor?.name || parsed.bodegaName,
+          region: parsed.bodegaProductor?.region || parsed.bodegaRegion || 'Castilla-La Mancha',
+          colaboradores: parsed.bodegaProductor?.colaboradores || parsed.colaboradores
         }
       } as any));
 
-      setDate1(parsed.date);
-      setTime1(parsed.time);
+      setDate1(parsed.date || '');
+      setTime1(parsed.time || '');
 
       if (parsed.date2) {
         setDate2(parsed.date2);
@@ -155,25 +176,30 @@ export const ModoAvanzadoView: React.FC = () => {
 
       if (parsed.wines && parsed.wines.length > 0) {
         setCataWines(parsed.wines);
+      } else {
+        setCataWines([]);
       }
       setCataSumiller(parsed.sumiller || 'Ana García');
       setCataAove(parsed.aove || '');
       setCataColaboradores(parsed.colaboradores || '');
+      setCataType(parsed.cataType || 'bodega_unica');
+      setTallerEspecial(parsed.tallerEspecial || '');
 
       // Point 8: Auto search bodega logo
-      if (parsed.bodegaName) {
+      const bodegaName = parsed.bodegaProductor?.name || parsed.bodegaName;
+      if (bodegaName) {
         setIsSearchingLogo(true);
-        const logo = await searchBodegaLogo(parsed.bodegaName);
+        const logo = await searchBodegaLogo(bodegaName);
         if (logo) {
           setImageUrlsText(logo);
         }
         setIsSearchingLogo(false);
       }
 
-      setPdfSuccessMessage(`¡Cartel "${file.name}" analizado con éxito! Detectadas ${parsed.dates.length > 1 ? '2 fechas' : '1 fecha'}, ${parsed.wines.length} vinos y sumiller ${parsed.sumiller || 'Ana García'}.`);
+      setPdfSuccessMessage(`¡Archivo "${file.name}" analizado con IA con éxito! Detectados ${parsed.wines?.length || 0} vinos y sumiller ${parsed.sumiller || 'Ana García'}.`);
     } catch (err: any) {
-      console.error('Error parsing PDF:', err);
-      setPdfErrorMessage('No se pudo extraer el texto del PDF. Puedes rellenar los datos manualmente.');
+      console.error('Error procesando PDF/Imagen:', err);
+      setPdfErrorMessage(err.message || 'No se pudo extraer el texto. Puedes rellenar los datos manualmente.');
     } finally {
       setIsParsingPdf(false);
       e.target.value = '';
@@ -326,6 +352,8 @@ export const ModoAvanzadoView: React.FC = () => {
         wines: cleanedWines.length > 0 ? cleanedWines : undefined,
         sumiller: cataSumiller.trim() || 'Ana García',
         aove: cataAove.trim() || undefined,
+        cataType: cataType,
+        tallerEspecial: tallerEspecial.trim() || undefined,
         bodegaProductor: {
           ...((finalActivity1 as CataActivity).bodegaProductor || { name: 'Bodega', region: 'Castilla-La Mancha' }),
           colaboradores: cataColaboradores.trim() || undefined
@@ -645,27 +673,27 @@ export const ModoAvanzadoView: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-xs font-bold text-[#521849]">
                       <FileUp className="w-4 h-4 text-[#C96043]" />
-                      <span>Autocompletar con Cartel en PDF de la Cata</span>
+                      <span>Autocompletar cartel con Inteligencia Artificial</span>
                     </div>
                     {isParsingPdf && (
                       <div className="flex items-center gap-1.5 text-xs text-[#521849] font-medium">
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Analizando PDF...</span>
+                        <span>Analizando con IA...</span>
                       </div>
                     )}
                   </div>
 
                   <p className="text-[11px] text-[#574B45]">
-                    Sube el cartel o documento PDF de la cata. Se extraerán automáticamente <strong>Fechas 1 y 2</strong>, <strong>Horas inicio automáticas</strong>, <strong>Ubicación oficial</strong>, <strong>Vinos individuales con maridaje</strong>, <strong>Sumiller</strong> y <strong>Logotipo</strong>.
+                    Sube el cartel en PDF o Imagen. Nuestra IA extraerá automáticamente fechas, pases, bodegas, vinos y maridajes.
                   </p>
 
                   <div className="flex items-center gap-3">
                     <label className="relative inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold cursor-pointer shadow-xs transition-colors">
                       <Upload className="w-3.5 h-3.5" />
-                      <span>Seleccionar Cartel PDF</span>
+                      <span>Subir PDF / Imagen</span>
                       <input
                         type="file"
-                        accept="application/pdf,.pdf"
+                        accept="application/pdf,.pdf,image/*"
                         onChange={handlePdfUpload}
                         className="sr-only"
                         disabled={isParsingPdf}

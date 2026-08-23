@@ -60,6 +60,10 @@ export const ModoSencilloView: React.FC = () => {
   // PDF state
   const [isParsingPdf, setIsParsingPdf] = useState(false);
   const [pdfSuccess, setPdfSuccess] = useState<string | null>(null);
+  
+  // New States for Cata properties
+  const [cataType, setCataType] = useState<'bodega_unica' | 'varias_bodegas'>('bodega_unica');
+  const [tallerEspecial, setTallerEspecial] = useState<string>('');
 
   // Editing state for quick in-line updates
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -108,48 +112,79 @@ export const ModoSencilloView: React.FC = () => {
     setPdfSuccess(null);
 
     try {
-      const buffer = await file.arrayBuffer();
-      const rawText = await extractTextFromPdf(buffer);
-      const parsed = parseCataText(rawText);
+      const formData = new FormData();
+      formData.append("file", file);
 
-      setNewTitle(parsed.title);
-      setNewSubtitle(parsed.subtitle || '');
-      setNewDate1(parsed.date);
-      setNewTime1(parsed.time);
+      const response = await fetch("/api/parse-cata", {
+        method: "POST",
+        body: formData,
+      });
 
-      if (parsed.date2) {
-        setNewDate2(parsed.date2);
-        setNewTime2(parsed.time2 || getDefaultStartTime(parsed.date2));
-      } else {
-        setNewDate2('');
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("El servidor no devolvió una respuesta válida (posible error de conexión o archivo demasiado grande).");
       }
 
+      if (!response.ok) {
+        let errorMessage = "Error procesando el archivo con IA";
+        try {
+          const errorData = await response.json();
+          if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+        } catch (e) {
+          // Ignore
+        }
+        throw new Error(errorMessage);
+      }
+
+      const parsed = await response.json();
+
+      setNewTitle(parsed.title || '');
+      
+      // If there are multiple dates, we might need to parse them from the text, but the schema has date and time.
+      // If we only get one date from AI schema, we use it for Date 1.
+      setNewDate1(parsed.date || '');
+      setNewTime1(parsed.time || '');
+
+      // In case we want to support 2 dates again we'd need to extract them from raw text if they aren't parsed explicitly,
+      // but for now let's leave Date 2 blank and let the user fill it.
+      setNewDate2('');
+      setNewTime2('');
+
       setNewPrice(parsed.price || 25.0);
-      setNewSpots(parsed.totalSpots || 14);
+      setNewSpots(parsed.spots || 14);
       setNewLocation(parsed.location || DEFAULT_OFFICIAL_LOCATION);
-      setNewBodega(parsed.bodegaName || 'Bodega Invitada');
-      setNewBodegaRegion(parsed.bodegaRegion || 'Castilla-La Mancha');
+      
+      setNewBodega(parsed.bodegaProductor?.name || 'Bodega Invitada');
+      setNewBodegaRegion(parsed.bodegaProductor?.region || 'Castilla-La Mancha');
+      setNewColaboradores(parsed.bodegaProductor?.colaboradores || '');
+      
       setNewSumiller(parsed.sumiller || 'Ana García');
       setNewAove(parsed.aove || '');
-      setNewColaboradores(parsed.colaboradores || '');
+      setCataType(parsed.cataType || 'bodega_unica');
+      setTallerEspecial(parsed.tallerEspecial || '');
 
       if (parsed.wines && parsed.wines.length > 0) {
         setWinesList(parsed.wines);
+      } else {
+        setWinesList([]);
       }
 
       // Point 8: Auto search bodega logo
-      if (parsed.bodegaName) {
+      if (parsed.bodegaProductor?.name) {
         setIsSearchingLogo(true);
-        const logo = await searchBodegaLogo(parsed.bodegaName);
+        const logo = await searchBodegaLogo(parsed.bodegaProductor.name);
         if (logo) {
           setImageUrl(logo);
         }
         setIsSearchingLogo(false);
       }
 
-      setPdfSuccess(`¡PDF "${file.name}" analizado con éxito! Detectadas ${parsed.dates.length > 1 ? '2 fechas' : '1 fecha'}, ${parsed.wines.length} vinos y sumiller ${parsed.sumiller || 'Ana García'}.`);
+      setPdfSuccess(`¡Archivo "${file.name}" analizado con IA con éxito! Detectados ${parsed.wines?.length || 0} vinos y sumiller ${parsed.sumiller || 'Ana García'}.`);
     } catch (err) {
-      console.error('Error reading PDF:', err);
+      console.error('Error procesando PDF/Imagen:', err);
+      alert('Error: ' + (err as Error).message);
     } finally {
       setIsParsingPdf(false);
       e.target.value = '';
@@ -202,6 +237,8 @@ export const ModoSencilloView: React.FC = () => {
       updatedAt: new Date().toISOString().split('T')[0],
       ...(newType === 'cata' ? {
         category: 'vino',
+        cataType: cataType,
+        tallerEspecial: tallerEspecial || undefined,
         bodegaProductor: { 
           name: newBodega, 
           region: newBodegaRegion,
@@ -321,23 +358,23 @@ export const ModoSencilloView: React.FC = () => {
             </span>
           </div>
 
-          {/* PDF Box */}
+          {/* Cartel / Image Upload Box */}
           <div className="p-4 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <span className="text-xs font-bold text-[#521849] flex items-center gap-1.5">
                 <FileUp className="w-4 h-4 text-[#C96043]" />
-                Autocompletar con Cartel PDF de la Cata
+                Autocompletar cartel con Inteligencia Artificial
               </span>
               <p className="text-[11px] text-[#574B45] mt-0.5">
-                Extrae fechas (Fecha 1 y 2), horas inteligentes, vinos con maridajes, sumiller y logotipo de bodega.
+                Sube el cartel en PDF o Imagen. Nuestra IA extraerá automáticamente fechas, pases, bodegas, vinos y maridajes.
               </p>
             </div>
             <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold cursor-pointer shadow-xs whitespace-nowrap">
               {isParsingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-              <span>{isParsingPdf ? 'Procesando...' : 'Subir Cartel PDF'}</span>
+              <span>{isParsingPdf ? 'Procesando IA...' : 'Subir PDF / Imagen'}</span>
               <input
                 type="file"
-                accept="application/pdf,.pdf"
+                accept="application/pdf,.pdf,image/*"
                 onChange={handlePdfUpload}
                 className="sr-only"
                 disabled={isParsingPdf}
