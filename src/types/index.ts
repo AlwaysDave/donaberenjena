@@ -93,7 +93,8 @@ export interface AdminUser {
   uid: string;
   email: string;
   name: string;
-  role: AdminRole;
+  baseRole: AdminRole; // Real role in Firestore (admins/{uid})
+  role: AdminRole;     // Current display/working role (advanced view vs simple view)
   isDemo?: boolean;
 }
 

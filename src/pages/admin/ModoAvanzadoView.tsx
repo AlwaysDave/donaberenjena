@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 
 export const ModoAvanzadoView: React.FC = () => {
-  const { activities, metrics, addActivity, updateActivity, deleteActivity, resetToDefaults } = useData();
+  const { activities, metrics, addActivity, updateActivity, deleteActivity, resetToDefaults, isDemoMode } = useData();
 
   const [activeTab, setActiveTab] = useState<'gestion' | 'metricas'>('gestion');
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
@@ -197,22 +197,24 @@ export const ModoAvanzadoView: React.FC = () => {
           </button>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            id="btn-reset-defaults"
-            type="button"
-            onClick={() => {
-              if (window.confirm('¿Restablecer todas las actividades a los datos de muestra iniciales?')) {
-                resetToDefaults();
-                showNotification('Base de datos restablecida.');
-              }
-            }}
-            className="px-3 py-1.5 rounded-lg border border-[#EDE4D7] text-xs text-[#574B45] hover:text-[#521849] hover:bg-white flex items-center gap-1 cursor-pointer"
-          >
-            <RefreshCw className="w-3 h-3" />
-            <span>Restablecer Demos</span>
-          </button>
-        </div>
+        {isDemoMode && (
+          <div className="flex items-center gap-2">
+            <button
+              id="btn-reset-defaults"
+              type="button"
+              onClick={() => {
+                if (window.confirm('¿Restablecer todas las actividades a los datos de muestra iniciales?')) {
+                  resetToDefaults();
+                  showNotification('Base de datos restablecida.');
+                }
+              }}
+              className="px-3 py-1.5 rounded-lg border border-[#EDE4D7] text-xs text-[#574B45] hover:text-[#521849] hover:bg-white flex items-center gap-1 cursor-pointer"
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span>Restablecer Demos</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {notification && (

@@ -15,20 +15,29 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
+// Check if Firebase environment variables are provided
+export function isFirebaseConfigured(): boolean {
+  const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+  return Boolean(apiKey && apiKey.length > 5 && projectId && projectId.length > 2);
+}
+
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let db: Firestore | null = null;
 
-try {
-  if (getApps().length === 0) {
-    app = initializeApp(firebaseConfig);
-  } else {
-    app = getApps()[0];
+if (isFirebaseConfigured()) {
+  try {
+    if (getApps().length === 0) {
+      app = initializeApp(firebaseConfig);
+    } else {
+      app = getApps()[0];
+    }
+    auth = getAuth(app);
+    db = getFirestore(app);
+  } catch (err) {
+    console.warn("Firebase initialization warning (falling back to demo storage):", err);
   }
-  auth = getAuth(app);
-  db = getFirestore(app);
-} catch (err) {
-  console.warn("Firebase client initialized in offline-first mode:", err);
 }
 
 export { app, auth, db };

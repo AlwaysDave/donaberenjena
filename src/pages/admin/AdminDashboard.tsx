@@ -1,12 +1,14 @@
 import React, { useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useData } from '../../context/DataContext';
 import { ModoSencilloView } from './ModoSencilloView';
 import { ModoAvanzadoView } from './ModoAvanzadoView';
-import { Shield, Layers, Sparkles, LogOut, ArrowLeft, User, ExternalLink } from 'lucide-react';
+import { Shield, Layers, Sparkles, LogOut, ExternalLink, AlertTriangle, Database } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
   const { user, isAuthenticated, switchRole, logout } = useAuth();
+  const { isDemoMode } = useData();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -34,8 +36,14 @@ export const AdminDashboard: React.FC = () => {
               <div className="flex items-center gap-2">
                 <span className="font-bold text-sm tracking-tight">Doña Berenjena</span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#842A76] text-white font-semibold uppercase">
-                  Admin
+                  {user.baseRole === 'advanced' ? 'Admin Directiva' : 'Coordinador'}
                 </span>
+                {!isDemoMode && (
+                  <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 font-semibold">
+                    <Database className="w-2.5 h-2.5" />
+                    Firestore Conectado
+                  </span>
+                )}
               </div>
               <p className="text-xs text-[#DFD3C2]">
                 Sesión iniciada como: <strong className="text-white">{user.name}</strong> ({user.email})
@@ -45,6 +53,7 @@ export const AdminDashboard: React.FC = () => {
 
           {/* Mode Switcher and Controls */}
           <div className="flex flex-wrap items-center gap-3">
+            {/* Any logged in admin can switch freely between simple and advanced views */}
             <div className="inline-flex p-1 rounded-xl bg-[#191412] border border-[#3D3430]">
               <button
                 id="btn-switch-to-simple"
@@ -85,11 +94,11 @@ export const AdminDashboard: React.FC = () => {
             <button
               id="btn-admin-logout"
               type="button"
-              onClick={() => {
-                logout();
+              onClick={async () => {
+                await logout();
                 navigate('/admin/login');
               }}
-              className="p-2 rounded-lg bg-white/10 hover:bg-rose-900/50 text-xs font-medium text-[#EDE4D7] transition-colors"
+              className="p-2 rounded-lg bg-white/10 hover:bg-rose-900/50 text-xs font-medium text-[#EDE4D7] transition-colors cursor-pointer"
               title="Cerrar sesión"
             >
               <LogOut className="w-4 h-4" />
@@ -97,6 +106,20 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Demo Warning Banner inside Admin Panel */}
+      {isDemoMode && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5">
+          <div className="max-w-7xl mx-auto flex items-center justify-between text-xs text-amber-900">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                <strong>Modo Demostración activo:</strong> No se ha podido establecer conexión directa con la base de datos de producción. Los cambios se conservarán solo de forma local en tu navegador.
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
