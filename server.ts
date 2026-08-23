@@ -117,7 +117,7 @@ If the year is not explicitly present, assume it is 2026.
 `;
 
       const response = await aiClient.models.generateContent({
-        model: "gemini-3.6-flash",
+        model: "gemini-2.5-flash",
         contents: [
           {
             text: prompt,
