@@ -33,6 +33,15 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Gemini API Health Check Route
+  app.get("/api/health/gemini", (req, res) => {
+    if (process.env.GEMINI_API_KEY) {
+      return res.json({ status: "ok", message: "Gemini API configurada" });
+    } else {
+      return res.status(503).json({ error: "Gemini API no configurada" });
+    }
+  });
+
   // API Route for Parsing PDFs / Images via Gemini
   app.post("/api/parse-cata", upload.single("file"), async (req, res) => {
     try {
@@ -156,7 +165,7 @@ If the year is not explicitly present, assume it is 2026.
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
+    app.get("*all", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -10,6 +10,14 @@ export const AdminDashboard: React.FC = () => {
   const { user, isAuthenticated, switchRole, logout } = useAuth();
   const { isConnected, connectionError } = useData();
   const navigate = useNavigate();
+  const [isGeminiConnected, setIsGeminiConnected] = useState<boolean | null>(null);
+  const appVersion = "v1.2.0";
+
+  useEffect(() => {
+    fetch('/api/health/gemini')
+      .then(res => setIsGeminiConnected(res.ok))
+      .catch(() => setIsGeminiConnected(false));
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -38,17 +46,34 @@ export const AdminDashboard: React.FC = () => {
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#842A76] text-white font-semibold uppercase">
                   {user.baseRole === 'advanced' ? 'Admin Directiva' : 'Coordinador'}
                 </span>
-                <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold border ${
-                  isConnected 
-                    ? 'bg-emerald-950 text-emerald-300 border-emerald-800' 
-                    : 'bg-rose-950 text-rose-300 border-rose-800'
-                }`}>
-                  <Database className="w-2.5 h-2.5" />
-                  {isConnected ? '🟢 Firestore Conectado' : '🔴 Sin Conexión'}
-                </span>
+                
+                {currentRole === 'advanced' && (
+                  <>
+                    <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold border ${
+                      isConnected 
+                        ? 'bg-emerald-950 text-emerald-300 border-emerald-800' 
+                        : 'bg-rose-950 text-rose-300 border-rose-800'
+                    }`}>
+                      <Database className="w-2.5 h-2.5" />
+                      {isConnected ? '🟢 Firestore Conectado' : '🔴 Sin Conexión'}
+                    </span>
+
+                    <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold border ${
+                      isGeminiConnected 
+                        ? 'bg-emerald-950 text-emerald-300 border-emerald-800' 
+                        : isGeminiConnected === null ? 'bg-gray-900 text-gray-300 border-gray-700' : 'bg-rose-950 text-rose-300 border-rose-800'
+                    }`}>
+                      {isGeminiConnected ? '🟢 IA OK' : isGeminiConnected === null ? '⚪ IA' : '🔴 Sin IA'}
+                    </span>
+
+                    <span className="text-[10px] font-semibold text-[#DFD3C2] tracking-wide ml-1">
+                      {appVersion}
+                    </span>
+                  </>
+                )}
               </div>
               <p className="text-xs text-[#DFD3C2]">
-                Sesión iniciada como: <strong className="text-white">{user.name}</strong> ({user.email})
+                Inición sesiada como: <strong className="text-white">{user.name}</strong> ({user.email})
               </p>
             </div>
           </div>

@@ -24,10 +24,25 @@ import {
 export const Navbar: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [isGeminiConnected, setIsGeminiConnected] = useState<boolean | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuth();
   const { isConnected, connectionError } = useData();
+  
+  // Hardcoded version for display
+  const appVersion = "v1.2.0";
+
+  useEffect(() => {
+    // Check Gemini API status
+    fetch('/api/health/gemini')
+      .then(res => {
+        setIsGeminiConnected(res.ok);
+      })
+      .catch(() => {
+        setIsGeminiConnected(false);
+      });
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -73,15 +88,33 @@ export const Navbar: React.FC = () => {
             </span>
           </div>
           <div className="flex items-center gap-4 text-[#DFD3C2]">
-            {/* Traffic Light Status in Top Bar */}
-            <div 
-              className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/30 border border-white/10 text-[10px]"
-              title={isConnected ? "Conexión activa con Firestore (.env verificado)" : (connectionError || "Sin conexión con la base de datos")}
-            >
-              <span className="text-xs">{isConnected ? '🟢' : '🔴'}</span>
-              <span className={isConnected ? "text-emerald-300 font-medium" : "text-rose-300 font-medium"}>
-                {isConnected ? 'BD Conectada' : 'Sin BD'}
+            <div className="flex items-center gap-2">
+              {/* Version Display */}
+              <span className="text-[10px] font-semibold text-[#C96043] tracking-wide">
+                {appVersion}
               </span>
+              
+              {/* Traffic Light Status in Top Bar */}
+              <div 
+                className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/30 border border-white/10 text-[10px]"
+                title={isConnected ? "Conexión activa con Firestore (.env verificado)" : (connectionError || "Sin conexión con la base de datos")}
+              >
+                <span className="text-xs">{isConnected ? '🟢' : '🔴'}</span>
+                <span className={isConnected ? "text-emerald-300 font-medium" : "text-rose-300 font-medium"}>
+                  {isConnected ? 'BD' : 'Sin BD'}
+                </span>
+              </div>
+              
+              {/* Gemini Traffic Light Status */}
+              <div 
+                className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/30 border border-white/10 text-[10px]"
+                title={isGeminiConnected ? "Conexión activa con Gemini AI" : "Sin conexión con Gemini AI"}
+              >
+                <span className="text-xs">{isGeminiConnected ? '🟢' : (isGeminiConnected === null ? '⚪' : '🔴')}</span>
+                <span className={isGeminiConnected ? "text-emerald-300 font-medium" : (isGeminiConnected === null ? "text-gray-300 font-medium" : "text-rose-300 font-medium")}>
+                  {isGeminiConnected ? 'IA' : (isGeminiConnected === null ? 'IA' : 'Sin IA')}
+                </span>
+              </div>
             </div>
 
             <a href="tel:+34912345678" className="hover:text-white flex items-center gap-1 transition-colors">
@@ -187,11 +220,15 @@ export const Navbar: React.FC = () => {
 
           {/* Mobile Menu Button */}
           <div className="flex items-center gap-2 lg:hidden">
+            <span className="text-[10px] font-semibold text-[#C96043] tracking-wide mr-1">
+              {appVersion}
+            </span>
             <div 
-              className="flex items-center text-sm px-2 py-1 rounded-md bg-white border border-[#EDE4D7]"
+              className="flex items-center gap-1 text-sm px-2 py-1 rounded-md bg-white border border-[#EDE4D7]"
               title={isConnected ? 'BD Conectada' : 'Sin conexión'}
             >
               <span>{isConnected ? '🟢' : '🔴'}</span>
+              <span>{isGeminiConnected ? '🟢' : (isGeminiConnected === null ? '⚪' : '🔴')}</span>
             </div>
 
             <button
@@ -231,14 +268,22 @@ export const Navbar: React.FC = () => {
             </div>
 
             <div className="pt-3 border-t border-[#EDE4D7] flex flex-col gap-2">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-white border border-[#EDE4D7] text-xs">
-                <span className="text-[#574B45]">Estado de Base de Datos:</span>
-                <span className="font-semibold flex items-center gap-1.5">
-                  <span>{isConnected ? '🟢' : '🔴'}</span>
-                  <span className={isConnected ? "text-emerald-700" : "text-rose-700"}>
-                    {isConnected ? 'Conectado a Firestore' : 'Desconectado'}
+              <div className="flex items-center justify-between p-3 rounded-xl bg-white border border-[#EDE4D7] text-xs mb-1">
+                <span className="text-[#574B45]">Estado de Conexiones:</span>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="font-semibold flex items-center gap-1.5">
+                    <span className={isConnected ? "text-emerald-700" : "text-rose-700"}>
+                      {isConnected ? 'Firestore OK' : 'Sin BD'}
+                    </span>
+                    <span>{isConnected ? '🟢' : '🔴'}</span>
                   </span>
-                </span>
+                  <span className="font-semibold flex items-center gap-1.5">
+                    <span className={isGeminiConnected ? "text-emerald-700" : (isGeminiConnected === null ? "text-gray-500" : "text-rose-700")}>
+                      {isGeminiConnected ? 'Gemini AI OK' : (isGeminiConnected === null ? 'Gemini AI' : 'Sin IA')}
+                    </span>
+                    <span>{isGeminiConnected ? '🟢' : (isGeminiConnected === null ? '⚪' : '🔴')}</span>
+                  </span>
+                </div>
               </div>
 
               {isAuthenticated ? (
