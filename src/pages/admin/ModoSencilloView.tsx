@@ -3,6 +3,7 @@ import { useData } from '../../context/DataContext';
 import { Activity, ActivityType, CataActivity, WineDetail } from '../../types';
 import { extractTextFromPdf, parseCataText, DEFAULT_OFFICIAL_LOCATION, getDefaultStartTime } from '../../services/pdfCataParser';
 import { searchBodegaLogo } from '../../services/bodegaLogoService';
+import { BodegaLogoSearchModal } from '../../components/admin/BodegaLogoSearchModal';
 import { 
   Plus, 
   Calendar, 
@@ -47,6 +48,7 @@ export const ModoSencilloView: React.FC = () => {
   const [newColaboradores, setNewColaboradores] = useState('');
   const [imageUrl, setImageUrl] = useState('https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=1200&q=80');
   const [isSearchingLogo, setIsSearchingLogo] = useState(false);
+  const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
 
   // Individual editable wine cards (3 wines by default, expandable with "Añadir Vino")
   const [winesList, setWinesList] = useState<WineDetail[]>([
@@ -494,11 +496,12 @@ export const ModoSencilloView: React.FC = () => {
                   />
                   <button
                     type="button"
-                    onClick={handleManualSearchLogo}
-                    title="Buscar logotipo en internet"
-                    className="p-2 rounded-xl border border-[#EDE4D7] bg-[#F6EDF4] text-[#521849] hover:bg-[#EBD6E7] cursor-pointer"
+                    onClick={() => setIsLogoModalOpen(true)}
+                    title="Buscar logotipo en internet y Google Imágenes"
+                    className="px-3 py-2 rounded-xl bg-gradient-to-r from-[#521849] to-[#C96043] text-white text-xs font-bold flex items-center gap-1.5 shadow-xs hover:opacity-90 transition-all cursor-pointer whitespace-nowrap"
                   >
-                    {isSearchingLogo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Globe className="w-3.5 h-3.5" />}
+                    <Globe className="w-3.5 h-3.5" />
+                    <span>Buscar Logo</span>
                   </button>
                 </div>
               </div>
@@ -886,6 +889,17 @@ export const ModoSencilloView: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Bodega Logo & Cover Image Search Modal */}
+      {isLogoModalOpen && (
+        <BodegaLogoSearchModal
+          isOpen={isLogoModalOpen}
+          onClose={() => setIsLogoModalOpen(false)}
+          bodegaName={newBodega || newTitle || ''}
+          currentImageUrl={imageUrl || ''}
+          onSelectImage={(url) => setImageUrl(url)}
+        />
       )}
     </div>
   );

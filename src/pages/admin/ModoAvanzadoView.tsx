@@ -3,6 +3,7 @@ import { useData } from '../../context/DataContext';
 import { Activity, ActivityType, CataActivity, CataCategory, CursoActivity, ViajeActivity, WineDetail } from '../../types';
 import { extractTextFromPdf, parseCataText, DEFAULT_OFFICIAL_LOCATION, getDefaultStartTime } from '../../services/pdfCataParser';
 import { searchBodegaLogo } from '../../services/bodegaLogoService';
+import { BodegaLogoSearchModal } from '../../components/admin/BodegaLogoSearchModal';
 import { 
   Plus, 
   Trash2, 
@@ -65,6 +66,7 @@ export const ModoAvanzadoView: React.FC = () => {
   const [cataAove, setCataAove] = useState<string>('');
   const [cataColaboradores, setCataColaboradores] = useState<string>('');
   const [isSearchingLogo, setIsSearchingLogo] = useState<boolean>(false);
+  const [isLogoModalOpen, setIsLogoModalOpen] = useState<boolean>(false);
 
   // PDF Upload & Parser state
   const [isParsingPdf, setIsParsingPdf] = useState<boolean>(false);
@@ -865,11 +867,12 @@ export const ModoAvanzadoView: React.FC = () => {
                         />
                         <button
                           type="button"
-                          onClick={handleManualSearchLogo}
-                          title="Buscar logotipo en internet"
-                          className="p-2 rounded-lg border border-[#EDE4D7] bg-[#F6EDF4] text-[#521849] hover:bg-[#EBD6E7] cursor-pointer"
+                          onClick={() => setIsLogoModalOpen(true)}
+                          title="Buscar logotipo en Google Imágenes"
+                          className="px-3 py-2 rounded-lg bg-gradient-to-r from-[#521849] to-[#C96043] text-white text-xs font-bold flex items-center gap-1.5 shadow-xs hover:opacity-90 cursor-pointer whitespace-nowrap"
                         >
-                          {isSearchingLogo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Globe className="w-3.5 h-3.5" />}
+                          <Globe className="w-3.5 h-3.5" />
+                          <span>Buscar Logo</span>
                         </button>
                       </div>
                     </div>
@@ -1144,6 +1147,23 @@ export const ModoAvanzadoView: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Bodega Logo & Cover Image Search Modal */}
+      {isLogoModalOpen && (
+        <BodegaLogoSearchModal
+          isOpen={isLogoModalOpen}
+          onClose={() => setIsLogoModalOpen(false)}
+          bodegaName={(formData as CataActivity).bodegaProductor?.name || formData.title || ''}
+          currentImageUrl={(formData.images && formData.images[0]) || ''}
+          onSelectImage={(url) => {
+            setFormData(prev => ({
+              ...prev,
+              images: [url]
+            }));
+            setImageUrlsText(url);
+          }}
+        />
       )}
     </div>
   );
