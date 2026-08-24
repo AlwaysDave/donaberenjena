@@ -223,178 +223,137 @@ export const ActivityDetailPage: React.FC = () => {
           {/* ========================================================================= */}
           {activity.type === 'cata' && cata && (
             <div className="space-y-6">
-              {/* Cata Type Badge Header */}
-              <div className="flex items-center justify-between bg-[#F6EDF4] px-4 py-2.5 rounded-xl border border-[#521849]/20 text-xs font-semibold text-[#521849]">
-                <span className="flex items-center gap-2">
-                  <Wine className="w-4 h-4" />
-                  {cata.cataType === 'varias_bodegas' ? 'Cata de Varias Bodegas / Múltiples Pases' : 'Cata de Una Sola Bodega'}
-                </span>
-                {cata.sumiller && (
-                  <span>Sumiller: <strong>{cata.sumiller}</strong></span>
-                )}
-              </div>
-
-              {/* If Varias Bodegas: Render Multiple Bodegas Timeline / Cards */}
-              {cata.cataType === 'varias_bodegas' && cata.wines && cata.wines.length > 0 ? (
-                <div className="space-y-4">
-                  <div className="border-b border-[#EDE4D7] pb-3 flex items-center justify-between">
-                    <h3 className="text-lg font-bold font-serif text-[#26201D] flex items-center gap-2">
-                      <Building className="w-5 h-5 text-[#521849]" />
-                      <span>Pases y Bodegas Protagonistas ({cata.wines.length})</span>
-                    </h3>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-5">
-                    {cata.wines.map((wine, idx) => (
-                      <div
-                        key={idx}
-                        className="rounded-2xl bg-white p-6 border border-[#EDE4D7] shadow-xs space-y-4 relative overflow-hidden hover:border-[#521849]/40 transition-all"
-                      >
-                        {/* Pase number badge */}
-                        <div className="absolute top-0 right-0 bg-[#521849] text-white text-[11px] font-bold px-4 py-1 rounded-bl-xl tracking-wider uppercase">
-                          {wine.type || `Pase ${idx + 1}`}
-                        </div>
-
-                        <div className="space-y-1 pr-16">
-                          <span className="text-xs font-bold text-[#C96043] uppercase tracking-wider">
-                            {wine.bodega || `Bodega Invitada ${idx + 1}`}
-                          </span>
-                          <h4 className="text-lg font-bold font-serif text-[#26201D]">
-                            {wine.name}
-                          </h4>
-                          {wine.region && (
-                            <p className="text-xs text-[#574B45] flex items-center gap-1">
-                              <MapPin className="w-3.5 h-3.5 text-[#521849]" />
-                              <span>{wine.region}</span>
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-[#F6F1EA] text-xs">
-                          {wine.grape && (
-                            <div className="p-3 rounded-xl bg-[#FCFAF7] border border-[#EDE4D7]">
-                              <span className="text-[10px] uppercase font-bold text-[#521849] block mb-0.5">Variedad de Uva / Denominación</span>
-                              <span className="font-medium text-[#26201D]">{wine.grape}</span>
-                            </div>
-                          )}
-                          {wine.pairing && (
-                            <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200/80">
-                              <span className="text-[10px] uppercase font-bold text-amber-900 block mb-0.5">Maridaje Armonizado</span>
-                              <span className="font-medium text-amber-950">{wine.pairing}</span>
-                            </div>
-                          )}
-                        </div>
+              {/* Cata Meta Bar (Sumiller & AOVE) */}
+              {(cata.sumiller || cata.aove) && (
+                <div className="rounded-2xl bg-[#F6EDF4] p-5 sm:p-6 border border-[#521849]/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  {cata.sumiller && (
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-[#521849] text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <Wine className="w-5 h-5" />
                       </div>
-                    ))}
-                  </div>
-
-                  {/* Taller / Special workshop notice */}
-                  {cata.tallerEspecial && (
-                    <div className="rounded-2xl bg-[#F9ECE8] p-5 border border-[#C96043]/30 flex items-center gap-3">
-                      <Sparkles className="w-6 h-6 text-[#C96043] shrink-0" />
                       <div>
-                        <span className="text-xs font-bold text-[#C96043] uppercase tracking-wider block">Taller Práctico / Elaboración In Situ</span>
-                        <p className="text-sm font-serif font-bold text-[#26201D]">{cata.tallerEspecial}</p>
+                        <span className="text-[10px] uppercase font-bold text-[#521849] tracking-wider block">Sumiller Guía</span>
+                        <p className="text-sm font-bold text-[#26201D]">{cata.sumiller}</p>
                       </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                /* Bodega / Sumiller Header Card for Single Bodega */
-                <div className="rounded-2xl bg-gradient-to-br from-[#FBF9F5] to-white p-6 sm:p-8 border border-[#EDE4D7] space-y-4">
-                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#521849]">
-                    <Building className="w-4 h-4" />
-                    <span>Bodega & Protagonistas de la Cata</span>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <h3 className="text-lg font-bold font-serif text-[#26201D]">
-                        {cata.bodegaProductor?.name || 'Bodega Invitada'}
-                      </h3>
-                      <p className="text-xs text-[#574B45] mt-1">
-                        <strong className="text-[#26201D]">Procedencia:</strong> {cata.bodegaProductor?.region || 'Castilla-La Mancha'}
-                      </p>
-                    </div>
-
-                    {cata.sumiller && (
-                      <div className="p-3 rounded-xl bg-white border border-[#EDE4D7]/80">
-                        <span className="text-[11px] uppercase font-bold text-[#521849] block">
-                          Sumiller Conductor/a
-                        </span>
-                        <p className="text-sm font-semibold text-[#26201D] mt-0.5">
-                          {cata.sumiller}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {cata.bodegaProductor?.colaboradores && (
-                    <div className="pt-2 text-xs text-[#574B45] flex items-center gap-2 border-t border-[#EDE4D7]/50">
-                      <HeartHandshake className="w-4 h-4 text-[#C96043] shrink-0" />
-                      <span><strong>Colaboración Especial:</strong> {cata.bodegaProductor.colaboradores}</span>
                     </div>
                   )}
 
                   {cata.aove && (
-                    <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200/80 text-xs text-amber-950 flex items-center gap-2">
-                      <Droplets className="w-4 h-4 text-amber-700 shrink-0" />
-                      <span><strong>AOVE de Bienvenida:</strong> {cata.aove}</span>
+                    <div className="flex items-center gap-3 bg-white/80 px-4 py-2.5 rounded-xl border border-[#EDE4D7]">
+                      <Droplets className="w-5 h-5 text-amber-700 shrink-0" />
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-amber-900 tracking-wider block">AOVE de Bienvenida</span>
+                        <p className="text-xs font-semibold text-[#26201D]">{cata.aove}</p>
+                      </div>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Structured Wine & Pairing Menu (for bodega_unica) */}
-              {cata.cataType !== 'varias_bodegas' && cata.wines && cata.wines.length > 0 && (
-                <div className="rounded-2xl bg-white p-6 sm:p-8 border border-[#EDE4D7] space-y-5">
-                  <div className="flex items-center justify-between border-b border-[#F6F1EA] pb-4">
-                    <h3 className="text-lg font-bold font-serif text-[#26201D] flex items-center gap-2">
-                      <UtensilsCrossed className="w-5 h-5 text-[#521849]" />
-                      <span>Menú de Cata y Maridajes</span>
-                    </h3>
-                    <span className="text-xs font-semibold text-[#521849] bg-[#F6EDF4] px-2.5 py-1 rounded-full">
-                      {cata.wines.length} armonías
-                    </span>
-                  </div>
+              {/* Bodegas Fichas (1 to 4 bodegas, each with its wines) */}
+              {(() => {
+                const displayBodegas = (cata.bodegas && cata.bodegas.length > 0)
+                  ? cata.bodegas
+                  : [{
+                      name: cata.bodegaProductor?.name || 'Bodega Invitada',
+                      region: cata.bodegaProductor?.region || 'Castilla-La Mancha',
+                      website: cata.bodegaProductor?.website,
+                      wines: cata.wines || []
+                    }];
 
-                  <div className="space-y-4">
-                    {cata.wines.map((wine, idx) => (
+                return (
+                  <div className="space-y-6">
+                    {displayBodegas.map((bodega, bIdx) => (
                       <div
-                        key={idx}
-                        className="p-4 rounded-xl bg-[#FCFAF7] border border-[#EDE4D7] flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-[#521849]/40 transition-colors"
+                        key={bIdx}
+                        className="rounded-3xl bg-white border border-[#EDE4D7] shadow-xs overflow-hidden"
                       >
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold uppercase px-2 py-0.5 rounded bg-[#521849] text-white">
-                              {wine.type}
-                            </span>
-                            <span className="font-serif font-bold text-sm text-[#26201D]">
-                              {wine.name}
-                            </span>
+                        {/* Bodega Header Bar */}
+                        <div className="bg-gradient-to-r from-[#FBF9F5] to-white p-5 sm:p-6 border-b border-[#EDE4D7] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] font-bold uppercase tracking-wider text-[#521849] bg-[#521849]/10 px-2.5 py-0.5 rounded-md">
+                                {displayBodegas.length > 1 ? `Bodega #${bIdx + 1}` : 'Bodega Protagonista'}
+                              </span>
+                              {bodega.region && (
+                                <span className="text-xs text-[#574B45] flex items-center gap-1">
+                                  <MapPin className="w-3.5 h-3.5 text-[#C96043]" />
+                                  <span>{bodega.region}</span>
+                                </span>
+                              )}
+                            </div>
+                            <h3 className="text-xl font-bold font-serif text-[#26201D]">
+                              {bodega.name}
+                            </h3>
                           </div>
-                          {wine.grape && (
-                            <p className="text-xs text-[#574B45]">
-                              Variedad de uva: <strong className="text-[#26201D]">{wine.grape}</strong>
-                            </p>
+
+                          {bodega.website && (
+                            <a
+                              href={bodega.website.startsWith('http') ? bodega.website : `https://${bodega.website}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#EDE4D7] bg-white text-xs font-semibold text-[#521849] hover:bg-[#F6EDF4] transition-colors self-start sm:self-auto cursor-pointer"
+                            >
+                              <span>Visitar Web</span>
+                              <ArrowLeft className="w-3 h-3 rotate-135" />
+                            </a>
                           )}
                         </div>
 
-                        {wine.pairing && (
-                          <div className="sm:text-right pt-2 sm:pt-0 border-t sm:border-t-0 border-[#EDE4D7]">
-                            <span className="text-[10px] uppercase tracking-wider font-bold text-[#C96043] block">
-                              Plato de Maridaje
-                            </span>
-                            <span className="text-xs font-medium text-[#26201D]">
-                              {wine.pairing}
-                            </span>
-                          </div>
-                        )}
+                        {/* Wines and Pairings of this Bodega */}
+                        <div className="p-5 sm:p-6 space-y-4">
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-[#521849] flex items-center gap-1.5">
+                            <UtensilsCrossed className="w-4 h-4" />
+                            <span>Vinos y Maridajes Seleccionados ({bodega.wines?.length || 0})</span>
+                          </h4>
+
+                          {bodega.wines && bodega.wines.length > 0 ? (
+                            <div className="grid grid-cols-1 gap-3">
+                              {bodega.wines.map((wine, wIdx) => (
+                                <div
+                                  key={wIdx}
+                                  className="p-4 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7] hover:border-[#521849]/40 transition-all space-y-2"
+                                >
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-bold uppercase px-2.5 py-0.5 rounded bg-[#521849] text-white">
+                                        {wine.type || `Vino ${wIdx + 1}`}
+                                      </span>
+                                      <span className="font-serif font-bold text-base text-[#26201D]">
+                                        {wine.name}
+                                      </span>
+                                    </div>
+                                    {wine.grape && (
+                                      <span className="text-xs text-[#574B45] italic">
+                                        {wine.grape}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {wine.pairing && (
+                                    <div className="pt-2 border-t border-[#EDE4D7]/70 flex items-start gap-2 text-xs">
+                                      <span className="font-bold text-[#C96043] uppercase text-[10px] tracking-wider shrink-0 mt-0.5">
+                                        Maridaje:
+                                      </span>
+                                      <span className="font-medium text-[#26201D]">
+                                        {wine.pairing}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-[#574B45] italic">
+                              Pendiente de detallar los vinos específicos de esta bodega.
+                            </p>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           )}
 

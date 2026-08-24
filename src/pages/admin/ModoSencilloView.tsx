@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useData } from '../../context/DataContext';
-import { Activity, ActivityType, CataActivity, WineDetail } from '../../types';
+import { Activity, ActivityType, CataActivity, WineDetail, BodegaItem } from '../../types';
 import { extractTextFromPdf, parseCataText, DEFAULT_OFFICIAL_LOCATION, getDefaultStartTime } from '../../services/pdfCataParser';
 import { searchBodegaLogo } from '../../services/bodegaLogoService';
 import { BodegaLogoSearchModal } from '../../components/admin/BodegaLogoSearchModal';
+import { BodegaManager } from '../../components/admin/BodegaManager';
 import { 
   Plus, 
   Calendar, 
@@ -34,6 +35,7 @@ export const ModoSencilloView: React.FC = () => {
   const [newType, setNewType] = useState<ActivityType>('cata');
   const [newTitle, setNewTitle] = useState('');
   const [newSubtitle, setNewSubtitle] = useState('');
+  const [newDescription, setNewDescription] = useState('');
   const [newDate1, setNewDate1] = useState('');
   const [newDate2, setNewDate2] = useState('');
   const [newTime1, setNewTime1] = useState('21:00');
@@ -41,29 +43,30 @@ export const ModoSencilloView: React.FC = () => {
   const [newPrice, setNewPrice] = useState(25.0); // Default 25.00€
   const [newSpots, setNewSpots] = useState(14); // Default 14
   const [newLocation, setNewLocation] = useState(DEFAULT_OFFICIAL_LOCATION);
-  const [newBodega, setNewBodega] = useState('Bodega Invitada');
-  const [newBodegaRegion, setNewBodegaRegion] = useState('Castilla-La Mancha');
+  
+  // Specific cata state
+  const [bodegas, setBodegas] = useState<BodegaItem[]>([
+    {
+      name: 'Bodega Invitada',
+      region: 'Castilla-La Mancha',
+      website: '',
+      wines: [
+        { type: 'Blanco', name: '', grape: '', pairing: '' },
+        { type: 'Tinto', name: '', grape: '', pairing: '' },
+        { type: 'Espumoso', name: '', grape: '', pairing: '' }
+      ]
+    }
+  ]);
   const [newSumiller, setNewSumiller] = useState('Ana García');
   const [newAove, setNewAove] = useState('');
-  const [newColaboradores, setNewColaboradores] = useState('');
+  const [activeBodegaLogoIdx, setActiveBodegaLogoIdx] = useState(0);
   const [imageUrl, setImageUrl] = useState('https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=1200&q=80');
   const [isSearchingLogo, setIsSearchingLogo] = useState(false);
   const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
 
-  // Individual editable wine cards (3 wines by default, expandable with "Añadir Vino")
-  const [winesList, setWinesList] = useState<WineDetail[]>([
-    { type: 'Blanco', name: '', grape: '', pairing: '' },
-    { type: 'Tinto', name: '', grape: '', pairing: '' },
-    { type: 'Espumoso', name: '', grape: '', pairing: '' }
-  ]);
-
   // PDF state
   const [isParsingPdf, setIsParsingPdf] = useState(false);
   const [pdfSuccess, setPdfSuccess] = useState<string | null>(null);
-  
-  // New States for Cata properties
-  const [cataType, setCataType] = useState<'bodega_unica' | 'varias_bodegas'>('bodega_unica');
-  const [tallerEspecial, setTallerEspecial] = useState<string>('');
 
   // Editing state for quick in-line updates
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -73,26 +76,6 @@ export const ModoSencilloView: React.FC = () => {
 
   const upcoming = activities.filter(a => a.status === 'proxima');
   const held = activities.filter(a => a.status === 'celebrada');
-
-  const updateWineField = (index: number, field: keyof WineDetail, value: string) => {
-    setWinesList(prev => {
-      const copy = [...prev];
-      copy[index] = { ...copy[index], [field]: value };
-      return copy;
-    });
-  };
-
-  const addWineRow = () => {
-    if (winesList.length < 6) {
-      setWinesList(prev => [...prev, { type: 'Vino', name: '', grape: '', pairing: '' }]);
-    }
-  };
-
-  const removeWineRow = (index: number) => {
-    if (winesList.length > 1) {
-      setWinesList(prev => prev.filter((_, i) => i !== index));
-    }
-  };
 
   const handleDate1Change = (dateVal: string) => {
     setNewDate1(dateVal);
@@ -144,47 +127,56 @@ export const ModoSencilloView: React.FC = () => {
       const parsed = await response.json();
 
       setNewTitle(parsed.title || '');
+      setNewSubtitle(parsed.subtitle || '');
+      setNewDescription(parsed.description || '');
       
-      // If there are multiple dates, we might need to parse them from the text, but the schema has date and time.
-      // If we only get one date from AI schema, we use it for Date 1.
       setNewDate1(parsed.date || '');
       setNewTime1(parsed.time || '');
 
-      // In case we want to support 2 dates again we'd need to extract them from raw text if they aren't parsed explicitly,
-      // but for now let's leave Date 2 blank and let the user fill it.
-      setNewDate2('');
-      setNewTime2('');
+      if (parsed.date2) {
+        setNewDate2(parsed.date2);
+        setNewTime2(parsed.time2 || parsed.time || getDefaultStartTime(parsed.date2));
+      } else {
+        setNewDate2('');
+        setNewTime2('');
+      }
 
       setNewPrice(parsed.price || 25.0);
       setNewSpots(parsed.spots || 14);
       setNewLocation(parsed.location || DEFAULT_OFFICIAL_LOCATION);
       
-      setNewBodega(parsed.bodegaProductor?.name || 'Bodega Invitada');
-      setNewBodegaRegion(parsed.bodegaProductor?.region || 'Castilla-La Mancha');
-      setNewColaboradores(parsed.bodegaProductor?.colaboradores || '');
+      if (parsed.bodegas && Array.isArray(parsed.bodegas) && parsed.bodegas.length > 0) {
+        setBodegas(parsed.bodegas);
+      } else {
+        setBodegas([
+          {
+            name: parsed.bodegaProductor?.name || 'Bodega Invitada',
+            region: parsed.bodegaProductor?.region || 'Castilla-La Mancha',
+            website: '',
+            wines: parsed.wines || [
+              { type: 'Blanco', name: '', grape: '', pairing: '' },
+              { type: 'Tinto', name: '', grape: '', pairing: '' }
+            ]
+          }
+        ]);
+      }
       
       setNewSumiller(parsed.sumiller || 'Ana García');
       setNewAove(parsed.aove || '');
-      setCataType(parsed.cataType || 'bodega_unica');
-      setTallerEspecial(parsed.tallerEspecial || '');
 
-      if (parsed.wines && parsed.wines.length > 0) {
-        setWinesList(parsed.wines);
-      } else {
-        setWinesList([]);
-      }
-
-      // Point 8: Auto search bodega logo
-      if (parsed.bodegaProductor?.name) {
+      // Point 8: Auto search bodega logo for primary bodega
+      const firstBodegaName = parsed.bodegas?.[0]?.name || parsed.bodegaProductor?.name;
+      if (firstBodegaName) {
         setIsSearchingLogo(true);
-        const logo = await searchBodegaLogo(parsed.bodegaProductor.name);
+        const logo = await searchBodegaLogo(firstBodegaName);
         if (logo) {
           setImageUrl(logo);
         }
         setIsSearchingLogo(false);
       }
 
-      setPdfSuccess(`¡Archivo "${file.name}" analizado con IA con éxito! Detectados ${parsed.wines?.length || 0} vinos y sumiller ${parsed.sumiller || 'Ana García'}.`);
+      const totalWinesCount = (parsed.bodegas || []).reduce((acc: number, b: any) => acc + (b.wines?.length || 0), 0) || parsed.wines?.length || 0;
+      setPdfSuccess(`¡Archivo "${file.name}" analizado con IA con éxito! Detectadas ${parsed.bodegas?.length || 1} bodegas, ${totalWinesCount} vinos y sumiller ${parsed.sumiller || 'Ana García'}.`);
     } catch (err) {
       console.error('Error procesando PDF/Imagen:', err);
       alert('Error: ' + (err as Error).message);
@@ -194,25 +186,44 @@ export const ModoSencilloView: React.FC = () => {
     }
   };
 
-  const handleManualSearchLogo = async () => {
-    if (!newBodega) return;
-    setIsSearchingLogo(true);
-    try {
-      const logo = await searchBodegaLogo(newBodega);
-      if (logo) {
-        setImageUrl(logo);
-      }
-    } finally {
-      setIsSearchingLogo(false);
-    }
+  const handleOpenLogoModalForBodega = (bIdx: number) => {
+    setActiveBodegaLogoIdx(bIdx);
+    setIsLogoModalOpen(true);
   };
 
   const handleCreateSimple = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle || !newDate1) return;
 
-    const cleanedWines = winesList.filter(w => w.name.trim() || w.pairing?.trim());
-    const pairingMenu = cleanedWines.map(w => ({
+    // Clean bodegas data
+    const cleanedBodegas: BodegaItem[] = bodegas.map(b => ({
+      name: b.name.trim() || 'Bodega Invitada',
+      region: b.region.trim() || 'Castilla-La Mancha',
+      website: b.website?.trim() || undefined,
+      wines: b.wines
+        .filter(w => w.name.trim() || w.pairing?.trim() || w.grape?.trim())
+        .map(w => ({
+          type: w.type.trim() || 'Vino',
+          name: w.name.trim(),
+          grape: w.grape?.trim() || undefined,
+          pairing: w.pairing?.trim() || undefined,
+          notes: w.notes?.trim() || undefined
+        }))
+    }));
+
+    // Collect all wines for legacy compatibility
+    const allWines: WineDetail[] = [];
+    cleanedBodegas.forEach(b => {
+      b.wines.forEach(w => {
+        allWines.push({
+          ...w,
+          bodega: b.name,
+          region: b.region
+        });
+      });
+    });
+
+    const pairingMenu = allWines.map(w => ({
       dish: w.pairing || 'Degustación',
       pairing: `${w.type} ${w.name}`.trim(),
       notes: w.grape || undefined
@@ -226,8 +237,8 @@ export const ModoSencilloView: React.FC = () => {
       id: `${newType}-${Date.now()}-f1`,
       type: newType,
       title: newTitle,
-      subtitle: newSubtitle || (newBodega ? `Con ${newBodega}` : `Convocatoria de ${newType}`),
-      description: '', // Point 5: empty description by default
+      subtitle: newSubtitle || (cleanedBodegas[0]?.name ? `Con ${cleanedBodegas[0]?.name}` : `Convocatoria de ${newType}`),
+      description: newDescription || '',
       date: newDate1,
       time: newTime1,
       price: Number(newPrice),
@@ -240,16 +251,15 @@ export const ModoSencilloView: React.FC = () => {
       updatedAt: new Date().toISOString().split('T')[0],
       ...(newType === 'cata' ? {
         category: 'vino',
-        cataType: cataType,
-        tallerEspecial: tallerEspecial || undefined,
+        bodegas: cleanedBodegas,
         bodegaProductor: { 
-          name: newBodega, 
-          region: newBodegaRegion,
-          colaboradores: newColaboradores || undefined
+          name: cleanedBodegas[0]?.name || 'Bodega Invitada', 
+          region: cleanedBodegas[0]?.region || 'Castilla-La Mancha',
+          website: cleanedBodegas[0]?.website || undefined
         },
         sumiller: newSumiller || 'Ana García',
         aove: newAove || undefined,
-        wines: cleanedWines.length > 0 ? cleanedWines : undefined,
+        wines: allWines,
         pairingMenu: pairingMenu
       } : newType === 'curso' ? {
         theme: 'Taller Gastronómico',
@@ -511,76 +521,8 @@ export const ModoSencilloView: React.FC = () => {
                 />
               </div>
 
-              {/* Point 6: Sumiller */}
-              <div>
-                <label className="block text-xs font-semibold text-[#26201D] mb-1">Sumiller Guía</label>
-                <input
-                  type="text"
-                  value={newSumiller}
-                  onChange={(e) => setNewSumiller(e.target.value)}
-                  placeholder="Ana García"
-                  className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs"
-                />
-              </div>
-
-              {/* Bodega & Region */}
-              <div>
-                <label className="block text-xs font-semibold text-[#26201D] mb-1">Bodega Invitada</label>
-                <div className="flex gap-1.5">
-                  <input
-                    type="text"
-                    value={newBodega}
-                    onChange={(e) => setNewBodega(e.target.value)}
-                    placeholder="Bodega La Uveja Negra"
-                    className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-semibold text-[#521849]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setIsLogoModalOpen(true)}
-                    title="Buscar logotipo en internet y Google Imágenes"
-                    className="px-3 py-2 rounded-xl bg-gradient-to-r from-[#521849] to-[#C96043] text-white text-xs font-bold flex items-center gap-1.5 shadow-xs hover:opacity-90 transition-all cursor-pointer whitespace-nowrap"
-                  >
-                    <Globe className="w-3.5 h-3.5" />
-                    <span>Buscar Logo</span>
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#26201D] mb-1">Región / Procedencia</label>
-                <input
-                  type="text"
-                  value={newBodegaRegion}
-                  onChange={(e) => setNewBodegaRegion(e.target.value)}
-                  placeholder="Carrión de Calatrava - Ciudad Real"
-                  className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#26201D] mb-1">Especial Colaboración</label>
-                <input
-                  type="text"
-                  value={newColaboradores}
-                  onChange={(e) => setNewColaboradores(e.target.value)}
-                  placeholder="Eva Imedio y Venancio Castillo"
-                  className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#26201D] mb-1">AOVE / Aceite Maridaje</label>
-                <input
-                  type="text"
-                  value={newAove}
-                  onChange={(e) => setNewAove(e.target.value)}
-                  placeholder="Quinto Don Otilio - AOVE Picual"
-                  className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs"
-                />
-              </div>
-
               {/* Point 2: Sede oficial location */}
-              <div className="sm:col-span-2 lg:col-span-4">
+              <div className="sm:col-span-2">
                 <label className="block text-xs font-semibold text-[#26201D] mb-1 flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5 text-[#C96043]" />
                   Ubicación de la Sede Oficial
@@ -592,95 +534,54 @@ export const ModoSencilloView: React.FC = () => {
                   className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs"
                 />
               </div>
+
+              {/* Specific cata summary fields */}
+              {newType === 'cata' && (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#26201D] mb-1">Sumiller Guía</label>
+                    <input
+                      type="text"
+                      value={newSumiller}
+                      onChange={(e) => setNewSumiller(e.target.value)}
+                      placeholder="Ana García"
+                      className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[#26201D] mb-1">AOVE / Aceite de Bienvenida</label>
+                    <input
+                      type="text"
+                      value={newAove}
+                      onChange={(e) => setNewAove(e.target.value)}
+                      placeholder="Quinto Don Otilio - AOVE Picual"
+                      className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs"
+                    />
+                  </div>
+                </>
+              )}
+
+              <div className="sm:col-span-2 lg:col-span-4">
+                <label className="block text-xs font-semibold text-[#26201D] mb-1">Descripción / Texto Detallado</label>
+                <textarea
+                  rows={2}
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  placeholder="Texto descriptivo, talleres, presencia de bodegueros o notas..."
+                  className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs resize-none"
+                />
+              </div>
             </div>
 
-            {/* Point 7: Modular Wine and Pairing Cards */}
+            {/* Bodega & Wine Manager (1 to 4 Bodegas, each with 1 to 4 wines) */}
             {newType === 'cata' && (
-              <div className="p-4 sm:p-5 rounded-2xl bg-[#FBF9F5] border border-[#EDE4D7] space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Wine className="w-4 h-4 text-[#521849]" />
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-[#521849]">
-                      Vinos y Maridajes de la Cata ({winesList.length} vinos configurados)
-                    </h4>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={addWineRow}
-                    className="text-xs font-semibold text-[#521849] hover:text-[#3E1037] flex items-center gap-1 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Añadir Vino</span>
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {winesList.map((wine, idx) => (
-                    <div key={idx} className="p-3.5 rounded-xl bg-white border border-[#EDE4D7] space-y-2.5 shadow-2xs">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold text-[#521849] bg-[#521849]/10 px-2 py-0.5 rounded-md">
-                          Vino #{idx + 1}
-                        </span>
-                        {winesList.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeWineRow(idx)}
-                            className="text-[#9B3E26] hover:text-rose-700 p-1 cursor-pointer"
-                            title="Eliminar este vino"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2">
-                        <div>
-                          <label className="block text-[10px] text-[#574B45] mb-0.5">Tipo</label>
-                          <input
-                            type="text"
-                            value={wine.type}
-                            onChange={(e) => updateWineField(idx, 'type', e.target.value)}
-                            placeholder="Blanco, Tinto..."
-                            className="w-full px-2 py-1 rounded border border-[#EDE4D7] text-xs"
-                          />
-                        </div>
-                        <div className="col-span-2">
-                          <label className="block text-[10px] text-[#574B45] mb-0.5">Nombre del Vino</label>
-                          <input
-                            type="text"
-                            value={wine.name}
-                            onChange={(e) => updateWineField(idx, 'name', e.target.value)}
-                            placeholder="Ej. El Jalbegandero"
-                            className="w-full px-2 py-1 rounded border border-[#EDE4D7] text-xs font-semibold"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <div>
-                          <label className="block text-[10px] text-[#574B45] mb-0.5">Variedad / Uva</label>
-                          <input
-                            type="text"
-                            value={wine.grape || ''}
-                            onChange={(e) => updateWineField(idx, 'grape', e.target.value)}
-                            placeholder="Ej. 100% Airén"
-                            className="w-full px-2 py-1 rounded border border-[#EDE4D7] text-xs"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] text-[#574B45] mb-0.5 text-[#C96043] font-semibold">Maridaje Propuesto</label>
-                          <input
-                            type="text"
-                            value={wine.pairing || ''}
-                            onChange={(e) => updateWineField(idx, 'pairing', e.target.value)}
-                            placeholder="Ej. Arroz Meloso con Verduritas"
-                            className="w-full px-2 py-1 rounded border border-[#EDE4D7] text-xs"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              <div className="p-4 sm:p-5 rounded-2xl bg-[#FBF9F5] border border-[#EDE4D7]">
+                <BodegaManager
+                  bodegas={bodegas}
+                  onChange={setBodegas}
+                  onOpenLogoModal={handleOpenLogoModalForBodega}
+                />
               </div>
             )}
 
@@ -936,7 +837,7 @@ export const ModoSencilloView: React.FC = () => {
         <BodegaLogoSearchModal
           isOpen={isLogoModalOpen}
           onClose={() => setIsLogoModalOpen(false)}
-          bodegaName={newBodega || newTitle || ''}
+          bodegaName={bodegas[activeBodegaLogoIdx]?.name || newTitle || ''}
           currentImageUrl={imageUrl || ''}
           onSelectImage={(url) => setImageUrl(url)}
         />

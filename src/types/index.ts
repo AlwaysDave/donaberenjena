@@ -38,17 +38,27 @@ export interface PairingMenuItem {
 export interface WineDetail {
   type: string; // e.g. "Blanco", "Tinto", "Espumoso", "Vermut", "Pase I"
   name: string; // e.g. "El Jalbegandero", "Lustau Rojo", "Vermut 5 Tentaciones"
-  bodega?: string; // e.g. "Bodegas Lustau", "Casa Berger - Democratic Wines", "Bodegas S.A.T. Coloman"
-  region?: string; // e.g. "Jerez de la Frontera – Cadiz", "Pedro Muñoz – Ciudad Real"
-  denominacion?: string; // e.g. "D.O. Jerez-Xérès-Sherry", "D.O. Penedès"
-  grape?: string; // e.g. "Pedro Ximenez – Palomino", "100% Moscatel"
-  pairing?: string; // e.g. "Gilda y un Canape de Ahumados", "Tartar de Fuet..."
+  grape?: string; // e.g. "Pedro Ximénez – Palomino", "100% Moscatel"
+  pairing?: string; // e.g. "Gilda y un Canapé de Ahumados", "Tartar de Fuet..."
   notes?: string;
+  bodega?: string; // Optional legacy / helper
+  region?: string; // Optional legacy / helper
+  denominacion?: string;
+}
+
+export interface BodegaItem {
+  id?: string;
+  name: string;
+  website?: string;
+  region: string;
+  logoUrl?: string;
+  wines: WineDetail[];
 }
 
 export interface BodegaProductor {
   name: string;
   region: string;
+  website?: string;
   description?: string;
   enologo?: string;
   colaboradores?: string;
@@ -57,13 +67,14 @@ export interface BodegaProductor {
 export interface CataActivity extends BaseActivity {
   type: 'cata';
   category: CataCategory;
-  cataType?: 'bodega_unica' | 'varias_bodegas';
-  bodegaProductor: BodegaProductor;
-  tallerEspecial?: string; // e.g. "VAS A HACER TU PROPIO VERMUT" / "Elaboración de gildas"
-  pairingMenu: PairingMenuItem[];
-  wines?: WineDetail[];
+  bodegas?: BodegaItem[]; // 1 to 4 Bodegas, each with 1 to 4 wines
+  bodegaProductor?: BodegaProductor; // Legacy / Fallback for existing records
   sumiller?: string;
   aove?: string;
+  pairingMenu?: PairingMenuItem[];
+  wines?: WineDetail[]; // Legacy flat array if needed
+  cataType?: 'bodega_unica' | 'varias_bodegas';
+  tallerEspecial?: string;
   pastEventGallery?: string[];
   pastEventSummary?: string;
 }

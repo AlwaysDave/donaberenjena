@@ -1,6 +1,8 @@
 import "dotenv/config";
 import express from "express";
 import multer from "multer";
+import fs from "fs";
+import path from "path";
 import { GoogleGenAI, Type } from "@google/genai";
 
 const app = express();
@@ -36,6 +38,20 @@ const getAi = () => {
   return ai;
 };
 
+// Function to read the personality prompt markdown file
+function getPromptPersonality(): string {
+  try {
+    const promptPath = path.join(process.cwd(), "api", "prompts", "analista_catas.md");
+    if (fs.existsSync(promptPath)) {
+      return fs.readFileSync(promptPath, "utf-8");
+    }
+  } catch (err) {
+    console.warn("[PROMPT_LOAD_WARN] Could not read /api/prompts/analista_catas.md, using default personality", err);
+  }
+
+  return `Eres un sumiller profesional de alta gastronomía, experto en marketing enológico y analista especializado en carteles y documentos promocionales de catas de vino y vermut para la Asociación Cultural Gastronómica "Doña Berenjena". Analiza el documento y extrae todos los datos estructurados en formato JSON.`;
+}
+
 // Health check endpoint
 app.get("/api/health/gemini", (req, res) => {
   const hasKey = Boolean(process.env.GEMINI_API_KEY);
@@ -69,79 +85,65 @@ app.post("/api/parse-cata", upload.single("file"), async (req, res) => {
     const mimeType = req.file.mimetype;
     const base64Data = fileBuffer.toString("base64");
 
-    // Exact schema matching CataActivity
+    // Clean schema: INFO DE LA CATA + ARRAY DE BODEGAS (con 1 a 4 vinos cada una)
     const responseSchema = {
       type: Type.OBJECT,
       properties: {
         id: { type: Type.STRING },
         type: { type: Type.STRING, description: "Must be 'cata'" },
-        category: { type: Type.STRING, description: "Must be 'cata'" },
-        title: { type: Type.STRING },
-        date: { type: Type.STRING },
-        time: { type: Type.STRING },
-        location: { type: Type.STRING },
-        price: { type: Type.NUMBER },
-        nonMemberPrice: { type: Type.NUMBER },
-        spots: { type: Type.NUMBER },
-        imageUrl: { type: Type.STRING, description: "Empty string" },
-        status: { type: Type.STRING, description: "Must be 'open'" },
-        description: { type: Type.STRING, description: "Empty string" },
-        rawText: { type: Type.STRING, description: "Empty string" },
-        wines: {
+        category: { type: Type.STRING, description: "Must be 'vino', 'vermut', 'cerveza', 'aceite', or 'quesos'" },
+        title: { type: Type.STRING, description: "Main title of the tasting event, placed immediately after the location header" },
+        subtitle: { type: Type.STRING, description: "Explicit subtitle under title or generated marketing subtitle" },
+        description: { type: Type.STRING, description: "Enological marketing description. If there is an in-situ workshop (e.g. make your own vermouth or gildas) or special guest winemakers/restaurateurs, include it described here." },
+        date: { type: Type.STRING, description: "First date ISO YYYY-MM-DD" },
+        date2: { type: Type.STRING, description: "Second date ISO YYYY-MM-DD if event has 2 dates" },
+        time: { type: Type.STRING, description: "Start time for first shift e.g. 21:00 or 13:00" },
+        time2: { type: Type.STRING, description: "Start time for second shift e.g. 21:00 or 13:00" },
+        location: { type: Type.STRING, description: "Location, default: Polígono Industrial “El Salobral “- Centro de Formación – Bolaños de Calatrava" },
+        price: { type: Type.NUMBER, description: "Standard price in euros (default 25)" },
+        spots: { type: Type.NUMBER, description: "Total spots (default 14)" },
+        status: { type: Type.STRING, description: "proxima" },
+        sumiller: { type: Type.STRING, description: "Sommelier guide, e.g. Ana García" },
+        aove: { type: Type.STRING, description: "Welcome EVOO (AOVE), e.g. Quinto Don Otilio (Bolaños de Calatrava – Ciudad Real) - AOVE Picual" },
+        bodegas: {
           type: Type.ARRAY,
+          description: "List of 1 to 4 participating wineries",
           items: {
             type: Type.OBJECT,
             properties: {
-              type: { type: Type.STRING, description: "Blanco, Tinto, Vermut, Pase I, etc." },
-              name: { type: Type.STRING },
-              bodega: { type: Type.STRING },
-              region: { type: Type.STRING },
-              denominacion: { type: Type.STRING },
-              grape: { type: Type.STRING },
-              pairing: { type: Type.STRING },
-              notes: { type: Type.STRING },
+              name: { type: Type.STRING, description: "Name of the winery / producer" },
+              website: { type: Type.STRING, description: "Official website URL of the winery if known" },
+              region: { type: Type.STRING, description: "Location / Region / D.O." },
+              wines: {
+                type: Type.ARRAY,
+                description: "1 to 4 wines/vermouths for this winery",
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    type: { type: Type.STRING, description: "Type / Pass: Blanco, Rosado, Tinto, Espumoso, Vino de Licor, Vermut, Pase I, Pase II..." },
+                    name: { type: Type.STRING, description: "Commercial name of the wine or vermouth" },
+                    grape: { type: Type.STRING, description: "Grape variety e.g. 100 % Airén, Pedro Ximénez – Palomino" },
+                    pairing: { type: Type.STRING, description: "Paired dish or bite" },
+                    notes: { type: Type.STRING, description: "Additional tasting notes" },
+                  },
+                  required: ["type", "name"],
+                },
+              },
             },
-          },
-        },
-        bodegaProductor: {
-          type: Type.OBJECT,
-          properties: {
-            name: { type: Type.STRING },
-            region: { type: Type.STRING },
-            colaboradores: { type: Type.STRING },
-          },
-        },
-        sumiller: { type: Type.STRING },
-        aove: { type: Type.STRING },
-        cataType: { type: Type.STRING, description: "Must be 'bodega_unica' or 'varias_bodegas'" },
-        tallerEspecial: { type: Type.STRING },
-        pairingMenu: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              dish: { type: Type.STRING },
-              pairing: { type: Type.STRING },
-              notes: { type: Type.STRING },
-            },
+            required: ["name", "region", "wines"],
           },
         },
       },
-      required: ["type", "category", "title", "date", "time", "location", "price", "spots", "status", "cataType"],
+      required: ["type", "category", "title", "date", "time", "location", "price", "spots", "status", "bodegas"],
     };
 
-    const prompt = `You are an expert sommelier and data extraction assistant. Analyze the provided promotional poster or document for a wine/vermouth tasting (cata).
-Extract the details into the provided JSON schema. Pay special attention to whether it's a single winery (bodega_unica) or multiple wineries/passes (varias_bodegas).
-If it's 'varias_bodegas', ensure each wine in the 'wines' array captures its specific 'bodega', 'region', 'grape', and 'pairing'.
-If there's a special workshop or hands-on activity (like "Vas a hacer tu propio vermut"), put it in 'tallerEspecial'.
-If there's a welcome EVOO (AOVE), put it in 'aove'.
-If the year is not explicitly present, assume it is 2026.`;
+    const personalityPrompt = getPromptPersonality();
 
     const response = await aiClient.models.generateContent({
       model: "gemini-3.6-flash",
       contents: [
         {
-          text: prompt,
+          text: personalityPrompt,
         },
         {
           inlineData: {
@@ -158,6 +160,28 @@ If the year is not explicitly present, assume it is 2026.`;
 
     const jsonStr = response.text?.trim() || "{}";
     const parsedData = JSON.parse(jsonStr);
+
+    // Apply defaults & safety adjustments
+    if (!parsedData.price) parsedData.price = 25.0;
+    if (!parsedData.spots) parsedData.spots = 14;
+    if (!parsedData.status) parsedData.status = "proxima";
+    if (!parsedData.location) parsedData.location = "Polígono Industrial “El Salobral “- Centro de Formación – Bolaños de Calatrava";
+    if (!parsedData.sumiller) parsedData.sumiller = "Ana García";
+
+    // Ensure bodegas array exists and has at least one default if empty
+    if (!parsedData.bodegas || !Array.isArray(parsedData.bodegas) || parsedData.bodegas.length === 0) {
+      parsedData.bodegas = [
+        {
+          name: "Bodega Invitada",
+          region: "Castilla-La Mancha",
+          website: "",
+          wines: [
+            { type: "Blanco", name: "", grape: "", pairing: "" },
+            { type: "Tinto", name: "", grape: "", pairing: "" }
+          ]
+        }
+      ];
+    }
 
     return res.status(200).json(parsedData);
   } catch (error: any) {
