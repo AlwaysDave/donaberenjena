@@ -306,12 +306,29 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
                     <input
                       id="input-reserva-socio"
                       type="text"
-                      value={formData.membershipNumber}
+                      value={formData.membershipNumber || ''}
                       onChange={(e) => setFormData({ ...formData, membershipNumber: e.target.value })}
                       placeholder="Ej. SOC-142"
                       className="w-full px-3.5 py-2.5 rounded-lg border border-[#EDE4D7] bg-[#FCFAF7] text-sm focus:outline-none focus:border-[#521849] focus:bg-white"
                     />
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#26201D] mb-1">
+                    Método de abono preferido
+                  </label>
+                  <select
+                    id="select-reserva-pago"
+                    value={formData.paymentMethod || 'bizum'}
+                    onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value as any })}
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-[#EDE4D7] bg-[#FCFAF7] text-sm focus:outline-none focus:border-[#521849] focus:bg-white"
+                  >
+                    <option value="bizum">Bizum (Recomendado)</option>
+                    <option value="transferencia">Transferencia Bancaria</option>
+                    <option value="efectivo">Pago en Sede / Efectivo</option>
+                    <option value="tarjeta">Tarjeta en Sede</option>
+                  </select>
                 </div>
 
                 <div>

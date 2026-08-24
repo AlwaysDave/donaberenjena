@@ -369,15 +369,15 @@ export const ActivityDetailPage: React.FC = () => {
                   <span>Chef Formador / Ponente</span>
                 </div>
                 <h3 className="text-lg font-bold font-serif text-[#26201D]">
-                  {curso.chef.name}
+                  {curso.chef?.name}
                 </h3>
-                {curso.chef.restaurant && (
+                {curso.chef?.restaurant && (
                   <p className="text-xs text-[#574B45]">
-                    <strong className="text-[#26201D]">Restaurante / Trayectoria:</strong> {curso.chef.restaurant}
+                    <strong className="text-[#26201D]">Restaurante / Trayectoria:</strong> {curso.chef?.restaurant}
                   </p>
                 )}
                 <p className="text-xs sm:text-sm text-[#3D3430] leading-relaxed">
-                  {curso.chef.bio}
+                  {curso.chef?.bio}
                 </p>
               </div>
 

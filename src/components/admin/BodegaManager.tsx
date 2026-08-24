@@ -1,17 +1,19 @@
 import React from 'react';
-import { Building, Globe, Plus, Trash2, Wine } from 'lucide-react';
+import { Building, Globe, Image, Plus, Trash2, Wine, Search } from 'lucide-react';
 import { BodegaItem, WineDetail } from '../../types';
 
 interface BodegaManagerProps {
   bodegas: BodegaItem[];
   onChange: (bodegas: BodegaItem[]) => void;
   onOpenLogoModal?: (bodegaIndex: number) => void;
+  onOpenWebsiteModal?: (bodegaIndex: number) => void;
 }
 
 export const BodegaManager: React.FC<BodegaManagerProps> = ({
   bodegas,
   onChange,
-  onOpenLogoModal
+  onOpenLogoModal,
+  onOpenWebsiteModal
 }) => {
   const handleAddBodega = () => {
     if (bodegas.length >= 4) return;
@@ -140,9 +142,9 @@ export const BodegaManager: React.FC<BodegaManagerProps> = ({
                       type="button"
                       onClick={() => onOpenLogoModal(bIdx)}
                       title="Buscar logotipo en Google Imágenes"
-                      className="px-2.5 py-2 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-bold flex items-center justify-center shrink-0 cursor-pointer"
+                      className="px-2.5 py-2 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-bold flex items-center justify-center shrink-0 cursor-pointer transition-colors"
                     >
-                      <Globe className="w-3.5 h-3.5" />
+                      <Image className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
@@ -165,13 +167,25 @@ export const BodegaManager: React.FC<BodegaManagerProps> = ({
                 <label className="block text-xs font-semibold text-[#26201D] mb-1">
                   Página Web Oficial (Opcional)
                 </label>
-                <input
-                  type="url"
-                  value={bodega.website || ''}
-                  onChange={(e) => handleUpdateBodegaField(bIdx, 'website', e.target.value)}
-                  placeholder="https://ejemplo.es"
-                  className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs focus:bg-white"
-                />
+                <div className="flex gap-1.5">
+                  <input
+                    type="url"
+                    value={bodega.website || ''}
+                    onChange={(e) => handleUpdateBodegaField(bIdx, 'website', e.target.value)}
+                    placeholder="https://ejemplo.es"
+                    className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs focus:bg-white"
+                  />
+                  {onOpenWebsiteModal && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenWebsiteModal(bIdx)}
+                      title="Buscar web oficial de la bodega en Google"
+                      className="px-2.5 py-2 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-bold flex items-center justify-center shrink-0 cursor-pointer transition-colors"
+                    >
+                      <Globe className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 

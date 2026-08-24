@@ -4,6 +4,7 @@ import { Activity, ActivityType, CataActivity, WineDetail, BodegaItem } from '..
 import { extractTextFromPdf, parseCataText, DEFAULT_OFFICIAL_LOCATION, getDefaultStartTime } from '../../services/pdfCataParser';
 import { searchBodegaLogo } from '../../services/bodegaLogoService';
 import { BodegaLogoSearchModal } from '../../components/admin/BodegaLogoSearchModal';
+import { BodegaWebsiteSearchModal } from '../../components/admin/BodegaWebsiteSearchModal';
 import { BodegaManager } from '../../components/admin/BodegaManager';
 import { 
   Plus, 
@@ -60,9 +61,11 @@ export const ModoSencilloView: React.FC = () => {
   const [newSumiller, setNewSumiller] = useState('Ana García');
   const [newAove, setNewAove] = useState('');
   const [activeBodegaLogoIdx, setActiveBodegaLogoIdx] = useState(0);
+  const [activeBodegaWebIdx, setActiveBodegaWebIdx] = useState(0);
   const [imageUrl, setImageUrl] = useState('https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=1200&q=80');
   const [isSearchingLogo, setIsSearchingLogo] = useState(false);
   const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
+  const [isWebsiteModalOpen, setIsWebsiteModalOpen] = useState(false);
 
   // PDF state
   const [isParsingPdf, setIsParsingPdf] = useState(false);
@@ -131,26 +134,33 @@ export const ModoSencilloView: React.FC = () => {
       setNewDescription(parsed.description || '');
       
       setNewDate1(parsed.date || '');
-      setNewTime1(parsed.time || '');
+      // Format time strictly to HH:MM
+      const formatTime = (t?: string) => {
+        if (!t) return '';
+        const m = t.match(/(\d{1,2}):(\d{2})/);
+        return m ? `${m[1].padStart(2, '0')}:${m[2]}` : '';
+      };
+      setNewTime1(formatTime(parsed.time) || (parsed.date ? getDefaultStartTime(parsed.date) : '21:00'));
 
       if (parsed.date2) {
         setNewDate2(parsed.date2);
-        setNewTime2(parsed.time2 || parsed.time || getDefaultStartTime(parsed.date2));
+        setNewTime2(formatTime(parsed.time2) || (parsed.date2 ? getDefaultStartTime(parsed.date2) : '13:00'));
       } else {
         setNewDate2('');
         setNewTime2('');
       }
 
-      setNewPrice(parsed.price || 25.0);
+      setNewPrice(Number(Number(parsed.price || 25.0).toFixed(2)));
       setNewSpots(parsed.spots || 14);
       setNewLocation(parsed.location || DEFAULT_OFFICIAL_LOCATION);
       
       if (parsed.bodegas && Array.isArray(parsed.bodegas) && parsed.bodegas.length > 0) {
         setBodegas(parsed.bodegas);
       } else {
+        const fallbackName = parsed.bodegaProductor?.name || 'Bodega Invitada';
         setBodegas([
           {
-            name: parsed.bodegaProductor?.name || 'Bodega Invitada',
+            name: fallbackName,
             region: parsed.bodegaProductor?.region || 'Castilla-La Mancha',
             website: '',
             wines: parsed.wines || [
@@ -189,6 +199,11 @@ export const ModoSencilloView: React.FC = () => {
   const handleOpenLogoModalForBodega = (bIdx: number) => {
     setActiveBodegaLogoIdx(bIdx);
     setIsLogoModalOpen(true);
+  };
+
+  const handleOpenWebsiteModalForBodega = (bIdx: number) => {
+    setActiveBodegaWebIdx(bIdx);
+    setIsWebsiteModalOpen(true);
   };
 
   const handleCreateSimple = async (e: React.FormEvent) => {
@@ -439,14 +454,13 @@ export const ModoSencilloView: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-[11px] text-[#574B45] mb-1">Fecha (AAAA-MM-DD)</label>
+                    <label className="block text-[11px] text-[#574B45] mb-1">Fecha</label>
                     <input
-                      type="text"
+                      type="date"
                       required
                       value={newDate1}
                       onChange={(e) => handleDate1Change(e.target.value)}
-                      placeholder="2026-04-10"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
                     />
                   </div>
                   <div>
@@ -455,11 +469,11 @@ export const ModoSencilloView: React.FC = () => {
                       Hora Inicio
                     </label>
                     <input
-                      type="text"
+                      type="time"
+                      required
                       value={newTime1}
                       onChange={(e) => setNewTime1(e.target.value)}
-                      placeholder="21:00 (Viernes) / 13:00 (Domingo)"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
                     />
                   </div>
                 </div>
@@ -474,13 +488,12 @@ export const ModoSencilloView: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-[11px] text-[#574B45] mb-1">Fecha (AAAA-MM-DD)</label>
+                    <label className="block text-[11px] text-[#574B45] mb-1">Fecha</label>
                     <input
-                      type="text"
+                      type="date"
                       value={newDate2}
                       onChange={(e) => handleDate2Change(e.target.value)}
-                      placeholder="2026-04-17 (Opcional)"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
                     />
                   </div>
                   <div>
@@ -489,11 +502,10 @@ export const ModoSencilloView: React.FC = () => {
                       Hora Inicio
                     </label>
                     <input
-                      type="text"
+                      type="time"
                       value={newTime2}
                       onChange={(e) => setNewTime2(e.target.value)}
-                      placeholder="13:00"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
                     />
                   </div>
                 </div>
@@ -502,13 +514,21 @@ export const ModoSencilloView: React.FC = () => {
               {/* Point 3: Default 25€ & 14 spots */}
               <div>
                 <label className="block text-xs font-semibold text-[#26201D] mb-1">Precio por Persona (€)</label>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={newPrice}
-                  onChange={(e) => setNewPrice(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-bold text-[#521849]"
-                />
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={isNaN(newPrice) ? '' : newPrice}
+                    onChange={(e) => setNewPrice(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-bold text-[#521849]"
+                  />
+                  <span className="absolute right-3 top-2 text-xs font-bold text-[#521849]">€</span>
+                </div>
+                <span className="text-[10px] text-[#574B45] mt-0.5 block">
+                  Formato: {newPrice.toFixed(2)} €
+                </span>
               </div>
 
               <div>
@@ -581,6 +601,7 @@ export const ModoSencilloView: React.FC = () => {
                   bodegas={bodegas}
                   onChange={setBodegas}
                   onOpenLogoModal={handleOpenLogoModalForBodega}
+                  onOpenWebsiteModal={handleOpenWebsiteModalForBodega}
                 />
               </div>
             )}
@@ -840,6 +861,26 @@ export const ModoSencilloView: React.FC = () => {
           bodegaName={bodegas[activeBodegaLogoIdx]?.name || newTitle || ''}
           currentImageUrl={imageUrl || ''}
           onSelectImage={(url) => setImageUrl(url)}
+        />
+      )}
+
+      {/* Bodega Official Website Search Modal */}
+      {isWebsiteModalOpen && (
+        <BodegaWebsiteSearchModal
+          isOpen={isWebsiteModalOpen}
+          onClose={() => setIsWebsiteModalOpen(false)}
+          bodegaName={bodegas[activeBodegaWebIdx]?.name || ''}
+          currentWebsite={bodegas[activeBodegaWebIdx]?.website || ''}
+          onSelectWebsite={(url) => {
+            const updated = [...bodegas];
+            if (updated[activeBodegaWebIdx]) {
+              updated[activeBodegaWebIdx] = {
+                ...updated[activeBodegaWebIdx],
+                website: url
+              };
+              setBodegas(updated);
+            }
+          }}
         />
       )}
     </div>

@@ -50,14 +50,17 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity }) => {
     switch (activity.type) {
       case 'cata': {
         const cata = activity as CataActivity;
+        const bodegaName = cata.bodegas?.[0]?.name || cata.bodegaProductor?.name;
+        if (!bodegaName) return null;
         return (
           <p className="text-xs text-[#574B45] line-clamp-1">
-            <strong className="text-[#3D3430]">Bodega / Productor:</strong> {cata.bodegaProductor.name}
+            <strong className="text-[#3D3430]">Bodega / Productor:</strong> {bodegaName}
           </p>
         );
       }
       case 'curso': {
         const curso = activity as CursoActivity;
+        if (!curso.chef?.name) return null;
         return (
           <p className="text-xs text-[#574B45] line-clamp-1">
             <strong className="text-[#3D3430]">Chef docente:</strong> {curso.chef.name} {curso.chef.restaurant && `(${curso.chef.restaurant})`}

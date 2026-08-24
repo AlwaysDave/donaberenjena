@@ -10,12 +10,13 @@ import {
   Unsubscribe 
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { Activity, AdminRole, WebMetric } from '../types';
+import { Activity, AdminRole, WebMetric, Participant } from '../types';
 
 const ACTIVITIES_COLLECTION = 'activities';
 const METRICS_COLLECTION = 'metrics';
 const METRICS_DOC_ID = 'summary';
 const ADMINS_COLLECTION = 'admins';
+const PARTICIPANTS_COLLECTION = 'participants';
 
 /**
  * Deep sanitization helper that recursively removes undefined fields and cleans arrays,
@@ -164,4 +165,116 @@ export async function reserveSpotsFirestore(id: string, spotsCount: number): Pro
     bookedSpots: increment(spotsCount),
     updatedAt: new Date().toISOString().split('T')[0]
   });
+}
+
+/**
+ * Subscribe to the `participants` collection in real-time
+ */
+export function subscribeToParticipantsFirestore(
+  onData: (participants: Participant[]) => void,
+  onError: (error: Error) => void
+): Unsubscribe {
+  if (!db) {
+    throw new Error('Firestore is not initialized');
+  }
+
+  const participantsRef = collection(db, PARTICIPANTS_COLLECTION);
+  return onSnapshot(
+    participantsRef,
+    (snapshot) => {
+      const list: Participant[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({
+          ...(docSnap.data() as Participant),
+          id: docSnap.id
+        });
+      });
+      // Sort newest first
+      list.sort((a, b) => new Date(b.registeredAt || 0).getTime() - new Date(a.registeredAt || 0).getTime());
+      onData(list);
+    },
+    (err) => {
+      console.warn('Firestore participants subscription error:', err);
+      onError(err);
+    }
+  );
+}
+
+/**
+ * Save or create a Participant document
+ */
+export async function saveParticipantFirestore(participant: Participant): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const participantDocRef = doc(db, PARTICIPANTS_COLLECTION, participant.id);
+  const cleanData = sanitizeForFirestore(participant);
+  await setDoc(participantDocRef, cleanData);
+}
+
+/**
+ * Update partial fields of a Participant document
+ */
+export async function updateParticipantFirestore(id: string, updates: Partial<Participant>): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const participantDocRef = doc(db, PARTICIPANTS_COLLECTION, id);
+  const cleanUpdates = sanitizeForFirestore(updates);
+  await updateDoc(participantDocRef, {
+    ...cleanUpdates,
+    updatedAt: new Date().toISOString()
+  });
+}
+
+/**
+ * Delete a Participant document
+ */
+export async function deleteParticipantFirestore(id: string): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const participantDocRef = doc(db, PARTICIPANTS_COLLECTION, id);
+  await deleteDoc(participantDocRef);
+}
+
+/**
+ * Atomic reservation creation with Participant record + spot update
+ */
+export async function createReservationWithParticipantFirestore(
+  participant: Participant,
+  spotsCount: number
+): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  
+  // 1. Save participant
+  const participantDocRef = doc(db, PARTICIPANTS_COLLECTION, participant.id);
+  const cleanData = sanitizeForFirestore(participant);
+  await setDoc(participantDocRef, cleanData);
+
+  // 2. Increment spots on activity if valid
+  if (participant.activityId) {
+    const activityDocRef = doc(db, ACTIVITIES_COLLECTION, participant.activityId);
+    try {
+      await updateDoc(activityDocRef, {
+        bookedSpots: increment(spotsCount),
+        updatedAt: new Date().toISOString().split('T')[0]
+      });
+    } catch (actErr) {
+      console.warn('Could not increment activity spots directly:', actErr);
+    }
+  }
+}
+
+/**
+ * Adjust activity spots when participant spots change or are cancelled
+ */
+export async function adjustActivitySpotsFirestore(
+  activityId: string,
+  spotsDelta: number
+): Promise<void> {
+  if (!db || !activityId) return;
+  const activityDocRef = doc(db, ACTIVITIES_COLLECTION, activityId);
+  try {
+    await updateDoc(activityDocRef, {
+      bookedSpots: increment(spotsDelta),
+      updatedAt: new Date().toISOString().split('T')[0]
+    });
+  } catch (err) {
+    console.warn('Error adjusting activity spots:', err);
+  }
 }

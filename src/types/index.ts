@@ -143,6 +143,33 @@ export interface ReservationFormData {
   email: string;
   phone: string;
   spots: number;
+  turn?: string;
   notes?: string;
   membershipNumber?: string;
+  paymentMethod?: PaymentMethod;
+}
+
+export type ParticipantStatus = 'confirmada' | 'pendiente_pago' | 'cancelada' | 'asistio' | 'no_asistio';
+
+export type PaymentMethod = 'bizum' | 'transferencia' | 'efectivo' | 'tarjeta' | 'pendiente' | 'otro';
+
+export interface Participant {
+  id: string;
+  activityId: string;
+  activityTitle: string;
+  activityDate: string;
+  activityType: ActivityType;
+  fullName: string;
+  email: string;
+  phone: string;
+  spots: number;
+  turn?: string;
+  membershipNumber?: string;
+  notes?: string;
+  status: ParticipantStatus;
+  totalAmount: number;
+  paidAmount?: number;
+  paymentMethod: PaymentMethod;
+  registeredAt: string;
+  updatedAt?: string;
 }

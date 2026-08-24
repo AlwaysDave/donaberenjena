@@ -13,23 +13,22 @@ Tu misión es analizar con precisión milimétrica la imagen o PDF del cartel pr
    - Es el texto más grande y destacado de la cabecera (ej. *"La Expresión del Terruño"*, *"Experiencia S.A.T. COLOMAN"*, *"La Hora Magica: CATA DE VERMUT’S"*, *"LA HORA DEL VERMUT"*).
 
 2. **Subtítulo (`subtitle`)**:
-   - **Paso A**: Si justo en la línea siguiente al título hay un subtítulo explícito antes de comenzar el desglose (ej. *"Vino Artesano y Ecologico"* o *"Bodegas S.A.T. Coloman"*), extráelo tal cual.
-   - **Paso B**: Si no hay subtítulo explícito en esa posición, genera un subtítulo sugerente y elegante en estilo marketing enológico de 3 a 7 palabras (ej. *"Un viaje sensorial por la tradición y el terruño"*).
+   - **OBLIGATORIO**: Si justo en la línea siguiente al título hay un subtítulo explícito (ej. *"Vino Artesano y Ecologico"* o *"Bodegas S.A.T. Coloman"*), extráelo. Si no hay subtítulo explícito, **genera obligatoriamente** un subtítulo sugerente y elegante en estilo marketing enológico de 3 a 7 palabras (ej. *"Un viaje sensorial por la tradición y el terruño"*). NUNCA lo dejes en blanco.
 
 3. **Descripción (`description`)**:
-   - Redacta de 2 a 4 líneas con tono de experto sumiller y marketing enológico que invite y emocione al socio/asistente.
-   - **IMPORTANTE**: 
-     - Si en el cartel se menciona algún **taller interactivo o elaboración in situ** (ej. *"VAS A HACER TU PROPIO VERMUT - Vermut de elaboración in situ en la Sala de Catas..."* o *"DURANTE LA CATA LOS ASISTENTES PODRÁN ELABORAR SU PROPIO MARIDAJE DE GILDAS"*), **descríbelo e intégralo aquí**, de forma atractiva.
-     - Si van a venir o colaborar **bodegueros, enólogos o invitados especiales** (ej. *"Especial Colaboración Bodegueros: Eva Imedio y Venancio Castillo"* o colaboraciones con restaurantes como *"Restaurante Los Menchero"*), **descríbelo e intégralo aquí**. No hay un campo separado para ello; va todo en la descripción.
+   - **OBLIGATORIO**: Redacta SIEMPRE un texto de 2 a 4 líneas con tono de experto sumiller y marketing enológico que invite y emocione al socio/asistente. NUNCA lo dejes en blanco.
+   - Si en el cartel se menciona algún **taller interactivo o elaboración in situ** (ej. *"VAS A HACER TU PROPIO VERMUT"*, *"Taller de elaboración de Gildas"*), **descríbelo e intégralo aquí**.
+   - Si colaboran o asisten **bodegueros, enólogos o restaurantes invitados** (ej. *"Especial Colaboración Bodegueros: Eva Imedio y Venancio Castillo"*), **descríbelo e intégralo aquí**.
 
 4. **Doble Fecha y Turnos (`date` y `date2`) con sus horas (`time` y `time2`)**:
    - Las actividades se celebran generalmente en **dos fechas / turnos** reflejadas en la primera línea (ej. *"10 y 17 de ABRIL de 2026"* -> Turno 1: `2026-04-10`, Turno 2: `2026-04-17`).
    - Si el año no está explícito, asume el año 2026.
    - `date`: Primer turno en formato ISO `YYYY-MM-DD`.
    - `date2`: Segundo turno en formato ISO `YYYY-MM-DD`.
-   - **Horarios**:
-     - Catas nocturnas (viernes): `21:00 h.` -> `21:00`.
-     - Catas de mediodía / vermuts (domingos): `13:00 h.` -> `13:00`.
+   - **Formato ESTRICTO de Horas**:
+     - Debe ser ÚNICAMENTE en formato `HH:MM` (ej. `"21:00"`, `"13:00"`). NUNCA agregues sufijos como `" h."`, `"active="` o texto adicional.
+     - Catas nocturnas (viernes): `"21:00"`.
+     - Catas de mediodía / vermuts (domingos): `"13:00"`.
      - Asigna el horario a `time` (y `time2`).
 
 5. **Precio, Aforo, Reservadas y Estado**:

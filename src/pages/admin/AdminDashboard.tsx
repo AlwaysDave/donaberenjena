@@ -8,7 +8,7 @@ import { Shield, Layers, Sparkles, LogOut, ExternalLink, AlertTriangle, Database
 
 export const AdminDashboard: React.FC = () => {
   const { user, isAuthenticated, switchRole, logout } = useAuth();
-  const { isConnected, connectionError } = useData();
+  const { isConnected, connectionError, useMockData, toggleMockData } = useData();
   const navigate = useNavigate();
   const [isGeminiConnected, setIsGeminiConnected] = useState<boolean | null>(null);
   const appVersion = "v1.2.0";
@@ -80,6 +80,27 @@ export const AdminDashboard: React.FC = () => {
 
           {/* Mode Switcher and Controls */}
           <div className="flex flex-wrap items-center gap-3">
+            {currentRole === 'advanced' && (
+              <button
+                type="button"
+                onClick={toggleMockData}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                  useMockData
+                    ? 'bg-amber-400 text-amber-950 border-amber-500 shadow-[0_0_10px_rgba(251,191,36,0.3)]'
+                    : 'bg-[#191412] text-[#DFD3C2] border-[#3D3430] hover:text-white'
+                }`}
+                title="Cargar datos de prueba ficticios para demostración"
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span>Datos Mockup</span>
+                <span className={`text-[9px] px-1.5 py-0.5 rounded-sm uppercase tracking-wider ${
+                  useMockData ? 'bg-amber-950 text-amber-400' : 'bg-[#3D3430] text-[#DFD3C2]'
+                }`}>
+                  {useMockData ? 'ON' : 'OFF'}
+                </span>
+              </button>
+            )}
+
             {/* Any logged in admin can switch freely between simple and advanced views */}
             <div className="inline-flex p-1 rounded-xl bg-[#191412] border border-[#3D3430]">
               <button

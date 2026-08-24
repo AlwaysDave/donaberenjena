@@ -1,4 +1,4 @@
-import { Activity, CataActivity, CursoActivity, ViajeActivity, WebMetric } from '../types';
+import { Activity, CataActivity, CursoActivity, ViajeActivity, WebMetric, Participant } from '../types';
 
 export const INITIAL_CATAS: CataActivity[] = [
   {
@@ -462,14 +462,11 @@ export const INITIAL_VIAJES: ViajeActivity[] = [
 ];
 
 export const INITIAL_WEB_METRICS: WebMetric = {
-  pageViewsThisMonth: 3840,
-  uniqueVisitorsThisMonth: 1290,
-  activeReservationsCount: 48,
-  occupancyRateAverage: 78,
-  topVisitedActivities: [
-    { id: 'cata-ribera-atauta', title: 'Cata Magistral: Vinos de Paraje de Ribera del Duero', type: 'cata', views: 820 },
-    { id: 'viaje-rioja-alavesa', title: 'Viaje Enogastronómico a la Rioja Alavesa', type: 'viaje', views: 640 },
-    { id: 'curso-arroces-levantinos', title: 'Curso Magistral de Arroces Tradicionales', type: 'curso', views: 510 },
-    { id: 'cata-vermuts-artesanos', title: 'Aperitivo Clandestino: Vermuts y Salazones', type: 'cata', views: 430 }
-  ]
+  pageViewsThisMonth: 0,
+  uniqueVisitorsThisMonth: 0,
+  activeReservationsCount: 0,
+  occupancyRateAverage: 0,
+  topVisitedActivities: []
 };
+
+export const INITIAL_PARTICIPANTS: Participant[] = [];

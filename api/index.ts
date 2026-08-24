@@ -161,8 +161,37 @@ app.post("/api/parse-cata", upload.single("file"), async (req, res) => {
     const jsonStr = response.text?.trim() || "{}";
     const parsedData = JSON.parse(jsonStr);
 
+    // Clean and validate time formats (strictly HH:MM)
+    const cleanTime = (t: string | undefined): string => {
+      if (!t) return "";
+      const match = t.match(/(\d{1,2}):(\d{2})/);
+      if (match) {
+        return `${match[1].padStart(2, '0')}:${match[2]}`;
+      }
+      return "";
+    };
+
+    parsedData.time = cleanTime(parsedData.time) || "21:00";
+    if (parsedData.time2) {
+      parsedData.time2 = cleanTime(parsedData.time2) || "13:00";
+    }
+
+    // Ensure subtitle and description are never empty
+    if (!parsedData.subtitle || parsedData.subtitle.trim().length === 0) {
+      parsedData.subtitle = "Un viaje sensorial por la tradición y el terruño";
+    }
+
+    if (!parsedData.description || parsedData.description.trim().length === 0) {
+      const bodegaNames = (parsedData.bodegas || [])
+        .map((b: any) => b.name)
+        .filter(Boolean)
+        .join(", ");
+      parsedData.description = `Disfruta de una velada enogastronómica única en nuestra Sala de Catas con la selección especial de ${bodegaNames || "nuestras bodegas invitadas"}. Guiados por nuestra sumiller ${parsedData.sumiller || "Ana García"}, exploraremos una cuidada armonización de vinos y maridajes artesanos.`;
+    }
+
     // Apply defaults & safety adjustments
-    if (!parsedData.price) parsedData.price = 25.0;
+    if (!parsedData.price || isNaN(Number(parsedData.price))) parsedData.price = 25.0;
+    else parsedData.price = Number(Number(parsedData.price).toFixed(2));
     if (!parsedData.spots) parsedData.spots = 14;
     if (!parsedData.status) parsedData.status = "proxima";
     if (!parsedData.location) parsedData.location = "Polígono Industrial “El Salobral “- Centro de Formación – Bolaños de Calatrava";
@@ -181,6 +210,18 @@ app.post("/api/parse-cata", upload.single("file"), async (req, res) => {
           ]
         }
       ];
+    } else {
+      // Clean and validate bodega websites (if not a real URL starting with http, leave empty)
+      parsedData.bodegas.forEach((b: any) => {
+        if (b.website) {
+          const web = String(b.website).trim();
+          if (!/^https?:\/\/[a-zA-Z0-9-.]+\.[a-zA-Z]{2,}/i.test(web)) {
+            b.website = "";
+          }
+        } else {
+          b.website = "";
+        }
+      });
     }
 
     return res.status(200).json(parsedData);
