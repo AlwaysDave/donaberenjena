@@ -50,6 +50,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
   const [selectedActivityId, setSelectedActivityId] = useState<string>(initialActivityId || 'all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
+  
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingParticipant, setEditingParticipant] = useState<Participant | null>(null);
   const [participantToDelete, setParticipantToDelete] = useState<Participant | null>(null);
@@ -83,8 +84,18 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
 
   // Filtered Activities (focusing on Catas and other events with bookings)
   const activeActivities = useMemo(() => {
-    return activities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [activities]);
+    let filtered = activities.filter(a => a.status !== 'celebrada');
+    
+    // Si selectedActivityId no está en las filtradas, lo forzamos para que no se rompa el select
+    // (Por ejemplo, cuando navegamos desde la tabla de Actividades Celebradas)
+    if (selectedActivityId !== 'all' && !filtered.some(a => a.id === selectedActivityId)) {
+      const selected = activities.find(a => a.id === selectedActivityId);
+      if (selected) {
+        filtered = [...filtered, selected];
+      }
+    }
+    return filtered.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [activities, selectedActivityId]);
 
   const currentActivity = useMemo(() => {
     if (selectedActivityId === 'all') return null;
@@ -94,6 +105,14 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
   // Filtered Participants
   const filteredParticipants = useMemo(() => {
     return participants.filter(p => {
+      // Past Activities filter
+      if (selectedActivityId === 'all') {
+        const act = activities.find(a => a.id === p.activityId);
+        if (act && act.status === 'celebrada') {
+          return false;
+        }
+      }
+      
       // Activity filter
       if (selectedActivityId !== 'all' && p.activityId !== selectedActivityId) {
         return false;
@@ -115,12 +134,16 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       }
       return true;
     });
-  }, [participants, selectedActivityId, statusFilter, searchTerm]);
+  }, [participants, selectedActivityId, statusFilter, searchTerm, activities]);
 
   // Key Metrics Calculations
   const metrics = useMemo(() => {
     const relevant = selectedActivityId === 'all' 
-      ? participants 
+      ? participants.filter(p => {
+          const act = activities.find(a => a.id === p.activityId);
+          if (act && act.status === 'celebrada') return false;
+          return true;
+        })
       : participants.filter(p => p.activityId === selectedActivityId);
 
     const activeParticipants = relevant.filter(p => p.status !== 'cancelada');
@@ -131,9 +154,12 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
 
     let maxCapacity = 0;
     if (selectedActivityId === 'all') {
-      maxCapacity = activities.reduce((sum, a) => sum + a.totalSpots, 0);
+      maxCapacity = activities.reduce((sum, a) => {
+        if (a.status === 'celebrada') return sum;
+        return sum + (a.totalSpots || 0);
+      }, 0);
     } else if (currentActivity) {
-      maxCapacity = currentActivity.totalSpots;
+      maxCapacity = currentActivity.totalSpots || 0;
     }
 
     const occupancyRate = maxCapacity > 0 ? Math.min(100, Math.round((totalSpotsBooked / maxCapacity) * 100)) : 0;
@@ -304,7 +330,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs uppercase tracking-widest font-bold text-[#521849]">
-                Control de Asistencia y Reservas
+                Control de Asistencia
               </span>
               {currentActivity && (
                 <span className="px-2.5 py-0.5 rounded-full bg-[#521849]/10 text-[#521849] text-[11px] font-bold">
@@ -313,7 +339,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
               )}
             </div>
             <h3 className="text-xl sm:text-2xl font-bold font-serif text-[#26201D] mt-1">
-              Participantes Registrados
+              Reservas de Próximas Actividades
             </h3>
             <p className="text-xs text-[#574B45] mt-0.5">
               Gestión centralizada de comensales, plazas confirmadas, alergias alimentarias y hojas de sala para sumillería.
@@ -399,7 +425,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                 onChange={(e) => setSelectedActivityId(e.target.value)}
                 className="w-full pl-3.5 pr-8 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-medium text-[#26201D] focus:outline-none focus:border-[#521849] focus:bg-white appearance-none cursor-pointer"
               >
-                <option value="all">🌟 Todas las Actividades y Catas ({participants.length} registros)</option>
+                <option value="all">🌟 Todas las Próximas Actividades</option>
                 {activeActivities.map(act => {
                   const actParticipants = participants.filter(p => p.activityId === act.id);
                   const actSpots = actParticipants.filter(p => p.status !== 'cancelada').reduce((s, p) => s + p.spots, 0);

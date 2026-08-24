@@ -148,21 +148,35 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const addActivity = async (activity: Activity) => {
+    if (useMockData) {
+      setActivities(prev => [activity, ...prev]);
+      return;
+    }
     await saveActivityFirestore(activity);
   };
 
   const updateActivity = async (updated: Activity) => {
+    if (useMockData) {
+      setActivities(prev => prev.map(a => a.id === updated.id ? updated : a));
+      return;
+    }
     await saveActivityFirestore(updated);
   };
 
   const quickUpdateActivity = async (id: string, updates: Partial<Activity>) => {
+    if (useMockData) {
+      setActivities(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
+      return;
+    }
     await updateActivityFirestore(id, updates);
   };
 
   const deleteActivity = async (id: string) => {
     // Optimistic local state removal so UI updates immediately
     setActivities(prev => prev.filter(a => a.id !== id));
-    await deleteActivityFirestore(id);
+    if (!useMockData) {
+      await deleteActivityFirestore(id);
+    }
   };
 
   const reserveSpots = async (id: string, requestedSpots: number, reservationData: ReservationFormData) => {
@@ -209,7 +223,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setActivities(prev => prev.map(a => a.id === id ? { ...a, bookedSpots: a.bookedSpots + requestedSpots } : a));
 
     try {
-      if (isFirebaseConfigured() && db) {
+      if (!useMockData && isFirebaseConfigured() && db) {
         await createReservationWithParticipantFirestore(newParticipant, requestedSpots);
       }
       return { 
@@ -247,7 +261,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      if (isFirebaseConfigured() && db) {
+      if (!useMockData && isFirebaseConfigured() && db) {
         await saveParticipantFirestore(newParticipant);
         if (participantData.status !== 'cancelada') {
           await adjustActivitySpotsFirestore(participantData.activityId, participantData.spots);
@@ -284,7 +298,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      if (isFirebaseConfigured() && db) {
+      if (!useMockData && isFirebaseConfigured() && db) {
         await updateParticipantFirestore(id, updates);
         if (spotsDelta !== 0 && old.activityId) {
           await adjustActivitySpotsFirestore(old.activityId, spotsDelta);
@@ -306,7 +320,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      if (isFirebaseConfigured() && db) {
+      if (!useMockData && isFirebaseConfigured() && db) {
         await deleteParticipantFirestore(id);
         if (shouldRefundSpots && activityId) {
           await adjustActivitySpotsFirestore(activityId, -spots);
