@@ -1,0 +1,27 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Check if user is authenticated
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Checking if user is admin requires firestore which is available in storage rules
+    // using firestore.get.
+    function isAdmin() {
+      return isSignedIn() && firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid));
+    }
+
+    match /receipts/{activityId}/{expenseId} {
+      allow read, write: if isAdmin();
+    }
+    
+    // Allow public read on any images uploaded (if they exist)
+    // but only admin write
+    match /images/{allImages=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

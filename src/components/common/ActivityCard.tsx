@@ -102,8 +102,21 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity }) => {
         </div>
 
         {!isHeld && (
-          <div className="absolute bottom-3 right-3 z-10 px-3 py-1 rounded-full bg-white/95 backdrop-blur-xs text-xs font-bold text-[#521849] shadow-xs">
-            {activity.price}€
+          <div className="absolute bottom-3 right-3 z-10 flex gap-2">
+            {activity.priceMember !== activity.priceNonMember ? (
+              <>
+                <div className="px-2 py-1 rounded-full bg-emerald-100/95 backdrop-blur-xs text-[10px] font-bold text-emerald-800 shadow-xs border border-emerald-200 flex items-center gap-1">
+                  Socio: {activity.priceMember}€
+                </div>
+                <div className="px-2 py-1 rounded-full bg-white/95 backdrop-blur-xs text-[10px] font-bold text-[#521849] shadow-xs border border-white/50 flex items-center gap-1">
+                  Gral: {activity.priceNonMember}€
+                </div>
+              </>
+            ) : (
+              <div className="px-3 py-1 rounded-full bg-white/95 backdrop-blur-xs text-xs font-bold text-[#521849] shadow-xs">
+                {activity.priceNonMember}€
+              </div>
+            )}
           </div>
         )}
       </div>

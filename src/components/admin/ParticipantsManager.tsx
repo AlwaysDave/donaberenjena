@@ -63,7 +63,8 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     fullName: string;
     email: string;
     phone: string;
-    spots: number;
+    isMember: boolean;
+    groupId?: string;
     turn: string;
     membershipNumber: string;
     notes: string;
@@ -74,7 +75,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     fullName: '',
     email: '',
     phone: '',
-    spots: 1,
+    isMember: false,
     turn: '',
     membershipNumber: '',
     notes: '',
@@ -124,12 +125,12 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       // Search term
       if (searchTerm.trim()) {
         const query = searchTerm.toLowerCase().trim();
-        const matchesName = p.fullName.toLowerCase().includes(query);
-        const matchesEmail = p.email.toLowerCase().includes(query);
-        const matchesPhone = p.phone.toLowerCase().includes(query);
-        const matchesSocio = p.membershipNumber?.toLowerCase().includes(query);
-        const matchesNotes = p.notes?.toLowerCase().includes(query);
-        const matchesActTitle = p.activityTitle?.toLowerCase().includes(query);
+        const matchesName = (p.fullName || '').toLowerCase().includes(query);
+        const matchesEmail = (p.email || '').toLowerCase().includes(query);
+        const matchesPhone = (p.phone || '').toLowerCase().includes(query);
+        const matchesSocio = (p.membershipNumber || '').toLowerCase().includes(query);
+        const matchesNotes = (p.notes || '').toLowerCase().includes(query);
+        const matchesActTitle = (p.activityTitle || '').toLowerCase().includes(query);
         return matchesName || matchesEmail || matchesPhone || matchesSocio || matchesNotes || matchesActTitle;
       }
       return true;
@@ -147,10 +148,10 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       : participants.filter(p => p.activityId === selectedActivityId);
 
     const activeParticipants = relevant.filter(p => p.status !== 'cancelada');
-    const totalSpotsBooked = activeParticipants.reduce((sum, p) => sum + (p.spots || 0), 0);
+    const totalSpotsBooked = activeParticipants.length;
     const totalExpectedRevenue = activeParticipants.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
     const withAllergies = activeParticipants.filter(p => p.notes && p.notes.trim().length > 0).length;
-    const attendedCount = relevant.filter(p => p.status === 'asistio').reduce((sum, p) => sum + p.spots, 0);
+    const attendedCount = relevant.filter(p => p.status === 'asistio').length;
 
     let maxCapacity = 0;
     if (selectedActivityId === 'all') {
@@ -185,7 +186,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       fullName: '',
       email: '',
       phone: '',
-      spots: 1,
+      isMember: false,
       turn: act?.time ? `Turno (${act.time})` : '',
       membershipNumber: '',
       notes: '',
@@ -200,10 +201,11 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     setEditingParticipant(p);
     setFormData({
       activityId: p.activityId,
-      fullName: p.fullName,
-      email: p.email,
-      phone: p.phone,
-      spots: p.spots,
+      fullName: p.fullName || '',
+      email: p.email || '',
+      phone: p.phone || '',
+      isMember: p.isMember,
+      groupId: p.groupId,
       turn: p.turn || '',
       membershipNumber: p.membershipNumber || '',
       notes: p.notes || '',
@@ -221,7 +223,9 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     const targetActivity = activities.find(a => a.id === formData.activityId);
     if (!targetActivity) return;
 
-    const totalAmount = formData.spots * (targetActivity.price || 0);
+    const priceMember = targetActivity.priceMember;
+    const priceNonMember = targetActivity.priceNonMember;
+    const calculatedPrice = formData.isMember ? priceMember : priceNonMember;
 
     if (editingParticipant) {
       // Update
@@ -229,16 +233,20 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
         fullName: formData.fullName.trim(),
         email: formData.email.trim(),
         phone: formData.phone.trim(),
-        spots: Number(formData.spots),
+        isMember: formData.isMember,
         turn: formData.turn.trim() || undefined,
         membershipNumber: formData.membershipNumber.trim() || undefined,
         notes: formData.notes.trim() || undefined,
         status: formData.status,
         paymentMethod: formData.paymentMethod,
-        totalAmount
+        totalAmount: calculatedPrice
       });
     } else {
       // Create
+      const newGroupId = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `grp-manual-${Date.now()}`;
+
       await addManualParticipant({
         activityId: formData.activityId,
         activityTitle: targetActivity.title,
@@ -247,13 +255,14 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
         fullName: formData.fullName.trim(),
         email: formData.email.trim(),
         phone: formData.phone.trim(),
-        spots: Number(formData.spots),
+        isMember: formData.isMember,
+        groupId: newGroupId,
         turn: formData.turn.trim() || (targetActivity.time ? `Turno (${targetActivity.time})` : undefined),
         membershipNumber: formData.membershipNumber.trim() || undefined,
         notes: formData.notes.trim() || undefined,
         status: formData.status,
         paymentMethod: formData.paymentMethod,
-        totalAmount
+        totalAmount: calculatedPrice
       });
     }
 
@@ -263,21 +272,22 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
   // Confirm delete
   const handleConfirmDelete = async () => {
     if (!participantToDelete) return;
-    await deleteParticipant(participantToDelete.id, participantToDelete.activityId, participantToDelete.spots);
+    await deleteParticipant(participantToDelete.id, participantToDelete.activityId);
     setParticipantToDelete(null);
   };
 
   // Export to CSV
   const handleExportCsv = () => {
-    const headers = ['ID', 'Actividad', 'Fecha', 'Nombre Asistente', 'Email', 'Telefono', 'Plazas', 'Turno', 'N_Socio', 'Alergias_Observaciones', 'Estado', 'Metodo_Pago', 'Total_Euros', 'Fecha_Registro'];
+    const headers = ['ID', 'Grupo Reserva', 'Actividad', 'Fecha', 'Nombre Asistente', 'Es Socio', 'Email', 'Telefono', 'Turno', 'N_Socio', 'Alergias_Observaciones', 'Estado', 'Metodo_Pago', 'Total_Euros', 'Fecha_Registro'];
     const rows = filteredParticipants.map(p => [
       `"${p.id}"`,
+      `"${p.groupId || ''}"`,
       `"${(p.activityTitle || '').replace(/"/g, '""')}"`,
       `"${p.activityDate || ''}"`,
       `"${(p.fullName || '').replace(/"/g, '""')}"`,
+      p.isMember ? 'SI' : 'NO',
       `"${p.email || ''}"`,
       `"${p.phone || ''}"`,
-      p.spots,
       `"${p.turn || ''}"`,
       `"${p.membershipNumber || ''}"`,
       `"${(p.notes || '').replace(/"/g, '""')}"`,
@@ -309,7 +319,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     text += `--- LISTADO DE COMENSALES ---\n`;
 
     filteredParticipants.forEach((p, idx) => {
-      text += `${idx + 1}. *${p.fullName}* (${p.spots} ${p.spots === 1 ? 'plaza' : 'plazas'})`;
+      text += `${idx + 1}. *${p.fullName}* ${p.isMember ? '(Socio)' : '(No socio)'}`;
       if (p.phone) text += ` - Tel: ${p.phone}`;
       if (p.notes) text += `\n   ⚠️ _Alergias/Notas:_ ${p.notes}`;
       text += `\n`;
@@ -428,7 +438,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                 <option value="all">🌟 Todas las Próximas Actividades</option>
                 {activeActivities.map(act => {
                   const actParticipants = participants.filter(p => p.activityId === act.id);
-                  const actSpots = actParticipants.filter(p => p.status !== 'cancelada').reduce((s, p) => s + p.spots, 0);
+                  const actSpots = actParticipants.filter(p => p.status !== 'cancelada').length;
                   return (
                     <option key={act.id} value={act.id}>
                       {act.type === 'cata' ? '🍷' : act.type === 'curso' ? '🍳' : '🧳'} {act.date} — {act.title} ({actSpots}/{act.totalSpots} plazas)
@@ -575,7 +585,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
               <tr className="bg-[#FCFAF7] border-b border-[#EDE4D7] text-[#574B45] uppercase tracking-wider font-semibold">
                 <th className="p-4">Asistente / Contacto</th>
                 <th className="p-4">Cata / Actividad</th>
-                <th className="p-4">Plazas / Turno</th>
+                <th className="p-4">Condición / Importe</th>
                 <th className="p-4">Alergias & Observaciones</th>
                 <th className="p-4">Estado & Pago</th>
                 <th className="p-4">Fecha Registro</th>
@@ -636,15 +646,16 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                     </p>
                   </td>
 
-                  {/* Plazas y Turno */}
+                  {/* Condición, Importe y Turno */}
                   <td className="p-4">
-                    <div className="space-y-0.5">
-                      <span className="inline-flex items-center gap-1 font-bold text-[#521849] text-sm">
-                        <Users className="w-3.5 h-3.5" />
-                        <span>{p.spots} {p.spots === 1 ? 'plaza' : 'plazas'}</span>
+                    <div className="space-y-1">
+                      <span className={`inline-flex items-center gap-1 font-bold text-[11px] px-2 py-0.5 rounded-full ${
+                        p.isMember ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-100 text-[#574B45]'
+                      }`}>
+                        {p.isMember ? '⭐ Socio' : '👤 No socio'}
                       </span>
-                      <p className="text-[11px] font-semibold text-[#26201D]">
-                        {p.totalAmount ? `${p.totalAmount} €` : '-'}
+                      <p className="text-xs font-bold text-[#521849]">
+                        {p.totalAmount !== undefined ? `${p.totalAmount} €` : '-'}
                       </p>
                       {p.turn && (
                         <span className="inline-block text-[10px] text-[#574B45] font-mono bg-[#EDE4D7]/50 px-1.5 py-0.5 rounded">
@@ -811,7 +822,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                   <option value="">-- Selecciona una actividad --</option>
                   {activeActivities.map(act => (
                     <option key={act.id} value={act.id}>
-                      {act.date} — {act.title} ({act.price}€/plaza)
+                      {act.date} — {act.title} ({act.priceNonMember}€/plaza)
                     </option>
                   ))}
                 </select>
@@ -861,21 +872,23 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                 </div>
               </div>
 
-              {/* Spots, Turn, and Socio */}
+              {/* Socio, Turn, and Socio Number */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-[#26201D] mb-1">
-                    Plazas *
+                    Condición
                   </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={20}
-                    required
-                    value={formData.spots}
-                    onChange={(e) => setFormData({ ...formData, spots: Math.max(1, parseInt(e.target.value) || 1) })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs focus:outline-none focus:border-[#521849] focus:bg-white"
-                  />
+                  <label className="flex items-center gap-2 p-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] cursor-pointer hover:bg-stone-50">
+                    <input
+                      type="checkbox"
+                      checked={formData.isMember}
+                      onChange={(e) => setFormData({ ...formData, isMember: e.target.checked })}
+                      className="w-4 h-4 rounded text-[#521849] focus:ring-[#521849]"
+                    />
+                    <span className="text-xs font-medium text-[#26201D]">
+                      {formData.isMember ? '⭐ Es Socio' : '👤 No socio'}
+                    </span>
+                  </label>
                 </div>
 
                 <div>
@@ -983,7 +996,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
               ¿Eliminar reserva de {participantToDelete.fullName}?
             </h3>
             <p className="text-xs text-[#574B45] mt-2">
-              Se eliminará el registro de {participantToDelete.spots} plaza(s) para la actividad <strong>{participantToDelete.activityTitle}</strong> y se liberará el aforo correspondiente.
+              Se eliminará el registro de este asistente para la actividad <strong>{participantToDelete.activityTitle}</strong> y se liberará el aforo correspondiente.
             </p>
             <div className="mt-6 flex items-center justify-end gap-2">
               <button
@@ -1063,7 +1076,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                     <th className="p-2.5 w-10 text-center">Firma</th>
                     <th className="p-2.5">Asistente</th>
                     <th className="p-2.5">Teléfono</th>
-                    <th className="p-2.5 text-center">Plazas</th>
+                    <th className="p-2.5 text-center">Condición</th>
                     <th className="p-2.5">Turno / Socio</th>
                     <th className="p-2.5">Alergias & Requisitos de Cocina</th>
                     <th className="p-2.5">Estado Pago</th>
@@ -1083,8 +1096,8 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                       <td className="p-2.5 font-mono text-[11px]">
                         {p.phone}
                       </td>
-                      <td className="p-2.5 text-center font-bold text-sm">
-                        {p.spots}
+                      <td className="p-2.5 text-center font-semibold text-xs">
+                        {p.isMember ? '⭐ Socio' : 'No socio'}
                       </td>
                       <td className="p-2.5 text-[11px]">
                         {p.turn || '-'} {p.membershipNumber ? `(${p.membershipNumber})` : ''}

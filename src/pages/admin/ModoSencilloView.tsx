@@ -6,6 +6,8 @@ import { searchBodegaLogo } from '../../services/bodegaLogoService';
 import { BodegaLogoSearchModal } from '../../components/admin/BodegaLogoSearchModal';
 import { BodegaWebsiteSearchModal } from '../../components/admin/BodegaWebsiteSearchModal';
 import { BodegaManager } from '../../components/admin/BodegaManager';
+import { MembersManager } from '../../components/admin/MembersManager';
+import { QuickCheckIn } from '../../components/admin/QuickCheckIn';
 import { 
   Plus, 
   Calendar, 
@@ -22,12 +24,19 @@ import {
   Wine,
   Clock,
   MapPin,
-  Globe
+  Globe,
+  UserCheck,
+  Bell,
+  X,
+  ListChecks,
+  Layers
 } from 'lucide-react';
 
 export const ModoSencilloView: React.FC = () => {
-  const { activities, addActivity, quickUpdateActivity, deleteActivity } = useData();
+  const { activities, members, unreadNotificationsCount, addActivity, quickUpdateActivity, deleteActivity } = useData();
+  const [activeSubTab, setActiveSubTab] = useState<'actividades' | 'checkin'>('actividades');
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showMembersModal, setShowMembersModal] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState<string | null>(null);
   const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -41,7 +50,8 @@ export const ModoSencilloView: React.FC = () => {
   const [newDate2, setNewDate2] = useState('');
   const [newTime1, setNewTime1] = useState('21:00');
   const [newTime2, setNewTime2] = useState('13:00');
-  const [newPrice, setNewPrice] = useState(25.0); // Default 25.00€
+  const [newPriceMember, setNewPriceMember] = useState(20.0); // Default 20.00€
+  const [newPriceNonMember, setNewPriceNonMember] = useState(25.0); // Default 25.00€
   const [newSpots, setNewSpots] = useState(14); // Default 14
   const [newLocation, setNewLocation] = useState(DEFAULT_OFFICIAL_LOCATION);
   
@@ -73,7 +83,8 @@ export const ModoSencilloView: React.FC = () => {
 
   // Editing state for quick in-line updates
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editPrice, setEditPrice] = useState<number>(0);
+  const [editPriceMember, setEditPriceMember] = useState<number>(0);
+  const [editPriceNonMember, setEditPriceNonMember] = useState<number>(0);
   const [editDate, setEditDate] = useState<string>('');
   const [editSpots, setEditSpots] = useState<number>(0);
 
@@ -150,7 +161,8 @@ export const ModoSencilloView: React.FC = () => {
         setNewTime2('');
       }
 
-      setNewPrice(Number(Number(parsed.price || 25.0).toFixed(2)));
+      setNewPriceNonMember(Number(Number(parsed.price || 25.0).toFixed(2)));
+      setNewPriceMember(Number(Number(parsed.price || 20.0).toFixed(2)));
       setNewSpots(parsed.spots || 14);
       setNewLocation(parsed.location || DEFAULT_OFFICIAL_LOCATION);
       
@@ -256,7 +268,8 @@ export const ModoSencilloView: React.FC = () => {
       description: newDescription || '',
       date: newDate1,
       time: newTime1,
-      price: Number(newPrice),
+      priceMember: Number(newPriceMember),
+      priceNonMember: Number(newPriceNonMember),
       totalSpots: Number(newSpots),
       bookedSpots: 0,
       status: 'proxima',
@@ -316,14 +329,16 @@ export const ModoSencilloView: React.FC = () => {
 
   const startEdit = (act: Activity) => {
     setEditingId(act.id);
-    setEditPrice(act.price);
+    setEditPriceMember(act.priceMember);
+    setEditPriceNonMember(act.priceNonMember);
     setEditDate(act.date);
     setEditSpots(act.totalSpots);
   };
 
   const saveEdit = async (id: string) => {
     await quickUpdateActivity(id, {
-      price: editPrice,
+      priceMember: editPriceMember,
+      priceNonMember: editPriceNonMember,
       date: editDate,
       totalSpots: editSpots
     });
@@ -356,15 +371,33 @@ export const ModoSencilloView: React.FC = () => {
           </p>
         </div>
 
-        <button
-          id="btn-simple-create-toggle"
-          type="button"
-          onClick={() => setShowCreateForm(!showCreateForm)}
-          className="px-4 py-2.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold flex items-center gap-2 transition-all shadow-xs cursor-pointer self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>{showCreateForm ? 'Cerrar Formulario' : 'Crear Nueva Actividad'}</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <button
+            id="btn-simple-members-modal"
+            type="button"
+            onClick={() => setShowMembersModal(true)}
+            className="px-4 py-2.5 rounded-xl border border-[#EDE4D7] bg-white hover:bg-[#F6F1EA] text-[#26201D] text-xs font-semibold flex items-center gap-2 transition-all shadow-2xs cursor-pointer relative"
+          >
+            <UserCheck className="w-4 h-4 text-[#521849]" />
+            <span>Censo de Socios ({members.length})</span>
+            {unreadNotificationsCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-amber-400 text-amber-950 font-extrabold text-[10px] flex items-center gap-0.5">
+                <Bell className="w-2.5 h-2.5" />
+                {unreadNotificationsCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            id="btn-simple-create-toggle"
+            type="button"
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            className="px-4 py-2.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold flex items-center gap-2 transition-all shadow-xs cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>{showCreateForm ? 'Cerrar Formulario' : 'Crear Nueva Actividad'}</span>
+          </button>
+        </div>
       </div>
 
       {savedSuccess && (
@@ -374,7 +407,41 @@ export const ModoSencilloView: React.FC = () => {
         </div>
       )}
 
-      {/* Quick Create Form with PDF Autocomplete */}
+      {/* Sub-tab Switcher: Aforos / Check-in in situ */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-[#EDE4D7] pb-3">
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('actividades')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+            activeSubTab === 'actividades'
+              ? 'bg-[#521849] text-white shadow-xs'
+              : 'bg-white text-[#574B45] hover:bg-[#F6F1EA] border border-[#EDE4D7]'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          <span>Control de Aforo y Fichas</span>
+        </button>
+
+        <button
+          id="btn-subtab-checkin-movil"
+          type="button"
+          onClick={() => setActiveSubTab('checkin')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+            activeSubTab === 'checkin'
+              ? 'bg-[#521849] text-white shadow-xs'
+              : 'bg-white text-[#574B45] hover:bg-[#F6F1EA] border border-[#EDE4D7]'
+          }`}
+        >
+          <ListChecks className="w-4 h-4 text-emerald-600" />
+          <span>Check-in In Situ Móvil</span>
+        </button>
+      </div>
+
+      {activeSubTab === 'checkin' ? (
+        <QuickCheckIn />
+      ) : (
+        <>
+          {/* Quick Create Form with PDF Autocomplete */}
       {showCreateForm && (
         <div className="p-6 sm:p-8 rounded-3xl bg-white border border-[#EDE4D7] shadow-xl space-y-6 animate-fadeIn">
           <div className="flex items-center justify-between">
@@ -511,24 +578,36 @@ export const ModoSencilloView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Point 3: Default 25€ & 14 spots */}
-              <div>
-                <label className="block text-xs font-semibold text-[#26201D] mb-1">Precio por Persona (€)</label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    required
-                    value={isNaN(newPrice) ? '' : newPrice}
-                    onChange={(e) => setNewPrice(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-bold text-[#521849]"
-                  />
-                  <span className="absolute right-3 top-2 text-xs font-bold text-[#521849]">€</span>
+              {/* Point 3: Default 20€/25€ & 14 spots */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-[#26201D] mb-1">Socio (€)</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      value={isNaN(newPriceMember) ? '' : newPriceMember}
+                      onChange={(e) => setNewPriceMember(parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-bold text-emerald-700"
+                    />
+                  </div>
                 </div>
-                <span className="text-[10px] text-[#574B45] mt-0.5 block">
-                  Formato: {newPrice.toFixed(2)} €
-                </span>
+                <div>
+                  <label className="block text-[11px] font-semibold text-[#26201D] mb-1">No Socio (€)</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      value={isNaN(newPriceNonMember) ? '' : newPriceNonMember}
+                      onChange={(e) => setNewPriceNonMember(parseFloat(e.target.value) || 0)}
+                      className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-bold text-[#521849]"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -760,16 +839,26 @@ export const ModoSencilloView: React.FC = () => {
                   <div>
                     <span className="text-[#574B45] block">Precio:</span>
                     {isEditing ? (
-                      <input
-                        type="number"
-                        value={editPrice}
-                        onChange={(e) => setEditPrice(Number(e.target.value))}
-                        className="w-full px-2 py-1 rounded border border-[#EDE4D7] text-xs font-bold"
-                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          placeholder="Socio"
+                          value={editPriceMember}
+                          onChange={(e) => setEditPriceMember(Number(e.target.value))}
+                          className="w-full px-2 py-1 rounded border border-[#EDE4D7] text-xs font-bold text-emerald-700"
+                        />
+                        <input
+                          type="number"
+                          placeholder="No socio"
+                          value={editPriceNonMember}
+                          onChange={(e) => setEditPriceNonMember(Number(e.target.value))}
+                          className="w-full px-2 py-1 rounded border border-[#EDE4D7] text-xs font-bold text-[#521849]"
+                        />
+                      </div>
                     ) : (
-                      <span className="font-bold text-[#521849] flex items-center gap-1">
+                      <span className="font-bold text-[#521849] flex items-center gap-1 text-[11px]">
                         <Euro className="w-3.5 h-3.5" />
-                        {act.price.toFixed(2)} €
+                        {act.priceMember}€ S / {act.priceNonMember}€ NS
                       </span>
                     )}
                   </div>
@@ -802,6 +891,8 @@ export const ModoSencilloView: React.FC = () => {
           })}
         </div>
       </div>
+      </>
+      )}
 
       {/* Delete Confirmation Modal */}
       {activityToDelete && (
@@ -882,6 +973,37 @@ export const ModoSencilloView: React.FC = () => {
             }
           }}
         />
+      )}
+      {/* Members Census Modal */}
+      {showMembersModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-fadeIn">
+          <div className="bg-[#FCFAF7] rounded-3xl max-w-5xl w-full p-6 sm:p-8 shadow-2xl border border-[#EDE4D7] my-8 animate-scaleUp max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-[#EDE4D7] mb-6">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-2xl bg-[#521849] text-white">
+                  <UserCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold font-serif text-[#26201D]">
+                    Censo Oficial de Socios
+                  </h3>
+                  <p className="text-xs text-[#574B45]">
+                    Gestión del listado de socios, importación masiva y resolución de avisos
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMembersModal(false)}
+                className="p-2 rounded-xl hover:bg-[#EDE4D7] text-[#574B45] cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <MembersManager />
+          </div>
+        </div>
       )}
     </div>
   );

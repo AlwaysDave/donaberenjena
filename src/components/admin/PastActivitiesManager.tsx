@@ -24,9 +24,10 @@ export const PastActivitiesManager: React.FC<PastActivitiesManagerProps> = ({ on
   }, [pastActivities]);
 
   const filteredActivities = useMemo(() => {
+    const q = (searchTerm || '').toLowerCase().trim();
     return pastActivities.filter(a => {
       const yearMatch = selectedYear === 'all' || new Date(a.date).getFullYear().toString() === selectedYear;
-      const searchMatch = a.title.toLowerCase().includes(searchTerm.toLowerCase());
+      const searchMatch = !q || (a.title || '').toLowerCase().includes(q);
       return yearMatch && searchMatch;
     });
   }, [pastActivities, selectedYear, searchTerm]);
@@ -40,15 +41,15 @@ export const PastActivitiesManager: React.FC<PastActivitiesManagerProps> = ({ on
       const actParticipants = participants.filter(p => p.activityId === act.id && p.status !== 'cancelada');
       const attendedParticipants = actParticipants.filter(p => p.status === 'asistio');
       
-      const actRevenue = actParticipants.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
+      const actRevenue = actParticipants.reduce((sum, p) => sum + (p.paidAmount || p.totalAmount || 0), 0);
       const actTotalSpots = act.totalSpots || 0;
-      const actBookedSpots = actParticipants.reduce((sum, p) => sum + p.spots, 0);
+      const actBookedSpots = actParticipants.length;
       
       const occupancyRate = actTotalSpots > 0 ? Math.round((actBookedSpots / actTotalSpots) * 100) : 0;
-      const attendanceRate = actBookedSpots > 0 ? Math.round((attendedParticipants.reduce((sum, p) => sum + p.spots, 0) / actBookedSpots) * 100) : 0;
+      const attendanceRate = actBookedSpots > 0 ? Math.round((attendedParticipants.length / actBookedSpots) * 100) : 0;
 
       totalRevenue += actRevenue;
-      totalAttendees += attendedParticipants.reduce((sum, p) => sum + p.spots, 0);
+      totalAttendees += attendedParticipants.length;
 
       return {
         ...act,

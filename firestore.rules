@@ -72,5 +72,29 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAdmin();
     }
+
+    // =========================================================================
+    // 5. MEMBERS COLLECTION
+    // Strictly read & write for authenticated administrators only
+    // =========================================================================
+    match /members/{memberId} {
+      allow read, write: if isAdmin();
+    }
+
+    // =========================================================================
+    // 6. ADMIN NOTIFICATIONS COLLECTION
+    // Strictly read & write for authenticated administrators only
+    // =========================================================================
+    match /adminNotifications/{notificationId} {
+      allow read, write: if isAdmin();
+    }
+
+    // =========================================================================
+    // 7. EXPENSES COLLECTION
+    // Financial data, strictly for authenticated administrators only
+    // =========================================================================
+    match /expenses/{expenseId} {
+      allow read, write: if isAdmin();
+    }
   }
 }

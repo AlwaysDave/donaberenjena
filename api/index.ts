@@ -3,7 +3,12 @@ import express from "express";
 import multer from "multer";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import { GoogleGenAI, Type } from "@google/genai";
+
+const currentDir = typeof __dirname !== "undefined"
+  ? __dirname
+  : path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 
@@ -84,8 +89,8 @@ function getPromptPersonality(): string {
   try {
     const candidates = [
       path.join(process.cwd(), "api", "prompts", "analista_catas.md"),
-      path.join(__dirname, "prompts", "analista_catas.md"),
-      path.join(__dirname, "..", "api", "prompts", "analista_catas.md"),
+      path.join(currentDir, "prompts", "analista_catas.md"),
+      path.join(currentDir, "..", "api", "prompts", "analista_catas.md"),
     ];
     for (const promptPath of candidates) {
       if (fs.existsSync(promptPath)) {
@@ -277,6 +282,81 @@ app.post("/api/parse-cata", upload.single("file"), async (req, res) => {
     const errorMessage = is503
       ? "El modelo de Inteligencia Artificial está experimentando alta demanda en este momento. Por favor, inténtalo de nuevo en unos segundos."
       : error?.message || "Error al procesar el documento con la IA.";
+
+    return res.status(is503 ? 503 : 500).json({ error: errorMessage });
+  }
+});
+
+// Endpoint: Analyze participant list to suggest duplicate mergers using Gemini
+app.post("/api/analyze-participants", async (req, res) => {
+  try {
+    const { names } = req.body;
+    if (!names || !Array.isArray(names) || names.length === 0) {
+      return res.status(400).json({ error: "Se requiere un array 'names' con la lista de nombres a analizar." });
+    }
+
+    const aiClient = getAi();
+    if (!aiClient) {
+      return res.status(500).json({ error: "La clave de API de Gemini no está configurada en el servidor." });
+    }
+
+    const prompt = `Eres un asistente experto en limpieza y unificación de datos de registros de asistentes de una asociación cultural ("Asociación Doña Berenjena").
+A continuación tienes una lista de nombres extraídos de los participantes:
+${JSON.stringify(names, null, 2)}
+
+Tu tarea es detectar posibles duplicados, erratas tipográficas, abreviaturas o variantes del mismo nombre (ejemplos: "Mª Carmen" vs "María Carmen", "Juan Pérez" vs "Juan Perez", "Carlos Gomez Ruiz" vs "Carlos Gomez", acentos omitidos, apodos o erratas evidentes).
+
+Para cada caso identificado, propón unificar hacia la forma más canónica, completa y formal.
+Devuelve únicamente sugerencias con alta probabilidad de ser la misma persona física. No inventes sugerencias si el nombre es claramente diferente.
+
+Estructura de respuesta:
+{
+  "suggestions": [
+    {
+      "original": "Nombre erróneo, abreviado o variante",
+      "suggested": "Nombre canónico y completo sugerido",
+      "reason": "Explicación breve en español (ej. Corrección de tilde y expansión de abreviatura Mª a María)"
+    }
+  ]
+}`;
+
+    const responseSchema = {
+      type: Type.OBJECT,
+      properties: {
+        suggestions: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              original: { type: Type.STRING },
+              suggested: { type: Type.STRING },
+              reason: { type: Type.STRING }
+            },
+            required: ["original", "suggested", "reason"]
+          }
+        }
+      },
+      required: ["suggestions"]
+    };
+
+    const response = await generateContentWithFallback(aiClient, {
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: responseSchema,
+      },
+    });
+
+    const jsonStr = response.text?.trim() || "{\"suggestions\": []}";
+    const parsed = JSON.parse(jsonStr);
+
+    return res.status(200).json(parsed);
+  } catch (error: any) {
+    console.error("[GEMINI_API_ERROR] Error in POST /api/analyze-participants:", error?.message || error);
+    const is503 = error?.status === 503 || error?.message?.includes("503") || error?.message?.includes("high demand");
+    const errorMessage = is503
+      ? "El modelo de Inteligencia Artificial está saturado temporalmente. Por favor, reinténtalo en unos instantes."
+      : error?.message || "Error al analizar duplicados con IA.";
 
     return res.status(is503 ? 503 : 500).json({ error: errorMessage });
   }

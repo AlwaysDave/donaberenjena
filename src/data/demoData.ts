@@ -1,56 +1,48 @@
-import { Activity, Participant, WebMetric, CataActivity } from '../types';
+import { Activity, Participant, WebMetric, CataActivity, Member, AdminNotification } from '../types';
 
-// Helper to generate a batch of mock participants
-const generateParticipants = (
-  activityId: string,
-  activityTitle: string,
-  activityDate: string,
-  activityType: 'cata' | 'curso' | 'viaje',
-  targetSpots: number,
-  pricePerSpot: number,
-  offset: number = 0,
-  archived: boolean = false
-): Participant[] => {
-  const participants: Participant[] = [];
-  let currentSpots = 0;
-  let i = 0;
-  
-  while (currentSpots < targetSpots) {
-    const remainingSpots = targetSpots - currentSpots;
-    // Every 3rd participant books 2 spots, else 1 spot, ensuring we don't exceed targetSpots
-    const spotsToBook = (i % 3 === 0 && remainingSpots >= 2) ? 2 : 1;
-    const totalAmount = spotsToBook * pricePerSpot;
-    
-    participants.push({
-      id: `demo-part-${activityId}-${offset + i}`,
-      activityId,
-      activityTitle,
-      activityDate,
-      activityType,
-      fullName: `Visitante Demo ${offset + i + 1}`,
-      email: `demo.user${offset + i + 1}@ejemplo.com`,
-      phone: `600 000 ${String(offset + i).padStart(3, '0')}`,
-      spots: spotsToBook,
-      turn: 'Turno único',
-      membershipNumber: i % 4 === 0 ? `SOC-${100 + offset + i}` : '',
-      notes: i === 0 ? 'Alergia generada para demo' : '',
-      status: archived ? 'asistio' : (i % 5 === 0 ? 'pendiente_pago' : 'confirmada'),
-      totalAmount: totalAmount,
-      paidAmount: archived ? totalAmount : (i % 5 === 0 ? 0 : totalAmount),
-      paymentMethod: i % 2 === 0 ? 'bizum' : 'transferencia',
-      registeredAt: new Date(Date.now() - (1000 * 60 * 60 * 24 * (i + 1))).toISOString(),
-      updatedAt: new Date().toISOString()
-    });
-    
-    currentSpots += spotsToBook;
-    i++;
-  }
-  
-  return participants;
-};
+// ==========================================
+// 1. BASE DE PERSONAS REALISTAS Y FIJAS
+// ==========================================
+interface BasePerson {
+  fullName: string;
+  email?: string;
+  phone?: string;
+  isMember: boolean;
+  membershipNumber?: string;
+}
 
+const BASE_PEOPLE: BasePerson[] = [
+  { fullName: 'María José Fernández Ruiz', email: 'mariajose.fernandez@example.com', phone: '611 222 001', isMember: true, membershipNumber: 'SOC-001' },
+  { fullName: 'Antonio Sánchez Gómez', email: 'antonio.sanchez@example.com', phone: '611 222 002', isMember: true, membershipNumber: 'SOC-002' },
+  { fullName: 'Laura Martínez López', email: 'laura.martinez@example.com', phone: '611 222 003', isMember: false },
+  { fullName: 'Javier Rodríguez Pérez', email: 'javier.rodriguez@example.com', phone: '611 222 004', isMember: false },
+  { fullName: 'Carmen Jiménez Díaz', email: 'carmen.jimenez@example.com', phone: '611 222 005', isMember: true, membershipNumber: 'SOC-003' },
+  { fullName: 'Francisco Torres Molina', email: 'francisco.torres@example.com', phone: '611 222 006', isMember: true, membershipNumber: 'SOC-004' },
+  { fullName: 'Isabel Romero Navarro', email: 'isabel.romero@example.com', phone: '611 222 007', isMember: true, membershipNumber: 'SOC-005' },
+  { fullName: 'Manuel Ortega Castillo', email: 'manuel.ortega@example.com', phone: '611 222 008', isMember: false },
+  { fullName: 'Pilar Gutiérrez Serrano', email: 'pilar.gutierrez@example.com', phone: '611 222 009', isMember: false },
+  { fullName: 'David Muñoz Cabrera', email: 'david.munoz@example.com', phone: '611 222 010', isMember: true, membershipNumber: 'SOC-006' },
+  { fullName: 'Rocío Delgado Vega', email: 'rocio.delgado@example.com', phone: '611 222 011', isMember: false },
+  { fullName: 'Alberto Ramírez Flores', email: 'alberto.ramirez@example.com', phone: '611 222 012', isMember: true, membershipNumber: 'SOC-007' },
+  { fullName: 'Cristina Herrera Reyes', email: 'cristina.herrera@example.com', phone: '611 222 013', isMember: true, membershipNumber: 'SOC-008' },
+  { fullName: 'Sergio Guerrero Pascual', email: 'sergio.guerrero@example.com', phone: '611 222 014', isMember: true, membershipNumber: 'SOC-009' },
+  { fullName: 'Elena Cortés Iglesias', email: 'elena.cortes@example.com', phone: '611 222 015', isMember: false },
+  { fullName: 'Pablo Vázquez Santos', email: 'pablo.vazquez@example.com', phone: '611 222 016', isMember: false },
+  { fullName: 'Marta Cano Rubio', email: 'marta.cano@example.com', phone: '611 222 017', isMember: false },
+  { fullName: 'Rubén Domínguez Blanco', email: 'ruben.dominguez@example.com', phone: '611 222 018', isMember: false },
+  { fullName: 'Nuria Marín Gallego', email: 'nuria.marin@example.com', phone: '611 222 019', isMember: false },
+  // Diego Aguilar Bravo: marcado como socio en su reserva pero NO está en censo para demostrar aviso
+  { fullName: 'Diego Aguilar Bravo', email: 'diego.aguilar@example.com', phone: '611 222 020', isMember: true },
+  // Variantes para detección de duplicados con IA:
+  { fullName: 'José Antonio García López', email: 'jose.garcia@example.com', phone: '611 222 021', isMember: false },
+  { fullName: 'Jose A. Garcia Lopez', isMember: false }
+];
+
+// ==========================================
+// 2. ACTIVIDADES DE DEMO REALISTAS
+// ==========================================
 export const DEMO_ACTIVITIES: Activity[] = [
-  // CATAS (Basadas en los PDFs proporcionados)
+  // CATAS EXISTENTES BASADAS EN PDFS REALES (BOLAÑOS DE CALATRAVA)
   {
     id: 'demo-cata-1-vermut',
     title: "La Hora Magica: CATA DE VERMUT'S",
@@ -58,7 +50,9 @@ export const DEMO_ACTIVITIES: Activity[] = [
     type: 'cata',
     date: '2026-03-01',
     time: '13:00 h',
-    price: 20,
+    
+    priceMember: 20,
+    priceNonMember: 25,
     totalSpots: 14,
     bookedSpots: 14,
     location: 'Polígono Industrial "El Salobral" - Centro de Formación – Bolaños de Calatrava',
@@ -85,8 +79,8 @@ export const DEMO_ACTIVITIES: Activity[] = [
       }
     ],
     status: 'celebrada',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    createdAt: new Date('2026-01-15').toISOString(),
+    updatedAt: new Date('2026-03-02').toISOString()
   } as CataActivity,
   {
     id: 'demo-cata-2-terruno',
@@ -95,7 +89,9 @@ export const DEMO_ACTIVITIES: Activity[] = [
     type: 'cata',
     date: '2026-04-10',
     time: '21:00 h',
-    price: 20,
+    
+    priceMember: 20,
+    priceNonMember: 25,
     totalSpots: 14,
     bookedSpots: 14,
     location: 'Polígono Industrial "El Salobral" - Centro de Formación – Bolaños de Calatrava',
@@ -117,7 +113,7 @@ export const DEMO_ACTIVITIES: Activity[] = [
       }
     ],
     status: 'proxima',
-    createdAt: new Date().toISOString(),
+    createdAt: new Date('2026-02-01').toISOString(),
     updatedAt: new Date().toISOString()
   } as CataActivity,
   {
@@ -127,7 +123,9 @@ export const DEMO_ACTIVITIES: Activity[] = [
     type: 'cata',
     date: '2026-06-05',
     time: '21:00 h',
-    price: 20,
+    
+    priceMember: 20,
+    priceNonMember: 25,
     totalSpots: 14,
     bookedSpots: 7,
     location: 'Polígono Industrial "El Salobral" - Centro de Formación – Bolaños de Calatrava',
@@ -150,7 +148,7 @@ export const DEMO_ACTIVITIES: Activity[] = [
       }
     ],
     status: 'proxima',
-    createdAt: new Date().toISOString(),
+    createdAt: new Date('2026-02-15').toISOString(),
     updatedAt: new Date().toISOString()
   } as CataActivity,
   {
@@ -160,7 +158,9 @@ export const DEMO_ACTIVITIES: Activity[] = [
     type: 'cata',
     date: '2026-06-21',
     time: '13:00 h',
-    price: 20,
+    
+    priceMember: 20,
+    priceNonMember: 25,
     totalSpots: 14,
     bookedSpots: 12,
     location: 'Polígono Industrial "El Salobral" - Centro de Formación – Bolaños de Calatrava',
@@ -187,161 +187,519 @@ export const DEMO_ACTIVITIES: Activity[] = [
       }
     ],
     status: 'proxima',
-    createdAt: new Date().toISOString(),
+    createdAt: new Date('2026-03-01').toISOString(),
     updatedAt: new Date().toISOString()
   } as CataActivity,
 
-  // CURSOS
+  // CURSO 1: Próximo, ocupado
   {
     id: 'demo-curso-1-lleno',
-    title: 'Curso Mockup 1 (Lleno)',
-    subtitle: 'Curso de Sumillería completo',
+    title: 'Cocina en Vivo: Producto de Cercanía',
+    subtitle: 'Un menú completo con ingredientes de la Comarca de Calatrava',
     type: 'curso',
     date: '2026-10-15',
     time: '10:00 h',
-    price: 150,
+    
+    priceMember: 50,
+    priceNonMember: 65,
     totalSpots: 16,
-    bookedSpots: 16,
-    location: 'Sede Formación',
-    images: ['https://images.unsplash.com/photo-1414235077428-338989a2e8c0?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'],
-    description: 'Curso intensivo lleno.',
-    theme: 'Sumillería',
-    chef: { name: 'Chef Test', bio: 'Bio' },
-    syllabus: ['Intro', 'Advanced'],
+    bookedSpots: 14,
+    location: 'Polígono Industrial "El Salobral" - Centro de Formación – Bolaños de Calatrava',
+    images: ['https://images.unsplash.com/photo-1556910103-1c02745aae4d?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'],
+    description: 'Aprende a elaborar un menú completo maridado con vinos de la tierra, utilizando el mejor producto de la huerta y ganadería de Calatrava.',
+    theme: 'Cocina de temporada',
+    chef: {
+      name: 'Rafael Peláez',
+      bio: 'Chef manchego con más de 15 años en cocina de mercado, formado en el Basque Culinary Center',
+      restaurant: 'Restaurante El Yantar (Bolaños de Calatrava)'
+    },
+    syllabus: [
+      'Fondos y bases de cocina tradicional',
+      'Elaboración de un menú de 3 platos con producto local',
+      'Técnicas de emplatado',
+      'Maridaje del menú con vinos de la zona'
+    ],
     includesTasting: true,
     status: 'proxima',
-    createdAt: new Date().toISOString(),
+    createdAt: new Date('2026-04-01').toISOString(),
     updatedAt: new Date().toISOString()
   },
+
+  // CURSO 2: Próximo, recién publicado, vacío
   {
     id: 'demo-curso-2-vacio',
-    title: 'Curso Mockup 2 (Vacío)',
-    subtitle: 'Sin reservas',
+    title: 'Taller de Conservas y Encurtidos Tradicionales',
+    subtitle: 'Aprende a conservar la huerta manchega para todo el año',
     type: 'curso',
     date: '2026-11-01',
     time: '11:00 h',
-    price: 120,
+    
+    priceMember: 30,
+    priceNonMember: 40,
     totalSpots: 16,
     bookedSpots: 0,
-    location: 'Sede Formación',
-    images: ['https://images.unsplash.com/photo-1556910103-1c02745aae4d?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'],
-    description: 'Curso programado sin reservas aún.',
-    theme: 'Cocina',
-    chef: { name: 'Chef Test 2', bio: 'Bio 2' },
-    syllabus: ['Módulo 1'],
+    location: 'Centro de Formación – Bolaños de Calatrava',
+    images: ['https://images.unsplash.com/photo-1540420773420-3366772f4999?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'],
+    description: 'Aprende las técnicas tradicionales y seguras para encurtir y embotar verduras, berenjenas y hortalizas de temporada.',
+    theme: 'Conservación de alimentos',
+    chef: {
+      name: 'Encarna Molina',
+      bio: 'Cocinera y divulgadora especializada en recuperación de recetas tradicionales de Castilla-La Mancha'
+    },
+    syllabus: [
+      'Escabeches y encurtidos',
+      'Mermeladas y conservas dulces',
+      'Conservación al vacío y en aceite',
+      'Etiquetado y conservación segura'
+    ],
     includesTasting: false,
     status: 'proxima',
-    createdAt: new Date().toISOString(),
+    createdAt: new Date('2026-04-10').toISOString(),
     updatedAt: new Date().toISOString()
   },
 
-  // VIAJES
+  // CURSO 3: Celebrado (Pasado)
+  {
+    id: 'demo-curso-3-celebrado',
+    title: 'Masterclass de Maridaje: Vino y Quesos Manchegos',
+    subtitle: 'Una tarde dedicada a los quesos de Castilla-La Mancha y su maridaje',
+    type: 'curso',
+    date: '2025-10-15',
+    time: '18:00 h',
+    
+    priceMember: 25,
+    priceNonMember: 35,
+    totalSpots: 20,
+    bookedSpots: 17,
+    location: 'Polígono Industrial "El Salobral" - Centro de Formación – Bolaños de Calatrava',
+    images: ['https://images.unsplash.com/photo-1486297678162-eb2a19b0a32d?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'],
+    description: 'Recorrido sensorial por las distintas curaciones del queso artesano manchego y su armonía perfecta con vinos locales.',
+    theme: 'Maridaje',
+    chef: {
+      name: 'Ana García',
+      bio: 'Sumiller de la Asociación Doña Berenjena'
+    },
+    syllabus: [
+      'Tipos de queso manchego y su curación',
+      'Maridaje con vinos blancos y tintos jóvenes',
+      'Maridaje con vinos generosos'
+    ],
+    includesTasting: true,
+    status: 'celebrada',
+    createdAt: new Date('2025-08-10').toISOString(),
+    updatedAt: new Date('2025-10-16').toISOString()
+  },
+
+  // VIAJE 1: Próximo, ocupado
   {
     id: 'demo-viaje-1-lleno',
-    title: 'Viaje Mockup 1 (Lleno)',
-    subtitle: 'Ruta Enológica completa',
+    title: 'Ruta Enológica por la Ribera del Guadiana',
+    subtitle: 'Dos días de bodegas, gastronomía y patrimonio en Extremadura',
     type: 'viaje',
     date: '2026-11-15',
     time: '08:00 h',
-    price: 350,
+    
+    priceMember: 150,
+    priceNonMember: 180,
     totalSpots: 25,
-    bookedSpots: 25,
-    location: 'Rioja Alavesa',
+    bookedSpots: 22,
+    location: 'Salida: Plaza de España (Bolaños de Calatrava)',
     images: ['https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'],
-    description: 'Viaje completo.',
-    destination: 'Rioja Alavesa',
-    durationDays: 3,
-    itinerary: [],
-    includedServices: ['Hotel', 'Transporte'],
+    description: 'Fin de semana descubriendo los singulares viñedos y bodegas de Extremadura, maridados con la gastronomía de la dehesa.',
+    destination: 'Ribera del Guadiana, Badajoz',
+    durationDays: 2,
+    itinerary: [
+      {
+        day: 1,
+        title: 'Salida y bodega histórica',
+        description: 'Salida desde Bolaños de Calatrava, visita y cata en una bodega centenaria, comida típica extremeña.',
+        highlights: ['Cata guiada', 'Comida típica', 'Visita a viñedo centenario']
+      },
+      {
+        day: 2,
+        title: 'Ruta del queso y regreso',
+        description: 'Visita a una quesería artesanal, paseo por el casco histórico de Almendralejo, comida de despedida y regreso.',
+        highlights: ['Quesería artesanal', 'Casco histórico', 'Comida de despedida']
+      }
+    ],
+    includedServices: ['Autobús ida y vuelta', '1 noche de hotel', '2 comidas', '2 catas guiadas'],
     status: 'proxima',
-    createdAt: new Date().toISOString(),
+    createdAt: new Date('2026-03-20').toISOString(),
     updatedAt: new Date().toISOString()
   },
+
+  // VIAJE 2: Próximo, recién publicado, vacío
   {
     id: 'demo-viaje-2-vacio',
-    title: 'Viaje Mockup 2 (Vacío)',
-    subtitle: 'Sin reservas',
+    title: 'Escapada a Jerez: Bodegas y Flamenco',
+    subtitle: 'Tres días en la cuna del vino de Jerez',
     type: 'viaje',
     date: '2026-12-05',
-    time: '09:00 h',
-    price: 400,
+    time: '07:30 h',
+    
+    priceMember: 280,
+    priceNonMember: 320,
     totalSpots: 25,
     bookedSpots: 0,
-    location: 'Ribera del Duero',
+    location: 'Salida: Plaza de España (Bolaños de Calatrava)',
     images: ['https://images.unsplash.com/photo-1560493676-04071c5f467b?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'],
-    description: 'Viaje recién publicado.',
-    destination: 'Ribera del Duero',
-    durationDays: 2,
-    itinerary: [],
-    includedServices: ['Bus'],
+    description: 'Viaje experiencial por el marco de Jerez: arquitectura bodeguera, criaderas y soleras, arte flamenco y gastronomía gaditana.',
+    destination: 'Jerez de la Frontera, Cádiz',
+    durationDays: 3,
+    itinerary: [
+      {
+        day: 1,
+        title: 'Llegada y bodega Lustau',
+        description: 'Llegada, visita a Bodegas Lustau con cata de finos y amontillados.',
+        highlights: ['Cata de finos', 'Bodega histórica']
+      },
+      {
+        day: 2,
+        title: 'Jerez tradicional',
+        description: 'Mercado central, ruta de tapas, espectáculo de flamenco por la noche.',
+        highlights: ['Ruta de tapas', 'Espectáculo de flamenco']
+      },
+      {
+        day: 3,
+        title: 'Sanlúcar y regreso',
+        description: 'Visita a Sanlúcar de Barrameda, cata de manzanilla junto al mar, comida de despedida y regreso.',
+        highlights: ['Cata de manzanilla', 'Paseo por Sanlúcar']
+      }
+    ],
+    includedServices: ['Autobús ida y vuelta', '2 noches de hotel', '3 comidas', 'Entrada a espectáculo de flamenco'],
     status: 'proxima',
-    createdAt: new Date().toISOString(),
+    createdAt: new Date('2026-04-12').toISOString(),
     updatedAt: new Date().toISOString()
   },
-  // CELEBRATED MOCKS
-  {
-    id: 'demo-curso-3-celebrado',
-    title: 'Curso Mockup 3 (Celebrado)',
-    subtitle: 'Curso de Sumillería pasado',
-    type: 'curso',
-    date: '2025-10-15',
-    time: '10:00 h',
-    price: 150,
-    totalSpots: 20,
-    bookedSpots: 16,
-    location: 'Sede Formación',
-    images: ['https://images.unsplash.com/photo-1414235077428-338989a2e8c0?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'],
-    description: 'Curso intensivo de hace un año, con 80% ocupación.',
-    theme: 'Sumillería',
-    chef: { name: 'Chef Test', bio: 'Bio' },
-    syllabus: ['Intro', 'Advanced'],
-    includesTasting: true,
-    status: 'celebrada',
-    createdAt: new Date('2025-08-01').toISOString(),
-    updatedAt: new Date('2025-10-16').toISOString()
-  },
+
+  // VIAJE 3: Celebrado (Pasado)
   {
     id: 'demo-viaje-3-celebrado',
-    title: 'Viaje Mockup 3 (Celebrado)',
-    subtitle: 'Ruta Enológica pasada',
+    title: 'Ruta del Aceite: Sierra de Segura',
+    subtitle: 'Un día entre olivares centenarios',
     type: 'viaje',
     date: '2025-11-15',
-    time: '08:00 h',
-    price: 350,
+    time: '08:30 h',
+    
+    priceMember: 40,
+    priceNonMember: 55,
     totalSpots: 40,
     bookedSpots: 36,
-    location: 'Rioja Alavesa',
-    images: ['https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'],
-    description: 'Viaje pasado con 90% ocupación.',
-    destination: 'Rioja Alavesa',
-    durationDays: 3,
-    itinerary: [],
-    includedServices: ['Hotel', 'Transporte'],
+    location: 'Salida: Plaza de España (Bolaños de Calatrava)',
+    images: ['https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'],
+    description: 'Excursión de un día para conocer la recolección y extracción de los mejores aceites de oliva virgen extra de montaña.',
+    destination: 'Sierra de Segura, Jaén',
+    durationDays: 1,
+    itinerary: [
+      {
+        day: 1,
+        title: 'Olivares y almazara',
+        description: 'Visita a un olivar centenario, proceso de extracción en almazara tradicional, cata de aceites con maridaje, comida campera.',
+        highlights: ['Cata de AOVE', 'Almazara tradicional', 'Comida campera']
+      }
+    ],
+    includedServices: ['Autobús ida y vuelta', 'Comida campera', 'Cata de aceites'],
     status: 'celebrada',
     createdAt: new Date('2025-09-01').toISOString(),
-    updatedAt: new Date('2025-11-20').toISOString()
+    updatedAt: new Date('2025-11-16').toISOString()
   }
 ];
 
+// ==========================================
+// 3. GENERACIÓN REALISTA DE PARTICIPANTES
+// ==========================================
+// Reutiliza coherentemente la lista fija para que la misma persona aparezca
+// en múltiples eventos de distintos tipos, con fidelidad medible.
+
+function buildParticipant(
+  activity: Activity,
+  person: BasePerson,
+  index: number,
+  options: {
+    status?: 'confirmada' | 'pendiente_pago' | 'asistio' | 'cancelada';
+    attended?: boolean;
+    groupId?: string;
+    spotsCount?: number;
+    notes?: string;
+    registeredDaysAgo?: number;
+  } = {}
+): Participant {
+  const isMember = person.isMember;
+  const unitPrice = (isMember && activity.priceMember) ? activity.priceMember : activity.priceNonMember;
+  const isPast = activity.status === 'celebrada';
+  const attended = options.attended ?? isPast;
+  const status = options.status ?? (isPast ? 'asistio' : (index % 4 === 0 ? 'pendiente_pago' : 'confirmada'));
+  const daysAgo = options.registeredDaysAgo ?? (index + 2);
+  const regDateIso = new Date(Date.now() - (1000 * 60 * 60 * 24 * daysAgo)).toISOString();
+
+  return {
+    id: `part-${activity.id}-${index + 1}`,
+    activityId: activity.id,
+    activityTitle: activity.title,
+    activityDate: activity.date,
+    activityType: activity.type,
+    fullName: person.fullName,
+    email: person.email,
+    phone: person.phone,
+    isMember,
+    membershipNumber: isMember ? person.membershipNumber : undefined,
+    groupId: options.groupId,
+    spotsCount: options.spotsCount || 1,
+    turn: 'Turno único',
+    notes: options.notes,
+    status,
+    attended,
+    totalAmount: unitPrice * (options.spotsCount || 1),
+    paidAmount: status === 'pendiente_pago' ? 0 : unitPrice * (options.spotsCount || 1),
+    paymentMethod: index % 2 === 0 ? 'bizum' : 'transferencia',
+    registeredAt: regDateIso,
+    createdAt: regDateIso,
+    updatedAt: new Date().toISOString()
+  };
+}
+
 export const DEMO_PARTICIPANTS: Participant[] = [
-  ...generateParticipants('demo-cata-1-vermut', "La Hora Magica: CATA DE VERMUT'S", '2026-03-01', 'cata', 14, 20, 0, true),
-  ...generateParticipants('demo-cata-2-terruno', 'La Expresión del Terruño', '2026-04-10', 'cata', 14, 20, 100),
-  ...generateParticipants('demo-cata-3-coloman', 'Experiencia S.A.T. COLOMAN', '2026-06-05', 'cata', 7, 20, 200),
-  ...generateParticipants('demo-cata-4-vermut2', 'LA HORA DEL VERMUT', '2026-06-21', 'cata', 12, 20, 300),
-  ...generateParticipants('demo-curso-1-lleno', 'Curso Mockup 1 (Lleno)', '2026-10-15', 'curso', 16, 150, 400),
-  ...generateParticipants('demo-viaje-1-lleno', 'Viaje Mockup 1 (Lleno)', '2026-11-15', 'viaje', 25, 350, 500),
-  ...generateParticipants('demo-curso-3-celebrado', 'Curso Mockup 3 (Celebrado)', '2025-10-15', 'curso', 16, 150, 600, true),
-  ...generateParticipants('demo-viaje-3-celebrado', 'Viaje Mockup 3 (Celebrado)', '2025-11-15', 'viaje', 36, 350, 700, true)
+  // --- CATA 1 (Celebrada - Vermut 14 asistentes) ---
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[0], 0),  // María José (Socia)
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[1], 1, { groupId: 'grp-antonio-vermut' }), // Antonio (Socio) - Titular grupo
+  buildParticipant(DEMO_ACTIVITIES[0], { fullName: 'Elena Gómez (Acompañante)', isMember: true }, 2, { groupId: 'grp-antonio-vermut' }), // Acompañante
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[2], 3),  // Laura Martínez
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[4], 4),  // Carmen Jiménez (Socia)
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[5], 5),  // Francisco Torres (Socio)
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[6], 6),  // Isabel Romero (Socia)
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[7], 7),  // Manuel Ortega
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[8], 8),  // Pilar Gutiérrez
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[9], 9),  // David Muñoz (Socio)
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[10], 10), // Rocío Delgado
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[11], 11), // Alberto Ramírez (Socio)
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[12], 12), // Cristina Herrera (Socia)
+  // Caso de duplicado canónico:
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[20], 13), // José Antonio García López
+
+  // --- CATA 2 (Próxima - Terruño 14 asistentes) ---
+  buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[0], 0),  // María José (Socia)
+  buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[1], 1),  // Antonio (Socio)
+  buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[2], 2),  // Laura Martínez
+  buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[3], 3),  // Javier Rodríguez
+  buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[4], 4),  // Carmen Jiménez (Socia)
+  buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[5], 5),  // Francisco Torres (Socio)
+  buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[6], 6),  // Isabel Romero (Socia)
+  buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[13], 7), // Sergio Guerrero (Socio)
+  buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[14], 8), // Elena Cortés
+  buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[15], 9), // Pablo Vázquez
+  buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[16], 10), // Marta Cano
+  buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[17], 11), // Rubén Domínguez
+  buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[18], 12), // Nuria Marín
+  buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[12], 13), // Cristina Herrera (Socia)
+
+  // --- CATA 3 (Próxima - Coloman 7 asistentes) ---
+  buildParticipant(DEMO_ACTIVITIES[2], BASE_PEOPLE[0], 0),  // María José (Socia)
+  buildParticipant(DEMO_ACTIVITIES[2], BASE_PEOPLE[4], 1),  // Carmen Jiménez (Socia)
+  buildParticipant(DEMO_ACTIVITIES[2], BASE_PEOPLE[6], 2),  // Isabel Romero (Socia)
+  buildParticipant(DEMO_ACTIVITIES[2], BASE_PEOPLE[8], 3),  // Pilar Gutiérrez
+  buildParticipant(DEMO_ACTIVITIES[2], BASE_PEOPLE[9], 4),  // David Muñoz (Socio)
+  buildParticipant(DEMO_ACTIVITIES[2], BASE_PEOPLE[10], 5), // Rocío Delgado
+  buildParticipant(DEMO_ACTIVITIES[2], BASE_PEOPLE[11], 6), // Alberto Ramírez (Socio)
+
+  // --- CATA 4 (Próxima - Vermut 2, 12 asistentes) ---
+  buildParticipant(DEMO_ACTIVITIES[3], BASE_PEOPLE[1], 0),  // Antonio Sánchez (Socio)
+  buildParticipant(DEMO_ACTIVITIES[3], BASE_PEOPLE[2], 1),  // Laura Martínez
+  buildParticipant(DEMO_ACTIVITIES[3], BASE_PEOPLE[3], 2),  // Javier Rodríguez
+  buildParticipant(DEMO_ACTIVITIES[3], BASE_PEOPLE[5], 3),  // Francisco Torres (Socio)
+  buildParticipant(DEMO_ACTIVITIES[3], BASE_PEOPLE[7], 4),  // Manuel Ortega
+  buildParticipant(DEMO_ACTIVITIES[3], BASE_PEOPLE[13], 5), // Sergio Guerrero (Socio)
+  buildParticipant(DEMO_ACTIVITIES[3], BASE_PEOPLE[14], 6), // Elena Cortés
+  buildParticipant(DEMO_ACTIVITIES[3], BASE_PEOPLE[15], 7), // Pablo Vázquez
+  buildParticipant(DEMO_ACTIVITIES[3], BASE_PEOPLE[16], 8), // Marta Cano
+  buildParticipant(DEMO_ACTIVITIES[3], BASE_PEOPLE[17], 9), // Rubén Domínguez
+  buildParticipant(DEMO_ACTIVITIES[3], BASE_PEOPLE[18], 10), // Nuria Marín
+  buildParticipant(DEMO_ACTIVITIES[3], BASE_PEOPLE[0], 11), // María José (Socia)
+
+  // --- CURSO 1: Cocina en Vivo (14 asistentes) ---
+  buildParticipant(DEMO_ACTIVITIES[4], BASE_PEOPLE[0], 0),  // María José (Socia)
+  buildParticipant(DEMO_ACTIVITIES[4], BASE_PEOPLE[1], 1),  // Antonio Sánchez (Socio)
+  buildParticipant(DEMO_ACTIVITIES[4], BASE_PEOPLE[2], 2),  // Laura Martínez
+  buildParticipant(DEMO_ACTIVITIES[4], BASE_PEOPLE[4], 3),  // Carmen Jiménez (Socia)
+  buildParticipant(DEMO_ACTIVITIES[4], BASE_PEOPLE[5], 4),  // Francisco Torres (Socio)
+  buildParticipant(DEMO_ACTIVITIES[4], BASE_PEOPLE[6], 5),  // Isabel Romero (Socia)
+  buildParticipant(DEMO_ACTIVITIES[4], BASE_PEOPLE[9], 6),  // David Muñoz (Socio)
+  buildParticipant(DEMO_ACTIVITIES[4], BASE_PEOPLE[11], 7), // Alberto Ramírez (Socio)
+  buildParticipant(DEMO_ACTIVITIES[4], BASE_PEOPLE[12], 8), // Cristina Herrera (Socia)
+  buildParticipant(DEMO_ACTIVITIES[4], BASE_PEOPLE[13], 9), // Sergio Guerrero (Socio)
+  buildParticipant(DEMO_ACTIVITIES[4], BASE_PEOPLE[14], 10), // Elena Cortés
+  buildParticipant(DEMO_ACTIVITIES[4], BASE_PEOPLE[15], 11), // Pablo Vázquez
+  // Diego Aguilar: marcado como socio en la reserva pero no está en censo oficial (genera discrepancia de prueba)
+  buildParticipant(DEMO_ACTIVITIES[4], BASE_PEOPLE[19], 12, { notes: 'Solicitó tarifa de socio' }),
+  // Caso de duplicado variante (sin tilde y abreviado) para detección con IA:
+  buildParticipant(DEMO_ACTIVITIES[4], BASE_PEOPLE[21], 13), // Jose A. Garcia Lopez
+
+  // --- VIAJE 1: Ribera del Guadiana (22 asistentes) ---
+  buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[0], 0),  // María José (Socia)
+  buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[1], 1),  // Antonio Sánchez (Socio)
+  buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[2], 2),  // Laura Martínez
+  buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[3], 3),  // Javier Rodríguez
+  buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[4], 4),  // Carmen Jiménez (Socia)
+  buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[5], 5),  // Francisco Torres (Socio)
+  buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[6], 6),  // Isabel Romero (Socia)
+  // Grupo familiar Manuel Ortega (3 personas)
+  buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[7], 7, { groupId: 'grp-manuel-guadiana' }),
+  buildParticipant(DEMO_ACTIVITIES[7], { fullName: 'Alicia Ortega (Acompañante)', isMember: false }, 8, { groupId: 'grp-manuel-guadiana' }),
+  buildParticipant(DEMO_ACTIVITIES[7], { fullName: 'Carlos Ortega (Acompañante)', isMember: false }, 9, { groupId: 'grp-manuel-guadiana' }),
+  buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[8], 10), // Pilar Gutiérrez
+  buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[9], 11), // David Muñoz (Socio)
+  buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[10], 12), // Rocío Delgado
+  buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[11], 13), // Alberto Ramírez (Socio)
+  buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[12], 14), // Cristina Herrera (Socia)
+  buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[13], 15), // Sergio Guerrero (Socio)
+  buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[14], 16), // Elena Cortés
+  buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[15], 17), // Pablo Vázquez
+  buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[16], 18), // Marta Cano
+  buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[17], 19), // Rubén Domínguez
+  buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[18], 20), // Nuria Marín
+  buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[20], 21), // José Antonio García López
+
+  // --- CURSO 3 (Celebrado - Masterclass Quesos y Vino 2025, 17 asistentes) ---
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[0], 0, { attended: true }), // María José
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[1], 1, { attended: true }), // Antonio Sánchez
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[2], 2, { attended: true }), // Laura Martínez
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[4], 3, { attended: true }), // Carmen Jiménez
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[5], 4, { attended: true }), // Francisco Torres
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[6], 5, { attended: true }), // Isabel Romero
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[7], 6, { attended: true }), // Manuel Ortega
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[8], 7, { attended: true }), // Pilar Gutiérrez
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[9], 8, { attended: true }), // David Muñoz
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[10], 9, { attended: true }), // Rocío Delgado
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[11], 10, { attended: true }), // Alberto Ramírez
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[12], 11, { attended: true }), // Cristina Herrera
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[13], 12, { attended: true }), // Sergio Guerrero
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[14], 13, { attended: true }), // Elena Cortés
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[15], 14, { attended: true }), // Pablo Vázquez
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[16], 15, { attended: true }), // Marta Cano
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[17], 16, { attended: true }), // Rubén Domínguez
+
+  // --- VIAJE 3 (Celebrado - Ruta del Aceite Sierra de Segura 2025, 36 asistentes) ---
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[0], 0, { attended: true }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[1], 1, { attended: true }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[2], 2, { attended: true }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[3], 3, { attended: true }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[4], 4, { attended: true }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[5], 5, { attended: true }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[6], 6, { attended: true }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[7], 7, { attended: true }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[8], 8, { attended: true }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[9], 9, { attended: true }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[10], 10, { attended: true }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[11], 11, { attended: true }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[12], 12, { attended: true }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[13], 13, { attended: true }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[14], 14, { attended: true }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[15], 15, { attended: true }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[16], 16, { attended: true }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[17], 17, { attended: true }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[18], 18, { attended: true }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[20], 19, { attended: true })
 ];
 
+// ==========================================
+// 4. MÉTRICAS DE DEMO
+// ==========================================
 export const DEMO_METRICS: WebMetric = {
   pageViewsThisMonth: 12540,
   uniqueVisitorsThisMonth: 4200,
-  activeReservationsCount: 100, // Total number
-  occupancyRateAverage: 75,
+  activeReservationsCount: 88,
+  occupancyRateAverage: 82,
   topVisitedActivities: [
     { id: 'demo-cata-1-vermut', title: "La Hora Magica: CATA DE VERMUT'S", type: 'cata', views: 3450 },
-    { id: 'demo-viaje-1-lleno', title: 'Viaje Mockup 1 (Lleno)', type: 'viaje', views: 2100 },
-    { id: 'demo-curso-1-lleno', title: 'Curso Mockup 1 (Lleno)', type: 'curso', views: 1800 }
+    { id: 'demo-viaje-1-lleno', title: 'Ruta Enológica por la Ribera del Guadiana', type: 'viaje', views: 2100 },
+    { id: 'demo-curso-1-lleno', title: 'Cocina en Vivo: Producto de Cercanía', type: 'curso', views: 1800 }
   ]
 };
+
+// ==========================================
+// 5. CENSO DE SOCIOS DE DEMO (MEMBERS)
+// ==========================================
+// Incluye 9 socios activos consistentes. Se excluye a propósito a 'Diego Aguilar Bravo'
+// para que salte el aviso de discrepancia en el buzón de notificaciones.
+export const DEMO_MEMBERS: Member[] = [
+  { id: 'mem-1', fullName: 'María José Fernández Ruiz', email: 'mariajose.fernandez@example.com', phone: '611 222 001', membershipNumber: 'SOC-001', active: true, createdAt: '2025-01-10T10:00:00.000Z' },
+  { id: 'mem-2', fullName: 'Antonio Sánchez Gómez', email: 'antonio.sanchez@example.com', phone: '611 222 002', membershipNumber: 'SOC-002', active: true, createdAt: '2025-01-12T11:00:00.000Z' },
+  { id: 'mem-3', fullName: 'Carmen Jiménez Díaz', email: 'carmen.jimenez@example.com', phone: '611 222 003', membershipNumber: 'SOC-003', active: true, createdAt: '2025-01-15T12:00:00.000Z' },
+  { id: 'mem-4', fullName: 'Francisco Torres Molina', email: 'francisco.torres@example.com', phone: '611 222 004', membershipNumber: 'SOC-004', active: true, createdAt: '2025-02-01T09:30:00.000Z' },
+  { id: 'mem-5', fullName: 'Isabel Romero Navarro', email: 'isabel.romero@example.com', phone: '611 222 005', membershipNumber: 'SOC-005', active: true, createdAt: '2025-02-10T16:00:00.000Z' },
+  { id: 'mem-6', fullName: 'David Muñoz Cabrera', email: 'david.munoz@example.com', phone: '611 222 010', membershipNumber: 'SOC-006', active: true, createdAt: '2025-02-14T10:00:00.000Z' },
+  { id: 'mem-7', fullName: 'Alberto Ramírez Flores', email: 'alberto.ramirez@example.com', phone: '611 222 012', membershipNumber: 'SOC-007', active: true, createdAt: '2025-03-01T11:00:00.000Z' },
+  { id: 'mem-8', fullName: 'Cristina Herrera Reyes', email: 'cristina.herrera@example.com', phone: '611 222 013', membershipNumber: 'SOC-008', active: true, createdAt: '2025-03-05T12:30:00.000Z' },
+  { id: 'mem-9', fullName: 'Sergio Guerrero Pascual', email: 'sergio.guerrero@example.com', phone: '611 222 014', membershipNumber: 'SOC-009', active: true, createdAt: '2025-03-10T17:00:00.000Z' }
+];
+
+// ==========================================
+// 6. BUZÓN DE NOTIFICACIONES DE DEMO
+// ==========================================
+export const DEMO_NOTIFICATIONS: AdminNotification[] = [
+  {
+    id: 'notif-demo-1',
+    type: 'socio_mismatch',
+    title: 'Discrepancia de Socio detectada',
+    message: 'El asistente "Diego Aguilar Bravo" solicitó tarifa de socio en "Cocina en Vivo: Producto de Cercanía", pero no figura en el censo oficial de socios activos.',
+    activityId: 'demo-curso-1-lleno',
+    read: false,
+    createdAt: new Date(Date.now() - 3600000 * 2).toISOString()
+  }
+];
+
+// ==========================================
+// 7. GASTOS DE DEMO (EXPENSES)
+// ==========================================
+export const DEMO_EXPENSES: import('../types').Expense[] = [
+  // Gastos normales para actividad celebrada que sale rentable (CATA 1: Vermut 2025)
+  {
+    id: 'exp-demo-1',
+    activityId: DEMO_ACTIVITIES[5].id, // demo-cata-1-celeb
+    concept: 'Compra de Vermut',
+    amount: 120.50,
+    category: 'bodega_proveedor',
+    date: '2025-06-15',
+    createdAt: new Date('2025-06-15').toISOString(),
+    receiptImageUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=400&q=80'
+  },
+  {
+    id: 'exp-demo-2',
+    activityId: DEMO_ACTIVITIES[5].id,
+    concept: 'Catering aperitivos',
+    amount: 85.00,
+    category: 'catering',
+    date: '2025-06-18',
+    createdAt: new Date('2025-06-18').toISOString()
+  },
+  
+  // Un viaje en pérdidas (Viaje 3)
+  {
+    id: 'exp-demo-3',
+    activityId: DEMO_ACTIVITIES[9].id, // demo-viaje-3-celeb
+    concept: 'Alquiler Autocar 55 plazas',
+    amount: 950.00,
+    category: 'transporte',
+    date: '2025-08-20',
+    createdAt: new Date('2025-08-20').toISOString(),
+    notes: 'Factura pagada por adelantado'
+  },
+  {
+    id: 'exp-demo-4',
+    activityId: DEMO_ACTIVITIES[9].id,
+    concept: 'Reserva Hotel 3 noches',
+    amount: 1450.00,
+    category: 'alojamiento',
+    date: '2025-09-02',
+    createdAt: new Date('2025-09-02').toISOString()
+  },
+  {
+    id: 'exp-demo-5',
+    activityId: DEMO_ACTIVITIES[9].id,
+    concept: 'Comida de grupo',
+    amount: 600.00,
+    category: 'catering',
+    date: '2025-09-15',
+    createdAt: new Date('2025-09-15').toISOString()
+  }
+];
+

@@ -10,13 +10,17 @@ import {
   Unsubscribe 
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { Activity, AdminRole, WebMetric, Participant } from '../types';
+import { Activity, AdminRole, WebMetric, Participant, Member, AdminNotification, Expense } from '../types';
 
 const ACTIVITIES_COLLECTION = 'activities';
 const METRICS_COLLECTION = 'metrics';
 const METRICS_DOC_ID = 'summary';
 const ADMINS_COLLECTION = 'admins';
 const PARTICIPANTS_COLLECTION = 'participants';
+const MEMBERS_COLLECTION = 'members';
+const ADMIN_NOTIFICATIONS_COLLECTION = 'adminNotifications';
+const EXPENSES_COLLECTION = 'expenses';
+
 
 /**
  * Deep sanitization helper that recursively removes undefined fields and cleans arrays,
@@ -83,10 +87,14 @@ export function subscribeToActivitiesFirestore(
     (snapshot) => {
       const activities: Activity[] = [];
       snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
         activities.push({
-          ...(docSnap.data() as Activity),
-          id: docSnap.id
-        });
+          ...data,
+          id: docSnap.id,
+          // Legacy migration
+          priceMember: data.priceMember ?? data.price ?? 20,
+          priceNonMember: data.priceNonMember ?? data.price ?? 25
+        } as Activity);
       });
       onData(activities);
     },
@@ -233,25 +241,28 @@ export async function deleteParticipantFirestore(id: string): Promise<void> {
 }
 
 /**
- * Atomic reservation creation with Participant record + spot update
+ * Atomic reservation creation with multiple individual Participant records + spot update
  */
-export async function createReservationWithParticipantFirestore(
-  participant: Participant,
-  spotsCount: number
+export async function createReservationWithParticipantsFirestore(
+  attendees: Participant[],
+  activityId: string
 ): Promise<void> {
   if (!db) throw new Error('Firestore is not initialized');
-  
-  // 1. Save participant
-  const participantDocRef = doc(db, PARTICIPANTS_COLLECTION, participant.id);
-  const cleanData = sanitizeForFirestore(participant);
-  await setDoc(participantDocRef, cleanData);
+  if (!attendees || attendees.length === 0) return;
+
+  // 1. Save each participant document (all sharing the same groupId)
+  for (const attendee of attendees) {
+    const participantDocRef = doc(db, PARTICIPANTS_COLLECTION, attendee.id);
+    const cleanData = sanitizeForFirestore(attendee);
+    await setDoc(participantDocRef, cleanData);
+  }
 
   // 2. Increment spots on activity if valid
-  if (participant.activityId) {
-    const activityDocRef = doc(db, ACTIVITIES_COLLECTION, participant.activityId);
+  if (activityId) {
+    const activityDocRef = doc(db, ACTIVITIES_COLLECTION, activityId);
     try {
       await updateDoc(activityDocRef, {
-        bookedSpots: increment(spotsCount),
+        bookedSpots: increment(attendees.length),
         updatedAt: new Date().toISOString().split('T')[0]
       });
     } catch (actErr) {
@@ -277,4 +288,201 @@ export async function adjustActivitySpotsFirestore(
   } catch (err) {
     console.warn('Error adjusting activity spots:', err);
   }
+}
+
+// =========================================================================
+// MEMBERS CRUD FUNCTIONS
+// =========================================================================
+
+/**
+ * Subscribe to the `members` collection in real-time
+ */
+export function subscribeToMembersFirestore(
+  onData: (members: Member[]) => void,
+  onError: (error: Error) => void
+): Unsubscribe {
+  if (!db) {
+    throw new Error('Firestore is not initialized');
+  }
+
+  const membersRef = collection(db, MEMBERS_COLLECTION);
+  return onSnapshot(
+    membersRef,
+    (snapshot) => {
+      const list: Member[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({
+          ...(docSnap.data() as Member),
+          id: docSnap.id
+        });
+      });
+      list.sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
+      onData(list);
+    },
+    (err) => {
+      console.warn('Firestore members subscription error:', err);
+      onError(err);
+    }
+  );
+}
+
+/**
+ * Save or create a Member document
+ */
+export async function saveMemberFirestore(member: Member): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const memberDocRef = doc(db, MEMBERS_COLLECTION, member.id);
+  const cleanData = sanitizeForFirestore(member);
+  await setDoc(memberDocRef, cleanData);
+}
+
+/**
+ * Update partial fields of a Member document
+ */
+export async function updateMemberFirestore(id: string, updates: Partial<Member>): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const memberDocRef = doc(db, MEMBERS_COLLECTION, id);
+  const cleanUpdates = sanitizeForFirestore(updates);
+  await updateDoc(memberDocRef, {
+    ...cleanUpdates,
+    updatedAt: new Date().toISOString()
+  });
+}
+
+/**
+ * Delete a Member document
+ */
+export async function deleteMemberFirestore(id: string): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const memberDocRef = doc(db, MEMBERS_COLLECTION, id);
+  await deleteDoc(memberDocRef);
+}
+
+// =========================================================================
+// ADMIN NOTIFICATIONS CRUD FUNCTIONS
+// =========================================================================
+
+/**
+ * Subscribe to the `adminNotifications` collection in real-time
+ */
+export function subscribeToAdminNotificationsFirestore(
+  onData: (notifications: AdminNotification[]) => void,
+  onError: (error: Error) => void
+): Unsubscribe {
+  if (!db) {
+    throw new Error('Firestore is not initialized');
+  }
+
+  const notifsRef = collection(db, ADMIN_NOTIFICATIONS_COLLECTION);
+  return onSnapshot(
+    notifsRef,
+    (snapshot) => {
+      const list: AdminNotification[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({
+          ...(docSnap.data() as AdminNotification),
+          id: docSnap.id
+        });
+      });
+      // Sort newest first
+      list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      onData(list);
+    },
+    (err) => {
+      console.warn('Firestore adminNotifications subscription error:', err);
+      onError(err);
+    }
+  );
+}
+
+/**
+ * Save an Admin Notification
+ */
+export async function saveAdminNotificationFirestore(notification: AdminNotification): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const notifDocRef = doc(db, ADMIN_NOTIFICATIONS_COLLECTION, notification.id);
+  const cleanData = sanitizeForFirestore(notification);
+  await setDoc(notifDocRef, cleanData);
+}
+
+/**
+ * Mark an Admin Notification as read
+ */
+export async function markAdminNotificationReadFirestore(id: string): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const notifDocRef = doc(db, ADMIN_NOTIFICATIONS_COLLECTION, id);
+  await updateDoc(notifDocRef, {
+    read: true
+  });
+}
+
+/**
+ * Delete an Admin Notification
+ */
+export async function deleteAdminNotificationFirestore(id: string): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const notifDocRef = doc(db, ADMIN_NOTIFICATIONS_COLLECTION, id);
+  await deleteDoc(notifDocRef);
+}
+
+/**
+ * Subscribe to the `expenses` collection in real-time
+ */
+export function subscribeToExpensesFirestore(
+  onData: (expenses: Expense[]) => void,
+  onError: (error: Error) => void
+): Unsubscribe {
+  if (!db) {
+    throw new Error('Firestore is not initialized');
+  }
+
+  const expensesRef = collection(db, EXPENSES_COLLECTION);
+  return onSnapshot(
+    expensesRef,
+    (snapshot) => {
+      const list: Expense[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({
+          ...(docSnap.data() as Expense),
+          id: docSnap.id
+        });
+      });
+      // Sort newest first
+      list.sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+      onData(list);
+    },
+    (err) => {
+      console.warn('Firestore expenses subscription error:', err);
+      onError(err);
+    }
+  );
+}
+
+/**
+ * Save an Expense
+ */
+export async function saveExpenseFirestore(expense: Expense): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const expenseDocRef = doc(db, EXPENSES_COLLECTION, expense.id);
+  const cleanData = sanitizeForFirestore(expense);
+  await setDoc(expenseDocRef, cleanData);
+}
+
+/**
+ * Update an Expense
+ */
+export async function updateExpenseFirestore(id: string, updates: Partial<Expense>): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const expenseDocRef = doc(db, EXPENSES_COLLECTION, id);
+  const cleanUpdates = sanitizeForFirestore(updates);
+  await updateDoc(expenseDocRef, cleanUpdates);
+}
+
+/**
+ * Delete an Expense
+ */
+export async function deleteExpenseFirestore(id: string): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const expenseDocRef = doc(db, EXPENSES_COLLECTION, id);
+  await deleteDoc(expenseDocRef);
 }

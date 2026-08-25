@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Activity, CataActivity, CursoActivity, Participant, ReservationFormData, ViajeActivity, WebMetric } from '../types';
+import { Activity, AdminNotification, CataActivity, CursoActivity, Member, Participant, ReservationFormData, ViajeActivity, WebMetric, Expense } from '../types';
 import { useAuth } from './AuthContext';
 import { db, isFirebaseConfigured } from '../services/firebase';
 import { INITIAL_PARTICIPANTS } from '../data/mockData';
+import { DEMO_ACTIVITIES, DEMO_PARTICIPANTS, DEMO_MEMBERS, DEMO_NOTIFICATIONS, DEMO_METRICS, DEMO_EXPENSES } from '../data/demoData';
 import {
   subscribeToActivitiesFirestore,
   subscribeToMetricsFirestore,
@@ -13,11 +14,21 @@ import {
   saveParticipantFirestore,
   updateParticipantFirestore,
   deleteParticipantFirestore,
-  createReservationWithParticipantFirestore,
-  adjustActivitySpotsFirestore
+  createReservationWithParticipantsFirestore,
+  adjustActivitySpotsFirestore,
+  subscribeToMembersFirestore,
+  saveMemberFirestore,
+  updateMemberFirestore,
+  deleteMemberFirestore,
+  subscribeToAdminNotificationsFirestore,
+  subscribeToExpensesFirestore,
+  saveExpenseFirestore,
+  updateExpenseFirestore,
+  deleteExpenseFirestore,
+  saveAdminNotificationFirestore,
+  markAdminNotificationReadFirestore,
+  deleteAdminNotificationFirestore
 } from '../services/firestoreService';
-
-import { DEMO_ACTIVITIES, DEMO_PARTICIPANTS, DEMO_METRICS } from '../data/demoData';
 
 interface DataContextType {
   activities: Activity[];
@@ -25,6 +36,10 @@ interface DataContextType {
   cursos: CursoActivity[];
   viajes: ViajeActivity[];
   participants: Participant[];
+  members: Member[];
+  adminNotifications: AdminNotification[];
+  expenses: Expense[];
+  unreadNotificationsCount: number;
   metrics: WebMetric;
   isConnected: boolean;
   connectionError: string | null;
@@ -34,12 +49,25 @@ interface DataContextType {
   updateActivity: (activity: Activity) => Promise<void>;
   deleteActivity: (id: string) => Promise<void>;
   quickUpdateActivity: (id: string, updates: Partial<Activity>) => Promise<void>;
-  reserveSpots: (id: string, spots: number, reservationData: ReservationFormData) => Promise<{ success: boolean; message: string; participantId?: string }>;
+  reserveSpots: (id: string, spots: number, reservationData: ReservationFormData) => Promise<{ success: boolean; message: string; groupId?: string }>;
   addManualParticipant: (participantData: Omit<Participant, 'id' | 'registeredAt'> & { id?: string }) => Promise<{ success: boolean; message: string }>;
   updateParticipant: (id: string, updates: Partial<Participant>) => Promise<void>;
-  deleteParticipant: (id: string, activityId: string, spots: number) => Promise<void>;
+  deleteParticipant: (id: string, activityId: string, _legacySpots?: number) => Promise<void>;
   markAttendance: (id: string, attended: boolean) => Promise<void>;
   incrementViews: (id: string) => void;
+  // Member management
+  addMember: (memberData: Omit<Member, 'id' | 'createdAt'> & { id?: string }) => Promise<{ success: boolean; message: string }>;
+  updateMember: (id: string, updates: Partial<Member>) => Promise<void>;
+  deleteMember: (id: string) => Promise<void>;
+  importMembers: (newMembers: Omit<Member, 'id' | 'createdAt'>[]) => Promise<{ imported: number; skipped: number }>;
+  // Notifications
+  markNotificationAsRead: (id: string) => Promise<void>;
+  deleteNotification: (id: string) => Promise<void>;
+  createNotification: (notif: Omit<AdminNotification, 'id' | 'createdAt' | 'read'>) => Promise<void>;
+  // Expenses
+  addExpense: (expenseData: Omit<Expense, 'id' | 'createdAt'>) => Promise<{ success: boolean; message: string }>;
+  updateExpense: (id: string, updates: Partial<Expense>) => Promise<void>;
+  deleteExpense: (id: string) => Promise<void>;
   useMockData: boolean;
   toggleMockData: () => void;
 }
@@ -52,24 +80,47 @@ const DEFAULT_METRICS: WebMetric = {
   topVisitedActivities: []
 };
 
+function normalizeText(str: string): string {
+  return (str || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [adminNotifications, setAdminNotifications] = useState<AdminNotification[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [metrics, setMetrics] = useState<WebMetric>(DEFAULT_METRICS);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [useMockData, setUseMockData] = useState(false);
+  const [demoActivities, setDemoActivities] = useState<Activity[]>(DEMO_ACTIVITIES);
+  const [demoParticipants, setDemoParticipants] = useState<Participant[]>(DEMO_PARTICIPANTS);
+  const [demoMembers, setDemoMembers] = useState<Member[]>(DEMO_MEMBERS);
+  const [demoNotifications, setDemoNotifications] = useState<AdminNotification[]>(DEMO_NOTIFICATIONS);
+  const [demoExpenses, setDemoExpenses] = useState<Expense[]>(DEMO_EXPENSES);
+  const [demoMetrics, setDemoMetrics] = useState<WebMetric>(DEMO_METRICS);
 
   const toggleMockData = () => {
     setUseMockData(prev => !prev);
   };
 
-  const displayActivities = useMockData ? DEMO_ACTIVITIES : activities;
-  const displayParticipants = useMockData ? DEMO_PARTICIPANTS : participants;
-  const displayMetrics = useMockData ? DEMO_METRICS : metrics;
+  const displayActivities = useMockData ? demoActivities : activities;
+  const displayParticipants = useMockData ? demoParticipants : participants;
+  const displayMembers = useMockData ? demoMembers : members;
+  const displayNotifications = useMockData ? demoNotifications : adminNotifications;
+  const displayExpenses = useMockData ? demoExpenses : expenses;
+  const displayMetrics = useMockData ? demoMetrics : metrics;
+
+  const unreadNotificationsCount = displayNotifications.filter(n => !n.read).length;
 
   // Public real-time subscriptions (activities and metrics)
   useEffect(() => {
@@ -120,16 +171,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // Protected real-time subscription: participants (only active when admin is authenticated)
+  // Protected real-time subscription: participants, members, notifications (only active when admin is authenticated)
   useEffect(() => {
     if (!isAuthenticated || useMockData || !isFirebaseConfigured() || !db) {
       if (!useMockData && !isAuthenticated) {
         setParticipants([]);
+        setMembers([]);
+        setAdminNotifications([]);
+        setExpenses([]);
       }
       return;
     }
 
     let unsubParticipants: (() => void) | null = null;
+    let unsubMembers: (() => void) | null = null;
+    let unsubNotifications: (() => void) | null = null;
+    let unsubExpenses: (() => void) | null = null;
 
     try {
       unsubParticipants = subscribeToParticipantsFirestore(
@@ -146,8 +203,56 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Could not initialize participants subscription:', err);
     }
 
+    try {
+      unsubMembers = subscribeToMembersFirestore(
+        (firestoreMembers) => {
+          if (firestoreMembers) {
+            setMembers(firestoreMembers);
+          }
+        },
+        (err) => {
+          console.warn('Members subscription notice:', err);
+        }
+      );
+    } catch (err) {
+      console.warn('Could not initialize members subscription:', err);
+    }
+
+    try {
+      unsubNotifications = subscribeToAdminNotificationsFirestore(
+        (firestoreNotifs) => {
+          if (firestoreNotifs) {
+            setAdminNotifications(firestoreNotifs);
+          }
+        },
+        (err) => {
+          console.warn('Admin notifications subscription notice:', err);
+        }
+      );
+    } catch (err) {
+      console.warn('Could not initialize notifications subscription:', err);
+    }
+
+    try {
+      unsubExpenses = subscribeToExpensesFirestore(
+        (firestoreExpenses) => {
+          if (firestoreExpenses) {
+            setExpenses(firestoreExpenses);
+          }
+        },
+        (err) => {
+          console.warn('Expenses subscription notice:', err);
+        }
+      );
+    } catch (err) {
+      console.warn('Could not initialize expenses subscription:', err);
+    }
+
     return () => {
       if (unsubParticipants) unsubParticipants();
+      if (unsubMembers) unsubMembers();
+      if (unsubNotifications) unsubNotifications();
+      if (unsubExpenses) unsubExpenses();
     };
   }, [isAuthenticated, useMockData]);
 
@@ -193,9 +298,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!useMockData) {
       await deleteActivityFirestore(id);
     }
-  };
-
-  const reserveSpots = async (id: string, requestedSpots: number, reservationData: ReservationFormData) => {
+  };  const reserveSpots = async (id: string, requestedSpots: number, reservationData: ReservationFormData) => {
     const activity = activities.find(a => a.id === id);
     if (!activity) {
       return { success: false, message: 'La actividad solicitada no existe.' };
@@ -209,12 +312,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }
 
-    const newParticipantId = `part-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const totalAmount = requestedSpots * activity.price;
+    const groupId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `grp-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    
     const nowIso = new Date().toISOString();
+    const priceMember = activity.priceMember;
+    const priceNonMember = activity.priceNonMember;
+    const turnText = reservationData.turn || (activity.time ? `Turno (${activity.time})` : undefined);
 
-    const newParticipant: Participant = {
-      id: newParticipantId,
+    const newParticipants: Participant[] = [];
+
+    // 1. Titular (First attendee)
+    const isTitularMember = reservationData.isMember ?? (reservationData.attendees?.[0]?.isMember ?? false);
+    const titularPrice = isTitularMember ? priceMember : priceNonMember;
+    const titularId = `part-${Date.now()}-0-${Math.random().toString(36).substring(2, 6)}`;
+
+    newParticipants.push({
+      id: titularId,
       activityId: activity.id,
       activityTitle: activity.title,
       activityDate: activity.date,
@@ -222,38 +337,115 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       fullName: reservationData.fullName.trim(),
       email: reservationData.email.trim(),
       phone: reservationData.phone.trim(),
-      spots: requestedSpots,
-      turn: reservationData.turn || (activity.time ? `Turno (${activity.time})` : undefined),
+      isMember: isTitularMember,
+      groupId,
+      turn: turnText,
       membershipNumber: reservationData.membershipNumber?.trim() || undefined,
       notes: reservationData.notes?.trim() || undefined,
       status: 'confirmada',
-      totalAmount: totalAmount,
+      totalAmount: titularPrice,
       paidAmount: 0,
       paymentMethod: reservationData.paymentMethod || 'pendiente',
       registeredAt: nowIso,
       updatedAt: nowIso
-    };
+    });
+
+    // 2. Companions (Plazas 2..N)
+    for (let i = 1; i < requestedSpots; i++) {
+      const compData = reservationData.attendees?.[i];
+      const isCompMember = !!compData?.isMember;
+      const compPrice = isCompMember ? priceMember : priceNonMember;
+      const compId = `part-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`;
+
+      newParticipants.push({
+        id: compId,
+        activityId: activity.id,
+        activityTitle: activity.title,
+        activityDate: activity.date,
+        activityType: activity.type,
+        fullName: compData?.fullName?.trim() || `Acompañante ${i} (${reservationData.fullName.trim()})`,
+        email: compData?.email?.trim() || '',
+        phone: compData?.phone?.trim() || '',
+        isMember: isCompMember,
+        groupId,
+        turn: turnText,
+        membershipNumber: compData?.membershipNumber?.trim() || undefined,
+        notes: compData?.notes?.trim() || undefined,
+        status: 'confirmada',
+        totalAmount: compPrice,
+        paidAmount: 0,
+        paymentMethod: reservationData.paymentMethod || 'pendiente',
+        registeredAt: nowIso,
+        updatedAt: nowIso
+      });
+    }
 
     // Optimistic update
-    setParticipants(prev => [newParticipant, ...prev]);
+    setParticipants(prev => [...newParticipants, ...prev]);
     setActivities(prev => prev.map(a => a.id === id ? { ...a, bookedSpots: a.bookedSpots + requestedSpots } : a));
+
+    // Contrast check against members census (Prompt 4, Req 3)
+    const activeCensus = displayMembers;
+    for (const p of newParticipants) {
+      const normalizedPName = normalizeText(p.fullName);
+      const matchedMember = activeCensus.find(m => {
+        if (p.email && m.email && m.email.toLowerCase().trim() === p.email.toLowerCase().trim()) return true;
+        return normalizeText(m.fullName) === normalizedPName;
+      });
+
+      if (p.isMember) {
+        if (!matchedMember || !matchedMember.active) {
+          const notifId = `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+          const notif: AdminNotification = {
+            id: notifId,
+            type: 'socio_mismatch',
+            message: `Aviso de reserva: "${p.fullName}" se indicó como SOCIO para "${p.activityTitle}", pero no figura en el censo activo de socios.`,
+            activityId: p.activityId,
+            participantId: p.id,
+            read: false,
+            createdAt: nowIso
+          };
+          setAdminNotifications(prev => [notif, ...prev]);
+          if (!useMockData && isFirebaseConfigured() && db) {
+            saveAdminNotificationFirestore(notif).catch(e => console.warn('Could not save notification:', e));
+          }
+        }
+      } else {
+        if (matchedMember && matchedMember.active) {
+          const notifId = `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+          const notif: AdminNotification = {
+            id: notifId,
+            type: 'socio_mismatch',
+            message: `Aviso de reserva: "${p.fullName}" se registró como NO SOCIO para "${p.activityTitle}", pero figura como socio activo (${matchedMember.membershipNumber || 'S/N'}). Se le podría haber cobrado tarifa general.`,
+            activityId: p.activityId,
+            participantId: p.id,
+            read: false,
+            createdAt: nowIso
+          };
+          setAdminNotifications(prev => [notif, ...prev]);
+          if (!useMockData && isFirebaseConfigured() && db) {
+            saveAdminNotificationFirestore(notif).catch(e => console.warn('Could not save notification:', e));
+          }
+        }
+      }
+    }
 
     try {
       if (!useMockData && isFirebaseConfigured() && db) {
-        await createReservationWithParticipantFirestore(newParticipant, requestedSpots);
+        await createReservationWithParticipantsFirestore(newParticipants, activity.id);
       }
       return { 
         success: true, 
         message: `¡Plazas reservadas con éxito para ${reservationData.fullName}! En breve recibirás un correo con las instrucciones de abono y acceso.`,
-        participantId: newParticipantId
+        groupId
       };
     } catch (err: any) {
       console.error('Error executing reservation on Firestore:', err);
       // Even if Firestore fails momentarily, local optimistic state saved
-      return {
-        success: true,
+      return { 
+        success: true, 
         message: `¡Solicitud registrada correctamente para ${reservationData.fullName}!`,
-        participantId: newParticipantId
+        groupId
       };
     }
   };
@@ -262,25 +454,59 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const activity = activities.find(a => a.id === participantData.activityId);
     const nowIso = new Date().toISOString();
     const newId = participantData.id || `part-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const groupId = participantData.groupId || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `grp-manual-${Date.now()}`);
 
     const newParticipant: Participant = {
       ...participantData,
       id: newId,
+      groupId,
+      isMember: !!participantData.isMember,
       registeredAt: nowIso,
       updatedAt: nowIso
     };
 
     // Optimistic update
+    if (useMockData) {
+      setDemoParticipants(prev => [newParticipant, ...prev]);
+      if (activity && participantData.status !== 'cancelada') {
+        setDemoActivities(prev => prev.map(a => a.id === participantData.activityId ? { ...a, bookedSpots: a.bookedSpots + 1 } : a));
+      }
+      return { success: true, message: 'Asistente añadido en modo demo.' };
+    }
+
     setParticipants(prev => [newParticipant, ...prev]);
     if (activity && participantData.status !== 'cancelada') {
-      setActivities(prev => prev.map(a => a.id === participantData.activityId ? { ...a, bookedSpots: a.bookedSpots + participantData.spots } : a));
+      setActivities(prev => prev.map(a => a.id === participantData.activityId ? { ...a, bookedSpots: a.bookedSpots + 1 } : a));
+    }
+
+    // Member contrast check
+    const normalizedName = normalizeText(newParticipant.fullName);
+    const matchedMember = displayMembers.find(m => {
+      if (newParticipant.email && m.email && m.email.toLowerCase().trim() === newParticipant.email.toLowerCase().trim()) return true;
+      return normalizeText(m.fullName) === normalizedName;
+    });
+
+    if (newParticipant.isMember && (!matchedMember || !matchedMember.active)) {
+      const notif: AdminNotification = {
+        id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        type: 'socio_mismatch',
+        message: `Aviso manual: "${newParticipant.fullName}" se añadió como SOCIO pero no figura en el censo activo de socios.`,
+        activityId: newParticipant.activityId,
+        participantId: newParticipant.id,
+        read: false,
+        createdAt: nowIso
+      };
+      setAdminNotifications(prev => [notif, ...prev]);
+      if (!useMockData && isFirebaseConfigured() && db) {
+        saveAdminNotificationFirestore(notif).catch(e => console.warn('Could not save notification:', e));
+      }
     }
 
     try {
       if (!useMockData && isFirebaseConfigured() && db) {
         await saveParticipantFirestore(newParticipant);
         if (participantData.status !== 'cancelada') {
-          await adjustActivitySpotsFirestore(participantData.activityId, participantData.spots);
+          await adjustActivitySpotsFirestore(participantData.activityId, 1);
         }
       }
       return { success: true, message: 'Asistente añadido y plazas actualizadas correctamente.' };
@@ -291,21 +517,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateParticipant = async (id: string, updates: Partial<Participant>) => {
-    const old = participants.find(p => p.id === id);
+    const list = useMockData ? demoParticipants : participants;
+    const old = list.find(p => p.id === id);
     if (!old) return;
 
-    // Handle spot delta if spots or cancellation status changed
+    // Handle spot delta if cancellation status changed
     let spotsDelta = 0;
     if (updates.status === 'cancelada' && old.status !== 'cancelada') {
-      spotsDelta = -old.spots;
+      spotsDelta = -1;
     } else if (old.status === 'cancelada' && updates.status && updates.status !== 'cancelada') {
-      const newSpots = updates.spots !== undefined ? updates.spots : old.spots;
-      spotsDelta = newSpots;
-    } else if (updates.spots !== undefined && updates.spots !== old.spots && old.status !== 'cancelada') {
-      spotsDelta = updates.spots - old.spots;
+      spotsDelta = 1;
     }
 
     const updatedObj = { ...old, ...updates, updatedAt: new Date().toISOString() };
+
+    if (useMockData) {
+      setDemoParticipants(prev => prev.map(p => p.id === id ? updatedObj : p));
+      if (spotsDelta !== 0 && old.activityId) {
+        setDemoActivities(prev => prev.map(a => a.id === old.activityId ? { ...a, bookedSpots: Math.max(0, a.bookedSpots + spotsDelta) } : a));
+      }
+      return;
+    }
 
     // Optimistic update
     setParticipants(prev => prev.map(p => p.id === id ? updatedObj : p));
@@ -325,21 +557,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const deleteParticipant = async (id: string, activityId: string, spots: number) => {
-    const target = participants.find(p => p.id === id);
+  const deleteParticipant = async (id: string, activityId: string, _legacySpots?: number) => {
+    const list = useMockData ? demoParticipants : participants;
+    const target = list.find(p => p.id === id);
     const shouldRefundSpots = target && target.status !== 'cancelada';
+
+    if (useMockData) {
+      setDemoParticipants(prev => prev.filter(p => p.id !== id));
+      if (shouldRefundSpots && activityId) {
+        setDemoActivities(prev => prev.map(a => a.id === activityId ? { ...a, bookedSpots: Math.max(0, a.bookedSpots - 1) } : a));
+      }
+      return;
+    }
 
     // Optimistic update
     setParticipants(prev => prev.filter(p => p.id !== id));
     if (shouldRefundSpots && activityId) {
-      setActivities(prev => prev.map(a => a.id === activityId ? { ...a, bookedSpots: Math.max(0, a.bookedSpots - spots) } : a));
+      setActivities(prev => prev.map(a => a.id === activityId ? { ...a, bookedSpots: Math.max(0, a.bookedSpots - 1) } : a));
     }
 
     try {
       if (!useMockData && isFirebaseConfigured() && db) {
         await deleteParticipantFirestore(id);
         if (shouldRefundSpots && activityId) {
-          await adjustActivitySpotsFirestore(activityId, -spots);
+          await adjustActivitySpotsFirestore(activityId, -1);
         }
       }
     } catch (err) {
@@ -350,6 +591,174 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const markAttendance = async (id: string, attended: boolean) => {
     const newStatus = attended ? 'asistio' : 'confirmada';
     await updateParticipant(id, { status: newStatus });
+  };
+
+  // Member Management Functions (Prompt 4)
+  const addMember = async (memberData: Omit<Member, 'id' | 'createdAt'> & { id?: string }) => {
+    const nowIso = new Date().toISOString();
+    const id = memberData.id || `mem-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const newMember: Member = {
+      ...memberData,
+      id,
+      createdAt: nowIso,
+      updatedAt: nowIso
+    };
+
+    if (useMockData) {
+      setDemoMembers(prev => [...prev, newMember]);
+      return { success: true, message: 'Socio registrado en modo demo.' };
+    }
+
+    setMembers(prev => [...prev, newMember]);
+
+    try {
+      if (!useMockData && isFirebaseConfigured() && db) {
+        await saveMemberFirestore(newMember);
+      }
+      return { success: true, message: 'Socio registrado correctamente.' };
+    } catch (err: any) {
+      console.error('Error saving member to Firestore:', err);
+      return { success: true, message: 'Socio guardado localmente.' };
+    }
+  };
+
+  const updateMember = async (id: string, updates: Partial<Member>) => {
+    const nowIso = new Date().toISOString();
+    if (useMockData) {
+      setDemoMembers(prev => prev.map(m => m.id === id ? { ...m, ...updates, updatedAt: nowIso } : m));
+      return;
+    }
+    setMembers(prev => prev.map(m => m.id === id ? { ...m, ...updates, updatedAt: nowIso } : m));
+
+    try {
+      if (!useMockData && isFirebaseConfigured() && db) {
+        await updateMemberFirestore(id, updates);
+      }
+    } catch (err) {
+      console.error('Error updating member in Firestore:', err);
+    }
+  };
+
+  const deleteMember = async (id: string) => {
+    if (useMockData) {
+      setDemoMembers(prev => prev.filter(m => m.id !== id));
+      return;
+    }
+    setMembers(prev => prev.filter(m => m.id !== id));
+
+    try {
+      if (!useMockData && isFirebaseConfigured() && db) {
+        await deleteMemberFirestore(id);
+      }
+    } catch (err) {
+      console.error('Error deleting member from Firestore:', err);
+    }
+  };
+
+  const importMembers = async (newMembersList: Omit<Member, 'id' | 'createdAt'>[]) => {
+    let imported = 0;
+    let skipped = 0;
+    const nowIso = new Date().toISOString();
+    const existingEmails = new Set(displayMembers.map(m => (m.email || '').toLowerCase().trim()).filter(Boolean));
+    const existingNames = new Set(displayMembers.map(m => normalizeText(m.fullName)));
+
+    const toAdd: Member[] = [];
+
+    for (const item of newMembersList) {
+      const normName = normalizeText(item.fullName);
+      const emailLower = (item.email || '').toLowerCase().trim();
+
+      if (!normName) {
+        skipped++;
+        continue;
+      }
+
+      if ((emailLower && existingEmails.has(emailLower)) || existingNames.has(normName)) {
+        skipped++;
+        continue;
+      }
+
+      const id = `mem-${Date.now()}-${imported}-${Math.random().toString(36).substring(2, 6)}`;
+      const memberObj: Member = {
+        ...item,
+        id,
+        createdAt: nowIso,
+        updatedAt: nowIso
+      };
+
+      toAdd.push(memberObj);
+      if (emailLower) existingEmails.add(emailLower);
+      existingNames.add(normName);
+      imported++;
+    }
+
+    if (toAdd.length > 0) {
+      if (useMockData) {
+        setDemoMembers(prev => [...toAdd, ...prev]);
+        return { imported, skipped };
+      }
+      setMembers(prev => [...toAdd, ...prev]);
+      if (!useMockData && isFirebaseConfigured() && db) {
+        for (const m of toAdd) {
+          try {
+            await saveMemberFirestore(m);
+          } catch (e) {
+            console.warn('Error saving imported member:', e);
+          }
+        }
+      }
+    }
+
+    return { imported, skipped };
+  };
+
+  // Notification actions
+  const markNotificationAsRead = async (id: string) => {
+    if (useMockData) {
+      setDemoNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+      return;
+    }
+    setAdminNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    try {
+      if (!useMockData && isFirebaseConfigured() && db) {
+        await markAdminNotificationReadFirestore(id);
+      }
+    } catch (err) {
+      console.warn('Error marking notification as read in Firestore:', err);
+    }
+  };
+
+  const deleteNotification = async (id: string) => {
+    if (useMockData) {
+      setDemoNotifications(prev => prev.filter(n => n.id !== id));
+      return;
+    }
+    setAdminNotifications(prev => prev.filter(n => n.id !== id));
+    try {
+      if (!useMockData && isFirebaseConfigured() && db) {
+        await deleteAdminNotificationFirestore(id);
+      }
+    } catch (err) {
+      console.warn('Error deleting notification from Firestore:', err);
+    }
+  };
+
+  const createNotification = async (notifData: Omit<AdminNotification, 'id' | 'createdAt' | 'read'>) => {
+    const id = `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const newNotif: AdminNotification = {
+      ...notifData,
+      id,
+      read: false,
+      createdAt: new Date().toISOString()
+    };
+    setAdminNotifications(prev => [newNotif, ...prev]);
+    try {
+      if (!useMockData && isFirebaseConfigured() && db) {
+        await saveAdminNotificationFirestore(newNotif);
+      }
+    } catch (err) {
+      console.warn('Error saving notification to Firestore:', err);
+    }
   };
 
   const incrementViews = (id: string) => {
@@ -374,6 +783,68 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
+  // Expenses
+  const addExpense = async (expenseData: Omit<Expense, 'id' | 'createdAt'>) => {
+    const newId = `exp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const nowIso = new Date().toISOString();
+    
+    const newExpense: Expense = {
+      ...expenseData,
+      id: newId,
+      createdAt: nowIso
+    };
+
+    if (useMockData) {
+      setDemoExpenses(prev => [...prev, newExpense]);
+      return { success: true, message: 'Gasto registrado en modo demo.' };
+    }
+
+    setExpenses(prev => [...prev, newExpense]);
+    try {
+      if (isFirebaseConfigured() && db) {
+        await saveExpenseFirestore(newExpense);
+      }
+      return { success: true, message: 'Gasto registrado con éxito.' };
+    } catch (error: any) {
+      console.error('Error saving expense:', error);
+      // rollback
+      setExpenses(prev => prev.filter(e => e.id !== newId));
+      return { success: false, message: error.message || 'Error al guardar el gasto.' };
+    }
+  };
+
+  const updateExpense = async (id: string, updates: Partial<Expense>) => {
+    if (useMockData) {
+      setDemoExpenses(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
+      return;
+    }
+
+    setExpenses(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
+    try {
+      if (isFirebaseConfigured() && db) {
+        await updateExpenseFirestore(id, updates);
+      }
+    } catch (error) {
+      console.error('Error updating expense:', error);
+    }
+  };
+
+  const deleteExpense = async (id: string) => {
+    if (useMockData) {
+      setDemoExpenses(prev => prev.filter(e => e.id !== id));
+      return;
+    }
+
+    setExpenses(prev => prev.filter(e => e.id !== id));
+    try {
+      if (isFirebaseConfigured() && db) {
+        await deleteExpenseFirestore(id);
+      }
+    } catch (error) {
+      console.error('Error deleting expense:', error);
+    }
+  };
+
   return (
     <DataContext.Provider value={{
       activities: displayActivities,
@@ -381,6 +852,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       cursos,
       viajes,
       participants: displayParticipants,
+      members: displayMembers,
+      adminNotifications: displayNotifications,
+      expenses: displayExpenses,
+      unreadNotificationsCount,
       metrics: displayMetrics,
       isConnected,
       connectionError,
@@ -396,6 +871,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       deleteParticipant,
       markAttendance,
       incrementViews,
+      addMember,
+      updateMember,
+      deleteMember,
+      importMembers,
+      markNotificationAsRead,
+      deleteNotification,
+      createNotification,
+      // expenses
+      addExpense,
+      updateExpense,
+      deleteExpense,
       useMockData,
       toggleMockData
     }}>

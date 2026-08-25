@@ -16,7 +16,8 @@ export interface BaseActivity {
   description: string;
   date: string; // e.g. "2026-04-10"
   time?: string; // e.g. "20:30 h"
-  price: number; // en euros (€)
+  priceMember: number; // Precio para socios (€)
+  priceNonMember: number; // Precio para no socios (€)
   totalSpots: number;
   bookedSpots: number;
   status: ActivityStatus;
@@ -138,15 +139,26 @@ export interface WebMetric {
   }>;
 }
 
+export interface ReservationAttendee {
+  fullName: string;
+  isMember: boolean;
+  membershipNumber?: string;
+  email?: string;
+  phone?: string;
+  notes?: string;
+}
+
 export interface ReservationFormData {
   fullName: string;
   email: string;
   phone: string;
   spots: number;
+  isMember?: boolean;
+  membershipNumber?: string;
   turn?: string;
   notes?: string;
-  membershipNumber?: string;
   paymentMethod?: PaymentMethod;
+  attendees?: ReservationAttendee[];
 }
 
 export type ParticipantStatus = 'confirmada' | 'pendiente_pago' | 'cancelada' | 'asistio' | 'no_asistio';
@@ -162,14 +174,57 @@ export interface Participant {
   fullName: string;
   email: string;
   phone: string;
-  spots: number;
+  isMember: boolean;
+  groupId: string;
   turn?: string;
   membershipNumber?: string;
   notes?: string;
   status: ParticipantStatus;
+  attended?: boolean;
+  spotsCount?: number;
   totalAmount: number;
   paidAmount?: number;
   paymentMethod: PaymentMethod;
   registeredAt: string;
+  createdAt?: string;
   updatedAt?: string;
+}
+
+export interface Member {
+  id: string;
+  fullName: string;
+  email?: string;
+  phone?: string;
+  membershipNumber?: string;
+  active: boolean;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface AdminNotification {
+  id: string;
+  type: 'socio_mismatch' | 'sistema' | 'otro';
+  title?: string;
+  message: string;
+  activityId?: string;
+  participantId?: string;
+  read: boolean;
+  createdAt: string;
+}
+
+export type ExpenseCategory = 'bodega_proveedor' | 'catering' | 'transporte' | 'alojamiento' | 'material' | 'personal' | 'otros';
+
+export interface Expense {
+  id: string;
+  activityId: string;
+  concept: string;
+  amount: number;
+  category: ExpenseCategory;
+  date: string;
+  receiptImageUrl?: string;
+  receiptImageUrl2?: string;
+  notes?: string;
+  createdAt: string;
+  createdBy?: string;
 }

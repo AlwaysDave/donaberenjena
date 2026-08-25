@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Activity, ReservationFormData } from '../../types';
+import { Activity, ReservationAttendee, ReservationFormData } from '../../types';
 import { useData } from '../../context/DataContext';
-import { Users, CreditCard, ShieldCheck, Phone, CheckCircle2, ChevronRight, HelpCircle, X, Sparkles } from 'lucide-react';
+import { Users, CreditCard, ShieldCheck, CheckCircle2, ChevronRight, HelpCircle, X, Sparkles, UserCheck, UserPlus } from 'lucide-react';
 
 interface ReservationBlockProps {
   activity: Activity;
@@ -13,32 +13,117 @@ interface ReservationBlockProps {
 export const ReservationBlock: React.FC<ReservationBlockProps> = ({
   activity,
   className = '',
-  enableDirectPayment = false
+  enableDirectPayment: _enableDirectPayment = false
 }) => {
   const { reserveSpots } = useData();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showHowToReserve, setShowHowToReserve] = useState(false);
-  const [formData, setFormData] = useState<ReservationFormData>({
+  
+  const [numSpots, setNumSpots] = useState(1);
+  const [titularData, setTitularData] = useState<{
+    fullName: string;
+    email: string;
+    phone: string;
+    isMember: boolean;
+    membershipNumber: string;
+    turn: string;
+    notes: string;
+    paymentMethod: 'bizum' | 'transferencia' | 'efectivo' | 'tarjeta';
+  }>({
     fullName: '',
     email: '',
     phone: '',
-    spots: 1,
+    isMember: false,
+    membershipNumber: '',
+    turn: '',
     notes: '',
-    membershipNumber: ''
+    paymentMethod: 'bizum'
   });
+
+  // State for companions (index 0 is companion 1, corresponding to spot 2)
+  const [companions, setCompanions] = useState<Array<{
+    fullName: string;
+    isMember: boolean;
+    membershipNumber: string;
+  }>>([
+    { fullName: '', isMember: false, membershipNumber: '' },
+    { fullName: '', isMember: false, membershipNumber: '' },
+    { fullName: '', isMember: false, membershipNumber: '' },
+    { fullName: '', isMember: false, membershipNumber: '' },
+    { fullName: '', isMember: false, membershipNumber: '' },
+  ]);
+
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const priceMember = activity.priceMember;
+  const priceNonMember = activity.priceNonMember;
+  const hasSpecialPricing = priceMember !== priceNonMember;
 
   const availableSpots = Math.max(0, activity.totalSpots - activity.bookedSpots);
   const occupancyPercentage = Math.min(100, Math.round((activity.bookedSpots / activity.totalSpots) * 100));
   const isSoldOut = availableSpots <= 0;
+
+  // Calculate total price based on member status of each attendee
+  const titularPrice = titularData.isMember ? priceMember : priceNonMember;
+  let companionTotal = 0;
+  for (let i = 0; i < numSpots - 1; i++) {
+    const comp = companions[i];
+    companionTotal += comp?.isMember ? priceMember : priceNonMember;
+  }
+  const calculatedTotalPrice = titularPrice + companionTotal;
+
+  const handleCompanionChange = (index: number, field: 'fullName' | 'isMember' | 'membershipNumber', value: any) => {
+    setCompanions(prev => {
+      const next = [...prev];
+      if (!next[index]) {
+        next[index] = { fullName: '', isMember: false, membershipNumber: '' };
+      }
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setStatusMessage(null);
 
-    const result = await reserveSpots(activity.id, formData.spots, formData);
+    // Build attendees array
+    const attendeesPayload: ReservationAttendee[] = [
+      {
+        fullName: titularData.fullName.trim(),
+        isMember: titularData.isMember,
+        membershipNumber: titularData.membershipNumber.trim() || undefined,
+        email: titularData.email.trim(),
+        phone: titularData.phone.trim(),
+        notes: titularData.notes.trim() || undefined
+      }
+    ];
+
+    for (let i = 0; i < numSpots - 1; i++) {
+      const comp = companions[i];
+      attendeesPayload.push({
+        fullName: comp?.fullName?.trim() || `Acompañante ${i + 1} (${titularData.fullName.trim()})`,
+        isMember: !!comp?.isMember,
+        membershipNumber: comp?.membershipNumber?.trim() || undefined
+      });
+    }
+
+    const reservationPayload: ReservationFormData = {
+      fullName: titularData.fullName.trim(),
+      email: titularData.email.trim(),
+      phone: titularData.phone.trim(),
+      spots: numSpots,
+      isMember: titularData.isMember,
+      membershipNumber: titularData.membershipNumber.trim() || undefined,
+      turn: titularData.turn || undefined,
+      notes: titularData.notes.trim() || undefined,
+      paymentMethod: titularData.paymentMethod,
+      attendees: attendeesPayload
+    };
+
+    const result = await reserveSpots(activity.id, numSpots, reservationPayload);
     setIsSubmitting(false);
 
     if (result.success) {
@@ -46,14 +131,24 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
       setTimeout(() => {
         setIsModalOpen(false);
         setStatusMessage(null);
-        setFormData({
+        setNumSpots(1);
+        setTitularData({
           fullName: '',
           email: '',
           phone: '',
-          spots: 1,
+          isMember: false,
+          membershipNumber: '',
+          turn: '',
           notes: '',
-          membershipNumber: ''
+          paymentMethod: 'bizum'
         });
+        setCompanions([
+          { fullName: '', isMember: false, membershipNumber: '' },
+          { fullName: '', isMember: false, membershipNumber: '' },
+          { fullName: '', isMember: false, membershipNumber: '' },
+          { fullName: '', isMember: false, membershipNumber: '' },
+          { fullName: '', isMember: false, membershipNumber: '' },
+        ]);
       }, 2500);
     } else {
       setStatusMessage({ type: 'error', text: result.message });
@@ -69,13 +164,36 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
       <div className="flex items-baseline justify-between border-b border-[#F6F1EA] pb-6">
         <div>
           <span className="text-xs uppercase tracking-wider text-[#574B45] font-semibold">
-            Precio por persona
+            {hasSpecialPricing ? 'Tarifas por plaza' : 'Precio por plaza'}
           </span>
-          <div className="flex items-baseline gap-1 mt-1">
-            <span className="text-3xl md:text-4xl font-bold font-serif text-[#521849]">
-              {activity.price}€
-            </span>
-            <span className="text-xs text-[#574B45]">/ plaza</span>
+          <div className="flex flex-col mt-1">
+            {hasSpecialPricing ? (
+              <div className="space-y-1">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-bold font-serif text-emerald-800">
+                    {priceMember}€
+                  </span>
+                  <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    Socios
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xl font-bold font-serif text-[#521849]">
+                    {priceNonMember}€
+                  </span>
+                  <span className="text-xs text-[#574B45]">
+                    No socios
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-baseline gap-1">
+                <span className="text-3xl md:text-4xl font-bold font-serif text-[#521849]">
+                  {priceNonMember}€
+                </span>
+                <span className="text-xs text-[#574B45]">/ plaza</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -186,10 +304,12 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
         <div
           id="modal-reservation-backdrop"
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          onClick={() => setIsModalOpen(false)}
         >
           <div
             id="modal-reservation-content"
-            className="relative w-full max-w-lg rounded-2xl bg-white p-6 md:p-8 shadow-2xl border border-[#EDE4D7] max-h-[90vh] overflow-y-auto"
+            className="relative w-full max-w-xl rounded-2xl bg-white p-6 md:p-8 shadow-2xl border border-[#EDE4D7] max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
           >
             <button
               id="btn-close-reservation-modal"
@@ -208,7 +328,7 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
                 {activity.title}
               </h3>
               <p className="text-xs text-[#574B45] mt-1">
-                Fecha: {activity.date} {activity.time && `• ${activity.time}`} • {activity.price}€ / persona
+                Fecha: {activity.date} {activity.time && `• ${activity.time}`}
               </p>
             </div>
 
@@ -230,133 +350,264 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
                 </div>
               </div>
             ) : (
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-[#26201D] mb-1">
-                    Nombre y apellidos *
-                  </label>
-                  <input
-                    id="input-reserva-nombre"
-                    type="text"
-                    required
-                    value={formData.fullName}
-                    onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                    placeholder="Ej. Carmen Navarro Ruiz"
-                    className="w-full px-3.5 py-2.5 rounded-lg border border-[#EDE4D7] bg-[#FCFAF7] text-sm focus:outline-none focus:border-[#521849] focus:bg-white"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-[#26201D] mb-1">
-                      Correo electrónico *
-                    </label>
-                    <input
-                      id="input-reserva-email"
-                      type="email"
-                      required
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      placeholder="nombre@ejemplo.com"
-                      className="w-full px-3.5 py-2.5 rounded-lg border border-[#EDE4D7] bg-[#FCFAF7] text-sm focus:outline-none focus:border-[#521849] focus:bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-[#26201D] mb-1">
-                      Teléfono de contacto *
-                    </label>
-                    <input
-                      id="input-reserva-telefono"
-                      type="tel"
-                      required
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      placeholder="600 000 000"
-                      className="w-full px-3.5 py-2.5 rounded-lg border border-[#EDE4D7] bg-[#FCFAF7] text-sm focus:outline-none focus:border-[#521849] focus:bg-white"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-[#26201D] mb-1">
-                      Número de plazas *
-                    </label>
-                    <select
-                      id="select-reserva-plazas"
-                      value={formData.spots}
-                      onChange={(e) => setFormData({ ...formData, spots: Number(e.target.value) })}
-                      className="w-full px-3.5 py-2.5 rounded-lg border border-[#EDE4D7] bg-[#FCFAF7] text-sm focus:outline-none focus:border-[#521849] focus:bg-white"
-                    >
-                      {[1, 2, 3, 4, 5, 6].map((num) => (
-                        <option
-                          key={num}
-                          value={num}
-                          disabled={num > availableSpots && !isSoldOut}
-                        >
-                          {num} {num === 1 ? 'plaza' : 'plazas'} ({num * activity.price}€)
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-[#26201D] mb-1">
-                      Nº de socio (opcional)
-                    </label>
-                    <input
-                      id="input-reserva-socio"
-                      type="text"
-                      value={formData.membershipNumber || ''}
-                      onChange={(e) => setFormData({ ...formData, membershipNumber: e.target.value })}
-                      placeholder="Ej. SOC-142"
-                      className="w-full px-3.5 py-2.5 rounded-lg border border-[#EDE4D7] bg-[#FCFAF7] text-sm focus:outline-none focus:border-[#521849] focus:bg-white"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[#26201D] mb-1">
-                    Método de abono preferido
+              <form onSubmit={handleSubmit} className="space-y-5">
+                {/* 1. Selector de Plazas */}
+                <div className="p-4 rounded-xl bg-[#FCFAF7] border border-[#EDE4D7]">
+                  <label className="block text-xs font-bold text-[#26201D] mb-1">
+                    Número de plazas que deseas reservar *
                   </label>
                   <select
-                    id="select-reserva-pago"
-                    value={formData.paymentMethod || 'bizum'}
-                    onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value as any })}
-                    className="w-full px-3.5 py-2.5 rounded-lg border border-[#EDE4D7] bg-[#FCFAF7] text-sm focus:outline-none focus:border-[#521849] focus:bg-white"
+                    id="select-reserva-plazas"
+                    value={numSpots}
+                    onChange={(e) => setNumSpots(Number(e.target.value))}
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-[#EDE4D7] bg-white text-sm font-semibold text-[#26201D] focus:outline-none focus:border-[#521849]"
                   >
-                    <option value="bizum">Bizum (Recomendado)</option>
-                    <option value="transferencia">Transferencia Bancaria</option>
-                    <option value="efectivo">Pago en Sede / Efectivo</option>
-                    <option value="tarjeta">Tarjeta en Sede</option>
+                    {[1, 2, 3, 4, 5, 6].map((num) => (
+                      <option
+                        key={num}
+                        value={num}
+                        disabled={num > availableSpots && !isSoldOut}
+                      >
+                        {num} {num === 1 ? 'plaza (Titular)' : `plazas (Titular + ${num - 1} acompañante${num > 2 ? 's' : ''})`}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-[#26201D] mb-1">
-                    Alergias / Intolerancias / Observaciones
-                  </label>
-                  <textarea
-                    id="input-reserva-observaciones"
-                    rows={2}
-                    value={formData.notes}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    placeholder="Indica aquí si tienes alguna intolerancia alimentaria o necesidad especial..."
-                    className="w-full px-3.5 py-2.5 rounded-lg border border-[#EDE4D7] bg-[#FCFAF7] text-sm focus:outline-none focus:border-[#521849] focus:bg-white resize-none"
-                  />
-                </div>
-
-                {/* Futuro soporte Bizum / Pasarela de pago */}
-                <div className="p-3 rounded-lg bg-[#FCFAF7] border border-[#EDE4D7] flex items-center justify-between text-xs text-[#574B45]">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-[#521849]" />
-                    <span>Total estimado:</span>
+                {/* 2. Plaza 1 (Titular) */}
+                <div className="p-4 rounded-xl bg-white border border-[#EDE4D7] space-y-3.5 shadow-2xs">
+                  <div className="flex items-center justify-between border-b border-[#F6F1EA] pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-[#521849] text-white flex items-center justify-center text-xs font-bold">
+                        1
+                      </div>
+                      <h4 className="text-sm font-bold text-[#26201D]">
+                        Titular de la reserva
+                      </h4>
+                    </div>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-[#FCFAF7] text-[#521849] border border-[#EDE4D7]">
+                      {titularPrice}€
+                    </span>
                   </div>
-                  <span className="font-bold text-sm text-[#521849]">
-                    {formData.spots * activity.price}€
-                  </span>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[#26201D] mb-1">
+                      Nombre y apellidos del titular *
+                    </label>
+                    <input
+                      id="input-reserva-nombre"
+                      type="text"
+                      required
+                      value={titularData.fullName}
+                      onChange={(e) => setTitularData({ ...titularData, fullName: e.target.value })}
+                      placeholder="Ej. Carmen Navarro Ruiz"
+                      className="w-full px-3.5 py-2.5 rounded-lg border border-[#EDE4D7] bg-[#FCFAF7] text-sm focus:outline-none focus:border-[#521849] focus:bg-white"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-[#26201D] mb-1">
+                        Correo electrónico *
+                      </label>
+                      <input
+                        id="input-reserva-email"
+                        type="email"
+                        required
+                        value={titularData.email}
+                        onChange={(e) => setTitularData({ ...titularData, email: e.target.value })}
+                        placeholder="nombre@ejemplo.com"
+                        className="w-full px-3.5 py-2.5 rounded-lg border border-[#EDE4D7] bg-[#FCFAF7] text-sm focus:outline-none focus:border-[#521849] focus:bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#26201D] mb-1">
+                        Teléfono de contacto *
+                      </label>
+                      <input
+                        id="input-reserva-telefono"
+                        type="tel"
+                        required
+                        value={titularData.phone}
+                        onChange={(e) => setTitularData({ ...titularData, phone: e.target.value })}
+                        placeholder="600 000 000"
+                        className="w-full px-3.5 py-2.5 rounded-lg border border-[#EDE4D7] bg-[#FCFAF7] text-sm focus:outline-none focus:border-[#521849] focus:bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Condición de Socio Titular */}
+                  <div className="pt-2 border-t border-[#F6F1EA]">
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={titularData.isMember}
+                        onChange={(e) => setTitularData({ ...titularData, isMember: e.target.checked })}
+                        className="w-4 h-4 rounded text-[#521849] focus:ring-[#521849] border-[#EDE4D7]"
+                      />
+                      <span className="text-xs font-medium text-[#26201D] flex items-center gap-1.5">
+                        <UserCheck className="w-3.5 h-3.5 text-emerald-700" />
+                        ¿El titular es socio/a de la asociación?
+                      </span>
+                    </label>
+
+                    {titularData.isMember && (
+                      <div className="mt-2.5 pl-6">
+                        <label className="block text-xs font-semibold text-[#26201D] mb-1">
+                          Nº de socio (opcional)
+                        </label>
+                        <input
+                          type="text"
+                          value={titularData.membershipNumber}
+                          onChange={(e) => setTitularData({ ...titularData, membershipNumber: e.target.value })}
+                          placeholder="Ej. SOC-142"
+                          className="w-full sm:w-1/2 px-3 py-2 rounded-lg border border-[#EDE4D7] bg-[#FCFAF7] text-xs focus:outline-none focus:border-[#521849] focus:bg-white"
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="pt-2">
+                {/* 3. Plazas 2..N (Acompañantes) */}
+                {numSpots > 1 && (
+                  <div className="space-y-3 pt-1">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-[#574B45] flex items-center gap-1.5">
+                      <UserPlus className="w-4 h-4 text-[#521849]" />
+                      Datos de los acompañantes ({numSpots - 1})
+                    </h4>
+
+                    {Array.from({ length: numSpots - 1 }).map((_, idx) => {
+                      const comp = companions[idx] || { fullName: '', isMember: false, membershipNumber: '' };
+                      const compPrice = comp.isMember ? priceMember : priceNonMember;
+
+                      return (
+                        <div
+                          key={idx}
+                          className="p-4 rounded-xl bg-[#FCFAF7] border border-[#EDE4D7] space-y-3"
+                        >
+                          <div className="flex items-center justify-between border-b border-[#EDE4D7] pb-2">
+                            <div className="flex items-center gap-2">
+                              <div className="w-5 h-5 rounded-full bg-[#EDE4D7] text-[#521849] flex items-center justify-center text-xs font-bold">
+                                {idx + 2}
+                              </div>
+                              <span className="text-xs font-bold text-[#26201D]">
+                                Plaza {idx + 2}: Acompañante
+                              </span>
+                            </div>
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-white text-[#521849] border border-[#EDE4D7]">
+                              {compPrice}€
+                            </span>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-semibold text-[#26201D] mb-1">
+                              Nombre y apellidos del acompañante *
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={comp.fullName}
+                              onChange={(e) => handleCompanionChange(idx, 'fullName', e.target.value)}
+                              placeholder={`Ej. Acompañante ${idx + 1}`}
+                              className="w-full px-3.5 py-2.5 rounded-lg border border-[#EDE4D7] bg-white text-sm focus:outline-none focus:border-[#521849]"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="flex items-center gap-2.5 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={comp.isMember}
+                                onChange={(e) => handleCompanionChange(idx, 'isMember', e.target.checked)}
+                                className="w-4 h-4 rounded text-[#521849] focus:ring-[#521849] border-[#EDE4D7]"
+                              />
+                              <span className="text-xs font-medium text-[#26201D] flex items-center gap-1.5">
+                                <UserCheck className="w-3.5 h-3.5 text-emerald-700" />
+                                ¿Este acompañante es socio/a?
+                              </span>
+                            </label>
+
+                            {comp.isMember && (
+                              <div className="mt-2 pl-6">
+                                <label className="block text-xs font-semibold text-[#26201D] mb-1">
+                                  Nº de socio del acompañante (opcional)
+                                </label>
+                                <input
+                                  type="text"
+                                  value={comp.membershipNumber}
+                                  onChange={(e) => handleCompanionChange(idx, 'membershipNumber', e.target.value)}
+                                  placeholder="Ej. SOC-204"
+                                  className="w-full sm:w-1/2 px-3 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs focus:outline-none focus:border-[#521849]"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* 4. Método de pago y observaciones */}
+                <div className="space-y-3 pt-1">
+                  <div>
+                    <label className="block text-xs font-semibold text-[#26201D] mb-1">
+                      Método de abono preferido
+                    </label>
+                    <select
+                      id="select-reserva-pago"
+                      value={titularData.paymentMethod}
+                      onChange={(e) => setTitularData({ ...titularData, paymentMethod: e.target.value as any })}
+                      className="w-full px-3.5 py-2.5 rounded-lg border border-[#EDE4D7] bg-[#FCFAF7] text-sm focus:outline-none focus:border-[#521849] focus:bg-white"
+                    >
+                      <option value="bizum">Bizum (Recomendado)</option>
+                      <option value="transferencia">Transferencia Bancaria</option>
+                      <option value="efectivo">Pago en Sede / Efectivo</option>
+                      <option value="tarjeta">Tarjeta en Sede</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[#26201D] mb-1">
+                      Alergias / Intolerancias / Observaciones
+                    </label>
+                    <textarea
+                      id="input-reserva-observaciones"
+                      rows={2}
+                      value={titularData.notes}
+                      onChange={(e) => setTitularData({ ...titularData, notes: e.target.value })}
+                      placeholder="Indica aquí si alguno de los asistentes tiene alergias alimentarias..."
+                      className="w-full px-3.5 py-2.5 rounded-lg border border-[#EDE4D7] bg-[#FCFAF7] text-sm focus:outline-none focus:border-[#521849] focus:bg-white resize-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Desglose de importe */}
+                <div className="p-3.5 rounded-xl bg-[#FCFAF7] border border-[#EDE4D7] text-xs text-[#574B45] space-y-1">
+                  <div className="flex items-center justify-between font-medium">
+                    <span>Titular ({titularData.isMember ? 'Socio' : 'No socio'}):</span>
+                    <span>{titularPrice}€</span>
+                  </div>
+                  {numSpots > 1 && Array.from({ length: numSpots - 1 }).map((_, idx) => {
+                    const comp = companions[idx];
+                    const compPr = comp?.isMember ? priceMember : priceNonMember;
+                    return (
+                      <div key={idx} className="flex items-center justify-between">
+                        <span>Plaza {idx + 2} ({comp?.isMember ? 'Socio' : 'No socio'}):</span>
+                        <span>{compPr}€</span>
+                      </div>
+                    );
+                  })}
+                  <div className="pt-2 border-t border-[#EDE4D7] flex items-center justify-between font-bold text-sm text-[#521849]">
+                    <div className="flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-[#521849]" />
+                      <span>Total estimado ({numSpots} {numSpots === 1 ? 'plaza' : 'plazas'}):</span>
+                    </div>
+                    <span>{calculatedTotalPrice}€</span>
+                  </div>
+                </div>
+
+                <div className="pt-1">
                   <button
                     id="btn-confirmar-reserva"
                     type="submit"
@@ -366,7 +617,7 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
                     {isSubmitting ? (
                       <span>Procesando solicitud...</span>
                     ) : (
-                      <span>Confirmar Solicitud de Reserva</span>
+                      <span>Confirmar Solicitud de Reserva ({numSpots} {numSpots === 1 ? 'plaza' : 'plazas'})</span>
                     )}
                   </button>
                   <p className="text-[11px] text-[#574B45] text-center mt-2">
