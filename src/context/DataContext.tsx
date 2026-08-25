@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Activity, CataActivity, CursoActivity, Participant, ReservationFormData, ViajeActivity, WebMetric } from '../types';
+import { useAuth } from './AuthContext';
 import { db, isFirebaseConfigured } from '../services/firebase';
 import { INITIAL_PARTICIPANTS } from '../data/mockData';
 import {
@@ -54,8 +55,9 @@ const DEFAULT_METRICS: WebMetric = {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated } = useAuth();
   const [activities, setActivities] = useState<Activity[]>([]);
-  const [participants, setParticipants] = useState<Participant[]>(INITIAL_PARTICIPANTS);
+  const [participants, setParticipants] = useState<Participant[]>([]);
   const [metrics, setMetrics] = useState<WebMetric>(DEFAULT_METRICS);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -69,7 +71,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const displayParticipants = useMockData ? DEMO_PARTICIPANTS : participants;
   const displayMetrics = useMockData ? DEMO_METRICS : metrics;
 
-  // Firestore real-time subscriptions
+  // Public real-time subscriptions (activities and metrics)
   useEffect(() => {
     if (!isFirebaseConfigured() || !db) {
       setIsConnected(false);
@@ -79,7 +81,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     let unsubActivities: (() => void) | null = null;
     let unsubMetrics: (() => void) | null = null;
-    let unsubParticipants: (() => void) | null = null;
 
     try {
       unsubActivities = subscribeToActivitiesFirestore(
@@ -101,21 +102,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      unsubParticipants = subscribeToParticipantsFirestore(
-        (firestoreParticipants) => {
-          if (firestoreParticipants && firestoreParticipants.length > 0) {
-            setParticipants(firestoreParticipants);
-          }
-        },
-        (err) => {
-          console.warn('Participants subscription notice:', err);
-        }
-      );
-    } catch (err) {
-      console.warn('Could not initialize participants subscription:', err);
-    }
-
-    try {
       unsubMetrics = subscribeToMetricsFirestore(
         (firestoreMetrics) => {
           setMetrics(firestoreMetrics);
@@ -131,9 +117,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       if (unsubActivities) unsubActivities();
       if (unsubMetrics) unsubMetrics();
-      if (unsubParticipants) unsubParticipants();
     };
   }, []);
+
+  // Protected real-time subscription: participants (only active when admin is authenticated)
+  useEffect(() => {
+    if (!isAuthenticated || useMockData || !isFirebaseConfigured() || !db) {
+      if (!useMockData && !isAuthenticated) {
+        setParticipants([]);
+      }
+      return;
+    }
+
+    let unsubParticipants: (() => void) | null = null;
+
+    try {
+      unsubParticipants = subscribeToParticipantsFirestore(
+        (firestoreParticipants) => {
+          if (firestoreParticipants) {
+            setParticipants(firestoreParticipants);
+          }
+        },
+        (err) => {
+          console.warn('Participants subscription notice:', err);
+        }
+      );
+    } catch (err) {
+      console.warn('Could not initialize participants subscription:', err);
+    }
+
+    return () => {
+      if (unsubParticipants) unsubParticipants();
+    };
+  }, [isAuthenticated, useMockData]);
 
   const catas = displayActivities.filter((a): a is CataActivity => a.type === 'cata');
   const cursos = displayActivities.filter((a): a is CursoActivity => a.type === 'curso');

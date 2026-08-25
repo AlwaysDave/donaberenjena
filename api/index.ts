@@ -7,6 +7,9 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 const app = express();
 
+// Model configuration - easily configurable constant
+const GEMINI_MODEL = "gemini-3.7-flash";
+
 // Initialize Multer for file uploads in memory
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -41,9 +44,15 @@ const getAi = () => {
 // Function to read the personality prompt markdown file
 function getPromptPersonality(): string {
   try {
-    const promptPath = path.join(process.cwd(), "api", "prompts", "analista_catas.md");
-    if (fs.existsSync(promptPath)) {
-      return fs.readFileSync(promptPath, "utf-8");
+    const candidates = [
+      path.join(process.cwd(), "api", "prompts", "analista_catas.md"),
+      path.join(__dirname, "prompts", "analista_catas.md"),
+      path.join(__dirname, "..", "api", "prompts", "analista_catas.md"),
+    ];
+    for (const promptPath of candidates) {
+      if (fs.existsSync(promptPath)) {
+        return fs.readFileSync(promptPath, "utf-8");
+      }
     }
   } catch (err) {
     console.warn("[PROMPT_LOAD_WARN] Could not read /api/prompts/analista_catas.md, using default personality", err);
@@ -140,7 +149,7 @@ app.post("/api/parse-cata", upload.single("file"), async (req, res) => {
     const personalityPrompt = getPromptPersonality();
 
     const response = await aiClient.models.generateContent({
-      model: "gemini-3.6-flash",
+      model: GEMINI_MODEL,
       contents: [
         {
           text: personalityPrompt,

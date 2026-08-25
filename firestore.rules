@@ -1,0 +1,76 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // HELPER FUNCTIONS
+    // =========================================================================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // Validates participant reservation payload created by public visitors
+    function isValidParticipantCreate(data) {
+      return data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 150 &&
+             data.email is string && data.email.size() >= 5 && data.email.size() <= 150 &&
+             data.phone is string && data.phone.size() >= 5 && data.phone.size() <= 30 &&
+             data.spots is int && data.spots >= 1 && data.spots <= 50 &&
+             data.activityId is string && data.activityId.size() <= 128;
+    }
+
+    // =========================================================================
+    // GLOBAL SECURITY POLICY (DEFAULT DENY)
+    // =========================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // 1. ACTIVITIES COLLECTION
+    // Public read for catalog exploration; write restricted strictly to verified Admins
+    // =========================================================================
+    match /activities/{activityId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // =========================================================================
+    // 2. PARTICIPANTS COLLECTION (PII PROTECTED)
+    // Public create allowed ONLY for legit validated reservation bookings.
+    // Read, update, and delete access strictly limited to authenticated Admins.
+    // =========================================================================
+    match /participants/{participantId} {
+      allow create: if isValidParticipantCreate(request.resource.data) || isAdmin();
+      allow read, update, delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 3. ADMINS COLLECTION (RBAC PROFILES)
+    // Read allowed only for the authenticated user on their own document.
+    // Write permitted only for existing authorized Admins on their own document.
+    // Self-elevation / public writes are strictly forbidden.
+    // =========================================================================
+    match /admins/{uid} {
+      allow read: if isOwner(uid);
+      allow write: if isOwner(uid) && isAdmin();
+    }
+
+    // =========================================================================
+    // 4. METRICS COLLECTION
+    // Public read for aggregated occupancy/view metrics; Admin-only write.
+    // =========================================================================
+    match /metrics/{metricId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}
