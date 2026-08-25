@@ -7,8 +7,46 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 const app = express();
 
-// Model configuration - easily configurable constant
-const GEMINI_MODEL = "gemini-3.7-flash";
+// Model configuration - configurable via environment variables with robust defaults
+const GEMINI_MODEL_PRIMARY = process.env.GEMINI_MODEL_PRIMARY || "gemini-3.7-flash";
+const GEMINI_MODEL_FALLBACK = process.env.GEMINI_MODEL_FALLBACK || "gemini-3.6-flash";
+
+// Helper function to generate content with single-retry fallback on 503/high-demand errors
+async function generateContentWithFallback(aiClient: GoogleGenAI, params: any) {
+  try {
+    const response = await aiClient.models.generateContent({
+      ...params,
+      model: GEMINI_MODEL_PRIMARY,
+    });
+    console.log(`[GEMINI_MODEL_USED] used=${GEMINI_MODEL_PRIMARY}`);
+    return response;
+  } catch (error: any) {
+    const errorMsg = String(error?.message || "");
+    const is503 =
+      error?.status === 503 ||
+      error?.code === 503 ||
+      errorMsg.includes("503") ||
+      errorMsg.toLowerCase().includes("high demand") ||
+      errorMsg.includes("UNAVAILABLE");
+
+    if (is503) {
+      console.warn(
+        `[GEMINI_FALLBACK_TRIGGERED] Primary model (${GEMINI_MODEL_PRIMARY}) failed with 503/high demand: "${errorMsg}". Retrying once with fallback (${GEMINI_MODEL_FALLBACK})...`
+      );
+      const fallbackResponse = await aiClient.models.generateContent({
+        ...params,
+        model: GEMINI_MODEL_FALLBACK,
+      });
+      console.log(
+        `[GEMINI_MODEL_USED] primary=${GEMINI_MODEL_PRIMARY} used=${GEMINI_MODEL_FALLBACK} (fallback activado)`
+      );
+      return fallbackResponse;
+    }
+
+    // Any other error is thrown directly without triggering fallback
+    throw error;
+  }
+}
 
 // Initialize Multer for file uploads in memory
 const upload = multer({
@@ -148,8 +186,7 @@ app.post("/api/parse-cata", upload.single("file"), async (req, res) => {
 
     const personalityPrompt = getPromptPersonality();
 
-    const response = await aiClient.models.generateContent({
-      model: GEMINI_MODEL,
+    const response = await generateContentWithFallback(aiClient, {
       contents: [
         {
           text: personalityPrompt,
