@@ -31,7 +31,7 @@ export const HomePage: React.FC = () => {
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-32 flex flex-col items-start justify-center">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#521849]/70 border border-[#842A76]/50 text-xs font-semibold text-[#EDE4D7] mb-6 backdrop-blur-xs">
             <Sparkles className="w-3.5 h-3.5 text-[#C96043]" />
-            <span>Asociación Gastronómica & Club de Terruño</span>
+            <span>Asociación Cultural y Gastronómica de Bolaños de Calatrava</span>
           </div>
 
           <h1 className="text-3xl sm:text-5xl lg:text-6xl font-bold font-serif text-white tracking-tight leading-tight max-w-3xl">
@@ -124,7 +124,7 @@ export const HomePage: React.FC = () => {
                 Cursos de Cocina
               </h3>
               <p className="text-xs sm:text-sm text-[#574B45] leading-relaxed">
-                Talleres 100% prácticos en nuestros fogones: arroces de autor, guisos lentos de cuchara, panadería con masa madre y técnicas tradicionales.
+                Talleres 100% prácticos en nuestros fogones: arroces de autor, guisos lentos de cuchara, el arte del corte del jamón y técnicas tradicionales.
               </p>
             </div>
             <Link
@@ -294,7 +294,7 @@ export const HomePage: React.FC = () => {
             <div className="absolute -bottom-4 -left-4 bg-white p-4 rounded-xl shadow-md border border-[#EDE4D7] hidden sm:flex items-center gap-3 max-w-xs">
               <MapPin className="w-5 h-5 text-[#521849] shrink-0" />
               <p className="text-xs text-[#26201D] font-medium leading-tight">
-                Sede central con salón de catas y cocina profesional en Madrid.
+                Sede central con salón de catas y cocina profesional en Bolaños de Calatrava.
               </p>
             </div>
           </div>

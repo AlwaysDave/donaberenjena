@@ -4,28 +4,16 @@ import { Building2, Wine, ChefHat, Sparkles, MapPin, Eye } from 'lucide-react';
 export const InstalacionesPage: React.FC = () => {
   const facilities = [
     {
-      title: 'Salón de Catas Principal «El Alambique»',
-      description: 'Espacio climatizado diseñado acústica y lumínicamente para la apreciación sensorial. Equipado con 30 puestos individuales, copas oficiales Riedel y Schott Zwiesel, escupideras individuales y pantallas de proyección enológica.',
+      title: 'Salón de Catas Principal',
+      description: 'Espacio climatizado diseñado acústica y lumínicamente para la apreciación sensorial. Equipado con 14 puestos individuales, copas oficiales de cata, y una ambientación tradicional manchega.',
       image: 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=1200&q=80',
-      specs: ['Capacidad: 30 catadores', 'Iluminación neutra de 5000K', 'Cristalería técnica completa']
+      specs: ['Capacidad: 14 catadores', 'Climatización', 'Cristalería técnica completa']
     },
     {
-      title: 'Cocina Profesional Abierta y Fogones',
-      description: 'Nuestra aula gastronómica cuenta con islas de trabajo de acero inoxidable, placas de inducción de alta potencia, hornos mixtos de vapor, abatidores de temperatura y sistema de extracción industrial silencioso.',
+      title: 'Cocina Profesional',
+      description: 'Nuestra aula gastronómica cuenta con islas de trabajo de acero inoxidable, planca profesional de alta potencia, horno de convección, tres fogones de gas profesionales y sistema de extracción industrial silencioso.',
       image: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?auto=format&fit=crop&w=1200&q=80',
-      specs: ['14 puestos individuales de cocinado', 'Cuchillería y menaje profesional', 'Mesa de emplatado central']
-    },
-    {
-      title: 'Cava Climatizada de Guarda y Archivo Enológico',
-      description: 'Cámara subterránea con control estricto de humedad (70%) y temperatura (13°C) donde reposan las botellas históricas de la asociación, añadas donadas por productores y nuestras reservas para catas verticales.',
-      image: 'https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?auto=format&fit=crop&w=1200&q=80',
-      specs: ['Capacidad: 2.500 botellas', 'Higrometría y temperatura monitorizada', 'Zona de decantación']
-    },
-    {
-      title: 'Terraza y Patio de Aromáticas',
-      description: 'Espacio al aire libre donde cultivamos hierbas aromáticas tradicionales (tomillo, romero, albahaca, menta) y celebramos los aperitivos al sol, catas de vermut y bienvenidas de cursos.',
-      image: 'https://images.unsplash.com/photo-1533105079780-92b9be482077?auto=format&fit=crop&w=1200&q=80',
-      specs: ['Ambiente exterior protegido', 'Huerto de aromáticas vivas', 'Espacio para cóctel de bienvenida']
+      specs: ['Amplio Aforo de 10 personas', 'Cuchillería y menaje profesional', 'Mesa de emplatado central']
     }
   ];
 
@@ -41,7 +29,7 @@ export const InstalacionesPage: React.FC = () => {
           Nuestras Instalaciones
         </h1>
         <p className="text-base sm:text-lg text-[#574B45] font-light leading-relaxed">
-          Ubicada en un edificio protegido en pleno corazón de Madrid, nuestra sede aúna el encanto arquitectónico tradicional con el equipamiento técnico más riguroso para la hostelería y la cata.
+          Ubicada en el antiguo Centro de Formación en el Poligono "El Salobral", nuestra sede aúna el encanto arquitectónico manchego tradicional con el equipamiento técnico más riguroso para la hostelería y la cata.
         </p>
       </div>
 
@@ -91,10 +79,10 @@ export const InstalacionesPage: React.FC = () => {
       <div className="rounded-3xl bg-[#F6EDF4] border border-[#521849]/20 p-8 text-center max-w-2xl mx-auto space-y-3">
         <MapPin className="w-8 h-8 text-[#521849] mx-auto" />
         <h3 className="text-xl font-bold font-serif text-[#26201D]">
-          Visita nuestra sede
+          Visita nuestra sede bajo cita previa
         </h3>
         <p className="text-xs sm:text-sm text-[#574B45]">
-          Calle Mayor 14, Planta 1, 28013 Madrid. Abrimos las puertas para actividades programadas y atención previa cita los jueves y viernes por la tarde.
+          Polígono Industrial “El Salobral “- Centro de Formación – Bolaños de Calatrava. Abrimos las puertas para actividades programadas y atención previa cita los jueves y viernes por la tarde.
         </p>
       </div>
     </div>

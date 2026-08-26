@@ -143,7 +143,7 @@ export const ContactoPage: React.FC = () => {
                 className="w-full py-3.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-sm font-semibold tracking-wide transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Send className="w-4 h-4" />
-                <span>Enviar Consulta a Secretaría</span>
+                <span>Enviar Consulta</span>
               </button>
             </form>
           )}
@@ -161,8 +161,8 @@ export const ContactoPage: React.FC = () => {
                 <MapPin className="w-5 h-5 text-[#521849] shrink-0 mt-0.5" />
                 <div>
                   <strong className="block text-[#26201D]">Dirección Social:</strong>
-                  <span>Calle Mayor 14, Planta 1, 28013 Madrid (España)</span>
-                  <p className="text-xs text-[#574B45] mt-0.5">Metro: Sol (L1, L2, L3) y Ópera (L2, L5, Ramal)</p>
+                  <span>Polígono Industrial “El Salobral “- Centro de Formación – Bolaños de Calatrava, 13260 Ciudad Real (España)</span>
+                  <p className="text-xs text-[#574B45] mt-0.5">Salida de Bolaños dirección a Torralba</p>
                 </div>
               </div>
 
@@ -181,15 +181,6 @@ export const ContactoPage: React.FC = () => {
                   <a href="mailto:secretaria@donaberenjena.es" className="hover:text-[#521849]">secretaria@donaberenjena.es</a>
                 </div>
               </div>
-
-              <div className="flex items-start gap-3">
-                <Clock className="w-5 h-5 text-[#521849] shrink-0 mt-0.5" />
-                <div>
-                  <strong className="block text-[#26201D]">Horario de Secretaría:</strong>
-                  <span>Jueves a Sábados de 17:00 a 21:00 h</span>
-                  <p className="text-xs text-[#574B45] mt-0.5">Actividades según calendario oficial programado.</p>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -199,7 +190,7 @@ export const ContactoPage: React.FC = () => {
               <span>¿Quieres organizar una cata privada?</span>
             </h4>
             <p className="text-xs text-[#574B45] leading-relaxed">
-              Las instalaciones de Doña Berenjena están disponibles para grupos corporativos y celebraciones gastronómicas de socios bajo reserva anticipada.
+              Las instalaciones de Doña Berenjena están disponibles para grupos corporativos y celebraciones gastronómicas bajo reserva anticipada.
             </p>
           </div>
         </div>
