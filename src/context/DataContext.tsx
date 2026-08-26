@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Activity, AdminNotification, CataActivity, CursoActivity, Member, Participant, ReservationFormData, ViajeActivity, WebMetric, Expense } from '../types';
+import { Activity, AdminNotification, CataActivity, CursoActivity, Member, Participant, ReservationFormData, ViajeActivity, WebMetric, Expense, Sponsorship } from '../types';
 import { useAuth } from './AuthContext';
 import { db, isFirebaseConfigured } from '../services/firebase';
 import { INITIAL_PARTICIPANTS } from '../data/mockData';
-import { DEMO_ACTIVITIES, DEMO_PARTICIPANTS, DEMO_MEMBERS, DEMO_NOTIFICATIONS, DEMO_METRICS, DEMO_EXPENSES } from '../data/demoData';
+import { DEMO_ACTIVITIES, DEMO_PARTICIPANTS, DEMO_MEMBERS, DEMO_NOTIFICATIONS, DEMO_METRICS, DEMO_EXPENSES, DEMO_SPONSORSHIPS } from '../data/demoData';
 import {
   subscribeToActivitiesFirestore,
   subscribeToMetricsFirestore,
@@ -25,6 +25,10 @@ import {
   saveExpenseFirestore,
   updateExpenseFirestore,
   deleteExpenseFirestore,
+  subscribeToSponsorshipsFirestore,
+  saveSponsorshipFirestore,
+  updateSponsorshipFirestore,
+  deleteSponsorshipFirestore,
   saveAdminNotificationFirestore,
   markAdminNotificationReadFirestore,
   deleteAdminNotificationFirestore
@@ -39,6 +43,7 @@ interface DataContextType {
   members: Member[];
   adminNotifications: AdminNotification[];
   expenses: Expense[];
+  sponsorships: Sponsorship[];
   unreadNotificationsCount: number;
   metrics: WebMetric;
   isConnected: boolean;
@@ -68,6 +73,10 @@ interface DataContextType {
   addExpense: (expenseData: Omit<Expense, 'id' | 'createdAt'>) => Promise<{ success: boolean; message: string }>;
   updateExpense: (id: string, updates: Partial<Expense>) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
+  // Sponsorships
+  addSponsorship: (sponsorshipData: Omit<Sponsorship, 'id' | 'createdAt'>) => Promise<{ success: boolean; message: string }>;
+  updateSponsorship: (id: string, updates: Partial<Sponsorship>) => Promise<void>;
+  deleteSponsorship: (id: string) => Promise<void>;
   useMockData: boolean;
   toggleMockData: () => void;
 }
@@ -98,6 +107,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [members, setMembers] = useState<Member[]>([]);
   const [adminNotifications, setAdminNotifications] = useState<AdminNotification[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [sponsorships, setSponsorships] = useState<Sponsorship[]>([]);
   const [metrics, setMetrics] = useState<WebMetric>(DEFAULT_METRICS);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -107,6 +117,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [demoMembers, setDemoMembers] = useState<Member[]>(DEMO_MEMBERS);
   const [demoNotifications, setDemoNotifications] = useState<AdminNotification[]>(DEMO_NOTIFICATIONS);
   const [demoExpenses, setDemoExpenses] = useState<Expense[]>(DEMO_EXPENSES);
+  const [demoSponsorships, setDemoSponsorships] = useState<Sponsorship[]>(DEMO_SPONSORSHIPS);
   const [demoMetrics, setDemoMetrics] = useState<WebMetric>(DEMO_METRICS);
 
   const toggleMockData = () => {
@@ -118,6 +129,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const displayMembers = useMockData ? demoMembers : members;
   const displayNotifications = useMockData ? demoNotifications : adminNotifications;
   const displayExpenses = useMockData ? demoExpenses : expenses;
+  const displaySponsorships = useMockData ? demoSponsorships : sponsorships;
   const displayMetrics = useMockData ? demoMetrics : metrics;
 
   const unreadNotificationsCount = displayNotifications.filter(n => !n.read).length;
@@ -171,7 +183,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // Protected real-time subscription: participants, members, notifications (only active when admin is authenticated)
+  // Protected real-time subscription: participants, members, notifications, expenses, sponsorships (only active when admin is authenticated)
   useEffect(() => {
     if (!isAuthenticated || useMockData || !isFirebaseConfigured() || !db) {
       if (!useMockData && !isAuthenticated) {
@@ -179,6 +191,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setMembers([]);
         setAdminNotifications([]);
         setExpenses([]);
+        setSponsorships([]);
       }
       return;
     }
@@ -187,6 +200,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let unsubMembers: (() => void) | null = null;
     let unsubNotifications: (() => void) | null = null;
     let unsubExpenses: (() => void) | null = null;
+    let unsubSponsorships: (() => void) | null = null;
 
     try {
       unsubParticipants = subscribeToParticipantsFirestore(
@@ -248,11 +262,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Could not initialize expenses subscription:', err);
     }
 
+    try {
+      unsubSponsorships = subscribeToSponsorshipsFirestore(
+        (firestoreSponsorships) => {
+          if (firestoreSponsorships) {
+            setSponsorships(firestoreSponsorships);
+          }
+        },
+        (err) => {
+          console.warn('Sponsorships subscription notice:', err);
+        }
+      );
+    } catch (err) {
+      console.warn('Could not initialize sponsorships subscription:', err);
+    }
+
     return () => {
       if (unsubParticipants) unsubParticipants();
       if (unsubMembers) unsubMembers();
       if (unsubNotifications) unsubNotifications();
       if (unsubExpenses) unsubExpenses();
+      if (unsubSponsorships) unsubSponsorships();
     };
   }, [isAuthenticated, useMockData]);
 
@@ -465,17 +495,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updatedAt: nowIso
     };
 
+    const isConsumingSpot = participantData.status !== 'cancelada' && participantData.status !== 'lista_de_espera';
+
     // Optimistic update
     if (useMockData) {
       setDemoParticipants(prev => [newParticipant, ...prev]);
-      if (activity && participantData.status !== 'cancelada') {
+      if (activity && isConsumingSpot) {
         setDemoActivities(prev => prev.map(a => a.id === participantData.activityId ? { ...a, bookedSpots: a.bookedSpots + 1 } : a));
       }
       return { success: true, message: 'Asistente añadido en modo demo.' };
     }
 
     setParticipants(prev => [newParticipant, ...prev]);
-    if (activity && participantData.status !== 'cancelada') {
+    if (activity && isConsumingSpot) {
       setActivities(prev => prev.map(a => a.id === participantData.activityId ? { ...a, bookedSpots: a.bookedSpots + 1 } : a));
     }
 
@@ -505,7 +537,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       if (!useMockData && isFirebaseConfigured() && db) {
         await saveParticipantFirestore(newParticipant);
-        if (participantData.status !== 'cancelada') {
+        if (isConsumingSpot) {
           await adjustActivitySpotsFirestore(participantData.activityId, 1);
         }
       }
@@ -521,11 +553,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const old = list.find(p => p.id === id);
     if (!old) return;
 
-    // Handle spot delta if cancellation status changed
+    // Handle spot delta if cancellation or waiting list status changed
+    const wasOccupying = old.status !== 'cancelada' && old.status !== 'lista_de_espera';
+    const willOccupy = updates.status 
+      ? (updates.status !== 'cancelada' && updates.status !== 'lista_de_espera')
+      : wasOccupying;
+
     let spotsDelta = 0;
-    if (updates.status === 'cancelada' && old.status !== 'cancelada') {
+    if (wasOccupying && !willOccupy) {
       spotsDelta = -1;
-    } else if (old.status === 'cancelada' && updates.status && updates.status !== 'cancelada') {
+    } else if (!wasOccupying && willOccupy) {
       spotsDelta = 1;
     }
 
@@ -560,7 +597,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteParticipant = async (id: string, activityId: string, _legacySpots?: number) => {
     const list = useMockData ? demoParticipants : participants;
     const target = list.find(p => p.id === id);
-    const shouldRefundSpots = target && target.status !== 'cancelada';
+    const shouldRefundSpots = target && target.status !== 'cancelada' && target.status !== 'lista_de_espera';
 
     if (useMockData) {
       setDemoParticipants(prev => prev.filter(p => p.id !== id));
@@ -845,6 +882,68 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Sponsorships
+  const addSponsorship = async (sponsorshipData: Omit<Sponsorship, 'id' | 'createdAt'>) => {
+    const newId = `spon-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const nowIso = new Date().toISOString();
+    
+    const newSponsorship: Sponsorship = {
+      ...sponsorshipData,
+      id: newId,
+      createdAt: nowIso
+    };
+
+    if (useMockData) {
+      setDemoSponsorships(prev => [...prev, newSponsorship]);
+      return { success: true, message: 'Patrocinio registrado en modo demo.' };
+    }
+
+    setSponsorships(prev => [...prev, newSponsorship]);
+    try {
+      if (isFirebaseConfigured() && db) {
+        await saveSponsorshipFirestore(newSponsorship);
+      }
+      return { success: true, message: 'Patrocinio registrado con éxito.' };
+    } catch (error: any) {
+      console.error('Error saving sponsorship:', error);
+      // rollback
+      setSponsorships(prev => prev.filter(s => s.id !== newId));
+      return { success: false, message: error.message || 'Error al guardar el patrocinio.' };
+    }
+  };
+
+  const updateSponsorship = async (id: string, updates: Partial<Sponsorship>) => {
+    if (useMockData) {
+      setDemoSponsorships(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+      return;
+    }
+
+    setSponsorships(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+    try {
+      if (isFirebaseConfigured() && db) {
+        await updateSponsorshipFirestore(id, updates);
+      }
+    } catch (error) {
+      console.error('Error updating sponsorship:', error);
+    }
+  };
+
+  const deleteSponsorship = async (id: string) => {
+    if (useMockData) {
+      setDemoSponsorships(prev => prev.filter(s => s.id !== id));
+      return;
+    }
+
+    setSponsorships(prev => prev.filter(s => s.id !== id));
+    try {
+      if (isFirebaseConfigured() && db) {
+        await deleteSponsorshipFirestore(id);
+      }
+    } catch (error) {
+      console.error('Error deleting sponsorship:', error);
+    }
+  };
+
   return (
     <DataContext.Provider value={{
       activities: displayActivities,
@@ -855,6 +954,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       members: displayMembers,
       adminNotifications: displayNotifications,
       expenses: displayExpenses,
+      sponsorships: displaySponsorships,
       unreadNotificationsCount,
       metrics: displayMetrics,
       isConnected,
@@ -882,6 +982,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       addExpense,
       updateExpense,
       deleteExpense,
+      // sponsorships
+      addSponsorship,
+      updateSponsorship,
+      deleteSponsorship,
       useMockData,
       toggleMockData
     }}>

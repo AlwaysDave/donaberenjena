@@ -416,7 +416,7 @@ function buildParticipant(
   person: BasePerson,
   index: number,
   options: {
-    status?: 'confirmada' | 'pendiente_pago' | 'asistio' | 'cancelada';
+    status?: 'confirmada' | 'pendiente_pago' | 'asistio' | 'cancelada' | 'lista_de_espera';
     attended?: boolean;
     groupId?: string;
     spotsCount?: number;
@@ -450,8 +450,8 @@ function buildParticipant(
     status,
     attended,
     totalAmount: unitPrice * (options.spotsCount || 1),
-    paidAmount: status === 'pendiente_pago' ? 0 : unitPrice * (options.spotsCount || 1),
-    paymentMethod: index % 2 === 0 ? 'bizum' : 'transferencia',
+    paidAmount: (status === 'pendiente_pago' || status === 'lista_de_espera') ? 0 : unitPrice * (options.spotsCount || 1),
+    paymentMethod: status === 'lista_de_espera' ? 'pendiente' : (index % 2 === 0 ? 'bizum' : 'transferencia'),
     registeredAt: regDateIso,
     createdAt: regDateIso,
     updatedAt: new Date().toISOString()
@@ -476,7 +476,7 @@ export const DEMO_PARTICIPANTS: Participant[] = [
   // Caso de duplicado canónico:
   buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[20], 13), // José Antonio García López
 
-  // --- CATA 2 (Próxima - Terruño 14 asistentes) ---
+  // --- CATA 2 (Próxima - Terruño: 14 asistentes confirmados + 4 en lista de espera) ---
   buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[0], 0),  // María José (Socia)
   buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[1], 1),  // Antonio (Socio)
   buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[2], 2),  // Laura Martínez
@@ -491,6 +491,11 @@ export const DEMO_PARTICIPANTS: Participant[] = [
   buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[17], 11), // Rubén Domínguez
   buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[18], 12), // Nuria Marín
   buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[12], 13), // Cristina Herrera (Socia)
+  // 4 personas en lista de espera para probar el funcionamiento:
+  buildParticipant(DEMO_ACTIVITIES[1], { fullName: 'Fernando Gómez Almansa', email: 'fernando.gomez@example.com', phone: '622 333 401', isMember: false }, 14, { status: 'lista_de_espera', notes: 'Lista de espera - 1 plaza. Disponible cualquier turno.' }),
+  buildParticipant(DEMO_ACTIVITIES[1], { fullName: 'Beatriz Serrano Molina', email: 'beatriz.serrano@example.com', phone: '622 333 402', isMember: true, membershipNumber: 'SOC-010' }, 15, { status: 'lista_de_espera', notes: 'Lista de espera preferente socia (SOC-010)' }),
+  buildParticipant(DEMO_ACTIVITIES[1], { fullName: 'Carlos Morales Pardo', email: 'carlos.morales@example.com', phone: '622 333 403', isMember: false }, 16, { status: 'lista_de_espera', notes: 'Lista de espera - Interesado si se produce alguna baja.' }),
+  buildParticipant(DEMO_ACTIVITIES[1], { fullName: 'Sonia Navarro Gil', email: 'sonia.navarro@example.com', phone: '622 333 404', isMember: false }, 17, { status: 'lista_de_espera', notes: 'Lista de espera - Avisar preferentemente por WhatsApp.' }),
 
   // --- CATA 3 (Próxima - Coloman 7 asistentes) ---
   buildParticipant(DEMO_ACTIVITIES[2], BASE_PEOPLE[0], 0),  // María José (Socia)
@@ -651,55 +656,248 @@ export const DEMO_NOTIFICATIONS: AdminNotification[] = [
 // 7. GASTOS DE DEMO (EXPENSES)
 // ==========================================
 export const DEMO_EXPENSES: import('../types').Expense[] = [
-  // Gastos normales para actividad celebrada que sale rentable (CATA 1: Vermut 2025)
+  // La Hora Mágica queda deliberadamente sin gastos.
+  // Al estar celebrada, debe mostrar el aviso «Sin gastos» en Cuentas.
+
+  // CATA 2 · La Expresión del Terruño
   {
-    id: 'exp-demo-1',
-    activityId: DEMO_ACTIVITIES[5].id, // demo-cata-1-celeb
-    concept: 'Compra de Vermut',
-    amount: 120.50,
+    id: 'exp-demo-cata-terruno-vinos',
+    activityId: 'demo-cata-2-terruno',
+    concept: 'Selección de vinos artesanos de Bodega La Uveja Negra',
+    amount: 218.40,
     category: 'bodega_proveedor',
-    date: '2025-06-15',
-    createdAt: new Date('2025-06-15').toISOString(),
-    receiptImageUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=400&q=80'
+    date: '2026-03-24',
+    notes: 'Compra anticipada para los tres pases de la cata.',
+    createdAt: '2026-03-24T10:15:00.000Z'
   },
   {
-    id: 'exp-demo-2',
-    activityId: DEMO_ACTIVITIES[5].id,
-    concept: 'Catering aperitivos',
+    id: 'exp-demo-cata-terruno-catering',
+    activityId: 'demo-cata-2-terruno',
+    concept: 'Elaboración de maridajes y aperitivos',
+    amount: 156.50,
+    category: 'catering',
+    date: '2026-04-08',
+    notes: 'Arroz meloso, pan bao y acompañamientos.',
+    createdAt: '2026-04-08T09:30:00.000Z'
+  },
+
+  // CATA 3 · Experiencia S.A.T. COLOMAN
+  {
+    id: 'exp-demo-cata-coloman-vinos',
+    activityId: 'demo-cata-3-coloman',
+    concept: 'Lote de vinos S.A.T. Coloman',
+    amount: 265.00,
+    category: 'bodega_proveedor',
+    date: '2026-05-20',
+    notes: 'Cuatro referencias para la degustación.',
+    createdAt: '2026-05-20T11:00:00.000Z'
+  },
+  {
+    id: 'exp-demo-cata-coloman-maridaje',
+    activityId: 'demo-cata-3-coloman',
+    concept: 'Maridajes de la cata Coloman',
+    amount: 118.75,
+    category: 'catering',
+    date: '2026-06-03',
+    notes: 'Tartar, crujientes, queso y fruta seca.',
+    createdAt: '2026-06-03T16:20:00.000Z'
+  },
+
+  // CATA 4 · La Hora del Vermut
+  {
+    id: 'exp-demo-cata-vermut2-proveedor',
+    activityId: 'demo-cata-4-vermut2',
+    concept: 'Vermuts y botánicos para el taller',
+    amount: 238.00,
+    category: 'bodega_proveedor',
+    date: '2026-06-05',
+    notes: 'Producto de las tres bodegas participantes.',
+    createdAt: '2026-06-05T12:00:00.000Z'
+  },
+  {
+    id: 'exp-demo-cata-vermut2-catering',
+    activityId: 'demo-cata-4-vermut2',
+    concept: 'Ingredientes para gildas y aperitivos',
+    amount: 192.00,
+    category: 'catering',
+    date: '2026-06-19',
+    notes: 'Incluye conservas, ahumados y fruta de temporada.',
+    createdAt: '2026-06-19T08:45:00.000Z'
+  },
+
+  // CURSO 1 · Cocina en Vivo
+  {
+    id: 'exp-demo-curso-cocina-producto',
+    activityId: 'demo-curso-1-lleno',
+    concept: 'Compra de producto local para el taller',
+    amount: 320.00,
+    category: 'material',
+    date: '2026-10-10',
+    notes: 'Ingredientes, vino para maridaje y consumibles.',
+    createdAt: '2026-10-10T10:00:00.000Z'
+  },
+  {
+    id: 'exp-demo-curso-cocina-chef',
+    activityId: 'demo-curso-1-lleno',
+    concept: 'Honorarios del chef invitado Rafael Peláez',
+    amount: 410.00,
+    category: 'personal',
+    date: '2026-10-15',
+    notes: 'Impartición y preparación previa del curso.',
+    createdAt: '2026-10-15T18:00:00.000Z'
+  },
+
+  // CURSO 2 · Conservas y Encurtidos
+  {
+    id: 'exp-demo-curso-conservas-envases',
+    activityId: 'demo-curso-2-vacio',
+    concept: 'Tarros, tapas y etiquetas para conservas',
     amount: 85.00,
-    category: 'catering',
-    date: '2025-06-18',
-    createdAt: new Date('2025-06-18').toISOString()
+    category: 'material',
+    date: '2026-10-20',
+    notes: 'Material adquirido antes de abrir inscripciones.',
+    createdAt: '2026-10-20T09:00:00.000Z'
   },
-  
-  // Un viaje en pérdidas (Viaje 3)
   {
-    id: 'exp-demo-3',
-    activityId: DEMO_ACTIVITIES[9].id, // demo-viaje-3-celeb
-    concept: 'Alquiler Autocar 55 plazas',
-    amount: 950.00,
+    id: 'exp-demo-curso-conservas-ingredientes',
+    activityId: 'demo-curso-2-vacio',
+    concept: 'Verduras, salmueras y especias',
+    amount: 120.00,
+    category: 'catering',
+    date: '2026-10-29',
+    notes: 'Provisión inicial para el taller.',
+    createdAt: '2026-10-29T13:10:00.000Z'
+  },
+
+  // CURSO 3 · Masterclass de Maridaje
+  {
+    id: 'exp-demo-curso-maridaje-vinos',
+    activityId: 'demo-curso-3-celebrado',
+    concept: 'Selección de vinos para maridaje',
+    amount: 155.00,
+    category: 'bodega_proveedor',
+    date: '2025-10-10',
+    notes: 'Blancos, tintos jóvenes y generosos.',
+    createdAt: '2025-10-10T10:30:00.000Z'
+  },
+  {
+    id: 'exp-demo-curso-maridaje-quesos',
+    activityId: 'demo-curso-3-celebrado',
+    concept: 'Quesos manchegos artesanos y servicio',
+    amount: 185.00,
+    category: 'catering',
+    date: '2025-10-14',
+    notes: 'Distintas curaciones y material de degustación.',
+    createdAt: '2025-10-14T17:00:00.000Z'
+  },
+
+  // VIAJE 1 · Ribera del Guadiana
+  {
+    id: 'exp-demo-viaje-guadiana-autobus',
+    activityId: 'demo-viaje-1-lleno',
+    concept: 'Autobús discrecional ida y vuelta',
+    amount: 1100.00,
     category: 'transporte',
-    date: '2025-08-20',
-    createdAt: new Date('2025-08-20').toISOString(),
-    notes: 'Factura pagada por adelantado'
+    date: '2026-10-15',
+    notes: 'Reserva para grupo de 25 plazas.',
+    createdAt: '2026-10-15T09:15:00.000Z'
   },
   {
-    id: 'exp-demo-4',
-    activityId: DEMO_ACTIVITIES[9].id,
-    concept: 'Reserva Hotel 3 noches',
-    amount: 1450.00,
+    id: 'exp-demo-viaje-guadiana-hotel',
+    activityId: 'demo-viaje-1-lleno',
+    concept: 'Bloqueo de habitaciones en Almendralejo',
+    amount: 820.00,
     category: 'alojamiento',
-    date: '2025-09-02',
-    createdAt: new Date('2025-09-02').toISOString()
+    date: '2026-10-20',
+    notes: 'Anticipo de alojamiento de una noche.',
+    createdAt: '2026-10-20T12:45:00.000Z'
+  },
+
+  // VIAJE 2 · Escapada a Jerez
+  {
+    id: 'exp-demo-viaje-jerez-autobus',
+    activityId: 'demo-viaje-2-vacio',
+    concept: 'Señal de reserva de autocar',
+    amount: 650.00,
+    category: 'transporte',
+    date: '2026-10-30',
+    notes: 'Anticipo reembolsable sujeto a la ocupación mínima.',
+    createdAt: '2026-10-30T10:00:00.000Z'
   },
   {
-    id: 'exp-demo-5',
-    activityId: DEMO_ACTIVITIES[9].id,
-    concept: 'Comida de grupo',
-    amount: 600.00,
+    id: 'exp-demo-viaje-jerez-hotel',
+    activityId: 'demo-viaje-2-vacio',
+    concept: 'Depósito de hotel en Jerez',
+    amount: 500.00,
+    category: 'alojamiento',
+    date: '2026-11-02',
+    notes: 'Pre-reserva de habitaciones para el grupo.',
+    createdAt: '2026-11-02T11:30:00.000Z'
+  },
+
+  // VIAJE 3 · Ruta del Aceite. Caso de prueba deliberadamente a pérdidas.
+  {
+    id: 'exp-demo-viaje-segura-autobus',
+    activityId: 'demo-viaje-3-celebrado',
+    concept: 'Autocar para excursión a Sierra de Segura',
+    amount: 690.00,
+    category: 'transporte',
+    date: '2025-11-05',
+    notes: 'Servicio de ida y vuelta para la excursión de un día.',
+    createdAt: '2025-11-05T09:00:00.000Z'
+  },
+  {
+    id: 'exp-demo-viaje-segura-comida',
+    activityId: 'demo-viaje-3-celebrado',
+    concept: 'Comida campera y cata de AOVE',
+    amount: 430.00,
     category: 'catering',
-    date: '2025-09-15',
-    createdAt: new Date('2025-09-15').toISOString()
+    date: '2025-11-15',
+    notes: 'Coste final del grupo en almazara y restaurante.',
+    createdAt: '2025-11-15T18:30:00.000Z'
   }
 ];
+
+// ==========================================
+// 8. PATROCINIOS DE DEMO (SPONSORSHIPS)
+// ==========================================
+export const DEMO_SPONSORSHIPS: import('../types').Sponsorship[] = [
+  {
+    id: 'sponsor-demo-cata-vermut-lustau',
+    activityId: 'demo-cata-1-vermut',
+    sponsorName: 'Bodegas Lustau',
+    concept: 'Colaboración para la cata y taller de vermut',
+    amount: 350.00,
+    paidAmount: 350.00,
+    status: 'cobrado',
+    date: '2026-02-20',
+    notes: 'Aportación en efectivo para apoyar la experiencia de marca.',
+    createdAt: '2026-02-20T10:00:00.000Z'
+  },
+  {
+    id: 'sponsor-demo-curso-cocina-cooperativa',
+    activityId: 'demo-curso-1-lleno',
+    sponsorName: 'Cooperativa Virgen del Monte',
+    concept: 'Patrocinio de producto local para Cocina en Vivo',
+    amount: 450.00,
+    paidAmount: 450.00,
+    status: 'cobrado',
+    date: '2026-09-28',
+    notes: 'Apoyo a la difusión de productos de proximidad.',
+    createdAt: '2026-09-28T12:15:00.000Z'
+  },
+  {
+    id: 'sponsor-demo-viaje-guadiana-turismo',
+    activityId: 'demo-viaje-1-lleno',
+    sponsorName: 'Ruta del Vino Ribera del Guadiana',
+    concept: 'Colaboración promocional para la ruta enológica',
+    amount: 600.00,
+    paidAmount: 600.00,
+    status: 'cobrado',
+    date: '2026-10-01',
+    notes: 'Aportación destinada a cubrir parte del transporte del grupo.',
+    createdAt: '2026-10-01T09:45:00.000Z'
+  }
+];
+
 

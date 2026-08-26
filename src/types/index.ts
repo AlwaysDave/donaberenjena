@@ -161,7 +161,7 @@ export interface ReservationFormData {
   attendees?: ReservationAttendee[];
 }
 
-export type ParticipantStatus = 'confirmada' | 'pendiente_pago' | 'cancelada' | 'asistio' | 'no_asistio';
+export type ParticipantStatus = 'confirmada' | 'pendiente_pago' | 'cancelada' | 'asistio' | 'no_asistio' | 'lista_de_espera';
 
 export type PaymentMethod = 'bizum' | 'transferencia' | 'efectivo' | 'tarjeta' | 'pendiente' | 'otro';
 
@@ -228,3 +228,20 @@ export interface Expense {
   createdAt: string;
   createdBy?: string;
 }
+
+export type SponsorshipStatus = 'pendiente' | 'cobrado' | 'cancelado';
+
+export interface Sponsorship {
+  id: string;
+  activityId: string;
+  sponsorName: string;
+  concept: string;
+  amount: number;       // Importe comprometido o facturado
+  paidAmount: number;   // Importe efectivamente recibido; 0 si está pendiente
+  status: SponsorshipStatus;
+  date: string;         // Fecha de factura, compromiso o cobro, YYYY-MM-DD
+  notes?: string;
+  createdAt: string;
+  createdBy?: string;
+}
+

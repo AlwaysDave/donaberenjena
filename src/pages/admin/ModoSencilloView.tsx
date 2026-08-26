@@ -33,7 +33,7 @@ import {
 } from 'lucide-react';
 
 export const ModoSencilloView: React.FC = () => {
-  const { activities, members, unreadNotificationsCount, addActivity, quickUpdateActivity, deleteActivity } = useData();
+  const { activities, participants, members, unreadNotificationsCount, addActivity, quickUpdateActivity, deleteActivity } = useData();
   const [activeSubTab, setActiveSubTab] = useState<'actividades' | 'checkin'>('actividades');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showMembersModal, setShowMembersModal] = useState(false);
@@ -856,10 +856,22 @@ export const ModoSencilloView: React.FC = () => {
                         />
                       </div>
                     ) : (
-                      <span className="font-bold text-[#521849] flex items-center gap-1 text-[11px]">
-                        <Euro className="w-3.5 h-3.5" />
-                        {act.priceMember}€ S / {act.priceNonMember}€ NS
-                      </span>
+                      act.priceMember !== act.priceNonMember ? (
+                        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200/70 px-1.5 py-0.5 rounded">
+                            <span className="text-[10px] font-normal text-emerald-700">Socio:</span>
+                            {act.priceMember}€
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#574B45] bg-[#F6F1EA] border border-[#EDE4D7] px-1.5 py-0.5 rounded">
+                            <span className="text-[10px] font-normal text-[#8C7E77]">General:</span>
+                            {act.priceNonMember}€
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="font-bold text-[#26201D] text-xs">
+                          {act.priceMember}€
+                        </span>
+                      )
                     )}
                   </div>
 
@@ -881,9 +893,25 @@ export const ModoSencilloView: React.FC = () => {
 
                   <div>
                     <span className="text-[#574B45] block">Ocupación:</span>
-                    <span className={`font-bold ${act.bookedSpots >= act.totalSpots ? 'text-rose-600' : 'text-emerald-700'}`}>
-                      {act.bookedSpots} / {act.totalSpots} ({act.totalSpots - act.bookedSpots} libres)
-                    </span>
+                    {(() => {
+                      const waitingCount = participants.filter(p => p.activityId === act.id && p.status === 'lista_de_espera').length;
+                      return (
+                        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                          <span className={`font-bold ${act.bookedSpots >= act.totalSpots ? 'text-rose-600' : 'text-emerald-700'}`}>
+                            {act.bookedSpots} / {act.totalSpots} ({act.totalSpots - act.bookedSpots > 0 ? `${act.totalSpots - act.bookedSpots} libres` : 'Completa'})
+                          </span>
+                          {waitingCount > 0 && (
+                            <span 
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200 text-[10px] font-bold cursor-help shadow-2xs"
+                              title={`Lista de espera: ${waitingCount} persona${waitingCount !== 1 ? 's' : ''}`}
+                            >
+                              <Clock className="w-3 h-3 text-blue-600 shrink-0" />
+                              <span>+{waitingCount} en espera</span>
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>

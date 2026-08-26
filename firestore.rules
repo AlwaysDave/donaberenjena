@@ -96,5 +96,13 @@ service cloud.firestore {
     match /expenses/{expenseId} {
       allow read, write: if isAdmin();
     }
+
+    // =========================================================================
+    // 8. SPONSORSHIPS COLLECTION
+    // Financial data, strictly for authenticated administrators only
+    // =========================================================================
+    match /sponsorships/{sponsorshipId} {
+      allow read, write: if isAdmin();
+    }
   }
 }

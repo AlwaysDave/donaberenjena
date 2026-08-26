@@ -10,7 +10,7 @@ import {
   Unsubscribe 
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { Activity, AdminRole, WebMetric, Participant, Member, AdminNotification, Expense } from '../types';
+import { Activity, AdminRole, WebMetric, Participant, Member, AdminNotification, Expense, Sponsorship } from '../types';
 
 const ACTIVITIES_COLLECTION = 'activities';
 const METRICS_COLLECTION = 'metrics';
@@ -20,6 +20,7 @@ const PARTICIPANTS_COLLECTION = 'participants';
 const MEMBERS_COLLECTION = 'members';
 const ADMIN_NOTIFICATIONS_COLLECTION = 'adminNotifications';
 const EXPENSES_COLLECTION = 'expenses';
+const SPONSORSHIPS_COLLECTION = 'sponsorships';
 
 
 /**
@@ -486,3 +487,66 @@ export async function deleteExpenseFirestore(id: string): Promise<void> {
   const expenseDocRef = doc(db, EXPENSES_COLLECTION, id);
   await deleteDoc(expenseDocRef);
 }
+
+/**
+ * Subscribe to the `sponsorships` collection in real-time
+ */
+export function subscribeToSponsorshipsFirestore(
+  onData: (sponsorships: Sponsorship[]) => void,
+  onError: (error: Error) => void
+): Unsubscribe {
+  if (!db) {
+    throw new Error('Firestore is not initialized');
+  }
+
+  const sponsorshipsRef = collection(db, SPONSORSHIPS_COLLECTION);
+  return onSnapshot(
+    sponsorshipsRef,
+    (snapshot) => {
+      const list: Sponsorship[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({
+          ...(docSnap.data() as Sponsorship),
+          id: docSnap.id
+        });
+      });
+      // Sort newest first
+      list.sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+      onData(list);
+    },
+    (err) => {
+      console.warn('Firestore sponsorships subscription error:', err);
+      onError(err);
+    }
+  );
+}
+
+/**
+ * Save a Sponsorship
+ */
+export async function saveSponsorshipFirestore(sponsorship: Sponsorship): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const docRef = doc(db, SPONSORSHIPS_COLLECTION, sponsorship.id);
+  const cleanData = sanitizeForFirestore(sponsorship);
+  await setDoc(docRef, cleanData);
+}
+
+/**
+ * Update a Sponsorship
+ */
+export async function updateSponsorshipFirestore(id: string, updates: Partial<Sponsorship>): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const docRef = doc(db, SPONSORSHIPS_COLLECTION, id);
+  const cleanUpdates = sanitizeForFirestore(updates);
+  await updateDoc(docRef, cleanUpdates);
+}
+
+/**
+ * Delete a Sponsorship
+ */
+export async function deleteSponsorshipFirestore(id: string): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const docRef = doc(db, SPONSORSHIPS_COLLECTION, id);
+  await deleteDoc(docRef);
+}
+

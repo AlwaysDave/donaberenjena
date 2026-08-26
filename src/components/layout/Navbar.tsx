@@ -80,7 +80,7 @@ export const Navbar: React.FC = () => {
           <div className="flex items-center gap-6">
             <span className="flex items-center gap-1.5 text-[#DFD3C2]">
               <Sparkles className="w-3 h-3 text-[#C96043]" />
-              Asociación Gastronómica fundada para el fomento de la cultura del vino y la cocina
+              Asociación Cultural y Gastronómica nacida en 2013
             </span>
             <span className="flex items-center gap-1 text-[#DFD3C2]">
               <Clock className="w-3 h-3 text-[#C96043]" />

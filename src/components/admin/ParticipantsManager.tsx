@@ -26,7 +26,8 @@ import {
   AlertCircle, 
   DollarSign, 
   Calendar,
-  Layers
+  Layers,
+  UserCheck
 } from 'lucide-react';
 
 interface ParticipantsManagerProps {
@@ -147,7 +148,8 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
         })
       : participants.filter(p => p.activityId === selectedActivityId);
 
-    const activeParticipants = relevant.filter(p => p.status !== 'cancelada');
+    const activeParticipants = relevant.filter(p => p.status !== 'cancelada' && p.status !== 'lista_de_espera');
+    const waitingListCount = relevant.filter(p => p.status === 'lista_de_espera').length;
     const totalSpotsBooked = activeParticipants.length;
     const totalExpectedRevenue = activeParticipants.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
     const withAllergies = activeParticipants.filter(p => p.notes && p.notes.trim().length > 0).length;
@@ -168,6 +170,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     return {
       totalBookings: relevant.length,
       totalSpotsBooked,
+      waitingListCount,
       maxCapacity,
       occupancyRate,
       totalExpectedRevenue,
@@ -464,6 +467,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
               <option value="all">Todos los estados</option>
               <option value="confirmada">✅ Confirmadas</option>
               <option value="pendiente_pago">⏳ Pendientes de Pago</option>
+              <option value="lista_de_espera">📋 Lista de Espera</option>
               <option value="asistio">🎉 Asistió (Presente)</option>
               <option value="cancelada">❌ Canceladas</option>
             </select>
@@ -577,6 +581,39 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
         </div>
       </div>
 
+      {/* Waiting List Alert Banner if applicable */}
+      {metrics.waitingListCount > 0 && (
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50/50 border border-blue-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-xl bg-blue-100 text-blue-700 shrink-0">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-blue-950 text-sm">
+                  {metrics.waitingListCount} persona{metrics.waitingListCount !== 1 ? 's' : ''} en Lista de Espera
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-blue-200/80 text-blue-900 text-[10px] font-bold uppercase tracking-wider">
+                  Sin asignar aforo
+                </span>
+              </div>
+              <p className="text-xs text-blue-800/90 mt-0.5">
+                Si un asistente confirmado cancela su plaza, puedes asignar la vacante a las personas en espera con un solo clic pulsando «Asignar Plaza».
+              </p>
+            </div>
+          </div>
+          {statusFilter !== 'lista_de_espera' && (
+            <button
+              type="button"
+              onClick={() => setStatusFilter('lista_de_espera')}
+              className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs whitespace-nowrap cursor-pointer transition-colors shadow-2xs self-start sm:self-center"
+            >
+              Ver Lista de Espera ({metrics.waitingListCount})
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Participants Table */}
       <div className="bg-white rounded-3xl border border-[#EDE4D7] overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
@@ -597,7 +634,8 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                 <tr 
                   key={p.id} 
                   className={`hover:bg-[#FCFAF7] transition-colors ${
-                    p.status === 'cancelada' ? 'opacity-60 bg-stone-50' : ''
+                    p.status === 'cancelada' ? 'opacity-60 bg-stone-50' : 
+                    p.status === 'lista_de_espera' ? 'bg-blue-50/30' : ''
                   }`}
                 >
                   {/* Asistente */}
@@ -692,16 +730,20 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                           ? 'bg-amber-100 text-amber-800'
                           : p.status === 'asistio'
                           ? 'bg-purple-100 text-purple-800'
+                          : p.status === 'lista_de_espera'
+                          ? 'bg-blue-100 text-blue-800 border border-blue-200'
                           : 'bg-rose-100 text-rose-800'
                       }`}>
                         {p.status === 'confirmada' && <CheckCircle className="w-3 h-3 text-emerald-600" />}
                         {p.status === 'pendiente_pago' && <Clock className="w-3 h-3 text-amber-600" />}
                         {p.status === 'asistio' && <Sparkles className="w-3 h-3 text-purple-600" />}
+                        {p.status === 'lista_de_espera' && <Clock className="w-3 h-3 text-blue-600" />}
                         {p.status === 'cancelada' && <X className="w-3 h-3 text-rose-600" />}
                         <span>
                           {p.status === 'confirmada' ? 'Confirmada' :
                            p.status === 'pendiente_pago' ? 'Pendiente Pago' :
-                           p.status === 'asistio' ? 'Asistió (En Sala)' : 'Cancelada'}
+                           p.status === 'asistio' ? 'Asistió (En Sala)' :
+                           p.status === 'lista_de_espera' ? 'Lista de Espera' : 'Cancelada'}
                         </span>
                       </span>
 
@@ -725,7 +767,18 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
 
                   {/* Acciones */}
                   <td className="p-4 text-right space-x-1">
-                    {p.status !== 'asistio' && p.status !== 'cancelada' && (
+                    {p.status === 'lista_de_espera' && (
+                      <button
+                        type="button"
+                        onClick={() => updateParticipant(p.id, { status: 'confirmada' })}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold text-[11px] cursor-pointer"
+                        title="Asignar plaza y pasar a confirmada"
+                      >
+                        <UserCheck className="w-3.5 h-3.5" />
+                        <span>Asignar Plaza</span>
+                      </button>
+                    )}
+                    {p.status !== 'asistio' && p.status !== 'cancelada' && p.status !== 'lista_de_espera' && (
                       <button
                         type="button"
                         onClick={() => markAttendance(p.id, true)}
@@ -931,6 +984,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                   >
                     <option value="confirmada">Confirmada</option>
                     <option value="pendiente_pago">Pendiente de Pago</option>
+                    <option value="lista_de_espera">Lista de Espera</option>
                     <option value="asistio">Asistió (En Sala)</option>
                     <option value="cancelada">Cancelada (Libera Aforo)</option>
                   </select>
