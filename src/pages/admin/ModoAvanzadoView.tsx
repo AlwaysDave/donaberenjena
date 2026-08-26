@@ -11,6 +11,7 @@ import { PastActivitiesManager } from '../../components/admin/PastActivitiesMana
 import { MembersManager } from '../../components/admin/MembersManager';
 import { HistoryManager } from '../../components/admin/HistoryManager';
 import { AccountsManager } from '../../components/admin/AccountsManager';
+import { MessagesManager } from '../../components/admin/MessagesManager';
 import { 
   Plus, 
   Trash2, 
@@ -39,13 +40,18 @@ import {
   Globe,
   UserCheck,
   Bell,
-  History
+  History,
+  Mail,
+  ExternalLink
 } from 'lucide-react';
 
-export const ModoAvanzadoView: React.FC = () => {
-  const { activities, participants, members, unreadNotificationsCount, metrics, addActivity, updateActivity, deleteActivity } = useData();
+// Import ITMetricsDashboard
+import { ITMetricsDashboard } from '../../components/admin/ITMetricsDashboard';
 
-  const [activeTab, setActiveTab] = useState<'gestion' | 'participantes' | 'historico' | 'socios' | 'celebradas' | 'metricas' | 'cuentas'>('gestion');
+export const ModoAvanzadoView: React.FC = () => {
+  const { activities, participants, members, unreadNotificationsCount, unreadMessagesCount, metrics, addActivity, updateActivity, deleteActivity } = useData();
+
+  const [activeTab, setActiveTab] = useState<'gestion' | 'participantes' | 'historico' | 'socios' | 'celebradas' | 'metricas' | 'cuentas' | 'contacto'>('gestion');
   const [metricsSort, setMetricsSort] = useState<{ key: 'date' | 'type' | 'occupancy'; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
   const [selectedParticipantActivityId, setSelectedParticipantActivityId] = useState<string | null>(null);
   const [activeModalTab, setActiveModalTab] = useState<'form' | 'participantes'>('form');
@@ -79,9 +85,18 @@ export const ModoAvanzadoView: React.FC = () => {
   const upcomingTotalSpots = upcomingActivities.reduce((sum, a) => sum + (a.totalSpots || 0), 0);
   const upcomingBookedSpots = upcomingActivities.reduce((sum, a) => sum + (a.bookedSpots || 0), 0);
 
-  const filteredActivities = activities.filter(act => {
-    return filterTypes[act.type] && act.status !== 'celebrada';
-  });
+  const filteredActivities = activities
+    .filter(act => filterTypes[act.type] && act.status !== 'celebrada')
+    .sort((a, b) => {
+      // Sort by date (assuming YYYY-MM-DD or similar standard format)
+      // If date is DD/MM/YYYY we need to parse it or just rely on a Date conversion if it's standard.
+      // Since it's usually YYYY-MM-DD in standard HTML date inputs, Date.parse will work.
+      // Or we can just use a simple string compare if it's YYYY-MM-DD.
+      // Let's parse it safely:
+      const dateA = new Date(a.date.split('/').reverse().join('-')).getTime() || new Date(a.date).getTime() || 0;
+      const dateB = new Date(b.date.split('/').reverse().join('-')).getTime() || new Date(b.date).getTime() || 0;
+      return dateA - dateB;
+    });
 
   // Form State for Advanced Editor
   const [formData, setFormData] = useState<Partial<Activity>>({});
@@ -573,22 +588,6 @@ export const ModoAvanzadoView: React.FC = () => {
 
         <button
           type="button"
-          onClick={() => {
-            setSelectedParticipantActivityId('all');
-            setActiveTab('participantes');
-          }}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
-            activeTab === 'participantes'
-              ? 'bg-[#521849] text-white shadow-xs'
-              : 'bg-white text-[#574B45] hover:bg-[#F6F1EA]'
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          <span>Reservas de Próximas Actividades ({upcomingBookedSpots}/{upcomingTotalSpots})</span>
-        </button>
-
-        <button
-          type="button"
           onClick={() => setActiveTab('celebradas')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
             activeTab === 'celebradas'
@@ -601,7 +600,7 @@ export const ModoAvanzadoView: React.FC = () => {
         </button>
 
         <button
-          id="tab-historico-asistentes"
+          id="tab-participantes"
           type="button"
           onClick={() => setActiveTab('historico')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
@@ -610,8 +609,8 @@ export const ModoAvanzadoView: React.FC = () => {
               : 'bg-white text-[#574B45] hover:bg-[#F6F1EA]'
           }`}
         >
-          <History className="w-4 h-4" />
-          <span>Histórico y Ranking</span>
+          <Users className="w-4 h-4" />
+          <span>Participantes</span>
         </button>
 
         <button
@@ -636,6 +635,19 @@ export const ModoAvanzadoView: React.FC = () => {
 
         <button
           type="button"
+          onClick={() => setActiveTab('cuentas')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+            activeTab === 'cuentas'
+              ? 'bg-[#521849] text-white shadow-xs'
+              : 'bg-white text-[#574B45] hover:bg-[#F6F1EA]'
+          }`}
+        >
+          <TrendingUp className="w-4 h-4" />
+          <span>Control de Cuentas</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveTab('metricas')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
             activeTab === 'metricas'
@@ -649,15 +661,20 @@ export const ModoAvanzadoView: React.FC = () => {
 
         <button
           type="button"
-          onClick={() => setActiveTab('cuentas')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
-            activeTab === 'cuentas'
+          onClick={() => setActiveTab('contacto')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 relative ${
+            activeTab === 'contacto'
               ? 'bg-[#521849] text-white shadow-xs'
               : 'bg-white text-[#574B45] hover:bg-[#F6F1EA]'
           }`}
         >
-          <TrendingUp className="w-4 h-4" />
-          <span>Control de Cuentas</span>
+          <Mail className="w-4 h-4" />
+          <span>Contacto</span>
+          {unreadMessagesCount > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white font-extrabold text-[10px]">
+              {unreadMessagesCount}
+            </span>
+          )}
         </button>
       </div>
 
@@ -768,7 +785,15 @@ export const ModoAvanzadoView: React.FC = () => {
                         </span>
                       </td>
                       <td className="p-4 font-semibold text-[#26201D] max-w-xs">
-                        <p className="truncate font-serif text-sm">{act.title}</p>
+                        <a 
+                          href={`/actividad/${act.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="truncate font-serif text-sm block hover:text-[#521849] hover:underline transition-colors"
+                          title="Abrir ficha pública en nueva pestaña"
+                        >
+                          {act.title}
+                        </a>
                         <p className="text-[11px] text-[#574B45] truncate font-sans font-normal">{act.subtitle}</p>
                       </td>
                       <td className="p-4 text-[#26201D] font-medium">
@@ -825,13 +850,31 @@ export const ModoAvanzadoView: React.FC = () => {
                         })()}
                       </td>
                       <td className="p-4">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          act.status === 'proxima'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-stone-200 text-stone-700'
-                        }`}>
-                          {act.status === 'proxima' ? 'Próxima' : 'Celebrada'}
-                        </span>
+                        {(() => {
+                          const isVacia = act.bookedSpots === 0;
+                          const isCompleta = act.bookedSpots >= act.totalSpots;
+                          const isUltimas = !isCompleta && (act.totalSpots - act.bookedSpots <= 2);
+
+                          let bgColor = 'bg-white border border-[#EDE4D7] text-[#574B45]'; // Abierta
+                          let label = 'Abierta';
+
+                          if (isCompleta) {
+                            bgColor = 'bg-emerald-100 text-emerald-800 border border-emerald-200';
+                            label = 'Completa';
+                          } else if (isUltimas) {
+                            bgColor = 'bg-[#521849] text-white border border-[#3E1037]';
+                            label = 'Últimas plazas';
+                          } else if (isVacia) {
+                            bgColor = 'bg-stone-200 text-stone-700 border border-stone-300';
+                            label = 'Vacía';
+                          }
+
+                          return (
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${bgColor}`}>
+                              {label}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="p-4 text-right space-x-1">
                         <button
@@ -913,206 +956,18 @@ export const ModoAvanzadoView: React.FC = () => {
       )}
       
       {/* Tab: Metricas */}
-      {activeTab === 'metricas' && (() => {
-        const totalCapacity = activities.reduce((acc, a) => acc + (a.totalSpots || 0), 0);
-        const totalBooked = activities.reduce((acc, a) => acc + (a.bookedSpots || 0), 0);
-        const globalOccupancy = totalCapacity > 0 ? Math.round((totalBooked / totalCapacity) * 100) : 0;
-        const totalExpectedRevenue = participants.reduce((acc, p) => acc + (p.totalAmount || 0), 0);
-        const confirmedReservations = participants.filter(p => p.status === 'confirmada' || p.status === 'asistio').length;
-
-        return (
-          <div className="space-y-6">
-            {/* Metric Summary Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="p-5 rounded-2xl bg-white border border-[#EDE4D7] space-y-2 shadow-xs">
-                <div className="flex items-center justify-between text-[#574B45]">
-                  <span className="text-xs font-bold uppercase tracking-wider">Visitas a la Web</span>
-                  <Eye className="w-4 h-4 text-[#521849]" />
-                </div>
-                <p className="text-2xl font-bold font-serif text-[#26201D]">
-                  {(metrics?.pageViewsThisMonth || 0).toLocaleString()}
-                </p>
-                <p className="text-[11px] text-[#4D6233] font-medium flex items-center gap-1">
-                  <TrendingUp className="w-3 h-3" />
-                  <span>{(metrics?.uniqueVisitorsThisMonth || 0).toLocaleString()} visitantes únicos</span>
-                </p>
-              </div>
-
-              <div className="p-5 rounded-2xl bg-white border border-[#EDE4D7] space-y-2 shadow-xs">
-                <div className="flex items-center justify-between text-[#574B45]">
-                  <span className="text-xs font-bold uppercase tracking-wider">Total Reservas</span>
-                  <Users className="w-4 h-4 text-[#C96043]" />
-                </div>
-                <p className="text-2xl font-bold font-serif text-[#26201D]">
-                  {participants.length} solicitudes
-                </p>
-                <p className="text-[11px] text-[#574B45]">
-                  {confirmedReservations} confirmadas / en sala
-                </p>
-              </div>
-
-              <div className="p-5 rounded-2xl bg-white border border-[#EDE4D7] space-y-2 shadow-xs">
-                <div className="flex items-center justify-between text-[#574B45]">
-                  <span className="text-xs font-bold uppercase tracking-wider">Tasa de Ocupación</span>
-                  <BarChart3 className="w-4 h-4 text-[#521849]" />
-                </div>
-                <p className="text-2xl font-bold font-serif text-[#26201D]">
-                  {globalOccupancy}%
-                </p>
-                <p className="text-[11px] text-[#574B45]">
-                  {totalBooked} plazas de {totalCapacity} ofertadas
-                </p>
-              </div>
-
-              <div className="p-5 rounded-2xl bg-white border border-[#EDE4D7] space-y-2 shadow-xs">
-                <div className="flex items-center justify-between text-[#574B45]">
-                  <span className="text-xs font-bold uppercase tracking-wider">Recaudación Prevista</span>
-                  <FileText className="w-4 h-4 text-[#4D6233]" />
-                </div>
-                <p className="text-2xl font-bold font-serif text-[#4D6233]">
-                  {totalExpectedRevenue.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
-                </p>
-                <p className="text-[11px] text-[#574B45]">
-                  Calculado de reservas registradas
-                </p>
-              </div>
-            </div>
-
-            {/* Detailed Table: Ocupación por Actividad */}
-            <div className="bg-white rounded-3xl border border-[#EDE4D7] overflow-hidden shadow-xs">
-              <div className="p-5 border-b border-[#EDE4D7] flex items-center justify-between">
-                <div>
-                  <h4 className="font-serif font-bold text-base text-[#26201D]">Desglose de Ocupación por Actividad</h4>
-                  <p className="text-xs text-[#574B45]">Seguimiento de plazas cubiertas y demanda en tiempo real</p>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                {(() => {
-                  const sortedActivities = [...activities].sort((a, b) => {
-                    let valA, valB;
-                    
-                    if (metricsSort.key === 'type') {
-                      valA = a.type;
-                      valB = b.type;
-                    } else if (metricsSort.key === 'occupancy') {
-                      valA = a.totalSpots > 0 ? (a.bookedSpots / a.totalSpots) : 0;
-                      valB = b.totalSpots > 0 ? (b.bookedSpots / b.totalSpots) : 0;
-                    } else {
-                      valA = new Date(a.date).getTime();
-                      valB = new Date(b.date).getTime();
-                    }
-                    
-                    if (valA < valB) return metricsSort.direction === 'asc' ? -1 : 1;
-                    if (valA > valB) return metricsSort.direction === 'asc' ? 1 : -1;
-                    return 0;
-                  });
-                  
-                  const handleSort = (key: 'date' | 'type' | 'occupancy') => {
-                    setMetricsSort(prev => ({
-                      key,
-                      direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc'
-                    }));
-                  };
-                  
-                  return (
-                    <table className="w-full text-left text-xs">
-                      <thead>
-                        <tr className="bg-[#FCFAF7] border-b border-[#EDE4D7] text-[#574B45] uppercase tracking-wider font-semibold">
-                          <th className="p-4">Actividad</th>
-                          <th className="p-4 cursor-pointer hover:bg-[#F6F1EA] transition-colors select-none" onClick={() => handleSort('type')}>
-                            Tipo {metricsSort.key === 'type' && (metricsSort.direction === 'asc' ? '↑' : '↓')}
-                          </th>
-                          <th className="p-4 cursor-pointer hover:bg-[#F6F1EA] transition-colors select-none" onClick={() => handleSort('date')}>
-                            Fecha {metricsSort.key === 'date' && (metricsSort.direction === 'asc' ? '↑' : '↓')}
-                          </th>
-                          <th className="p-4">Plazas Ocupadas</th>
-                          <th className="p-4">Aforo Máximo</th>
-                          <th className="p-4 cursor-pointer hover:bg-[#F6F1EA] transition-colors select-none" onClick={() => handleSort('occupancy')}>
-                            % Ocupación {metricsSort.key === 'occupancy' && (metricsSort.direction === 'asc' ? '↑' : '↓')}
-                          </th>
-                          <th className="p-4">Estado</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#EDE4D7]">
-                        {sortedActivities.map((act) => {
-                          const occupancy = act.totalSpots > 0 ? Math.round((act.bookedSpots / act.totalSpots) * 100) : 0;
-                          return (
-                            <tr key={act.id} className="hover:bg-[#FCFAF7]">
-                              <td className="p-4 font-semibold text-[#26201D]">
-                                <a 
-                                  href={`/actividad/${act.id}`} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="font-serif text-sm truncate max-w-xs hover:text-[#521849] hover:underline cursor-pointer block"
-                                >
-                                  {act.title}
-                                </a>
-                                <p className="text-[11px] text-[#574B45]">{act.subtitle}</p>
-                              </td>
-                              <td className="p-4 capitalize text-[#574B45]">
-                                {act.type}
-                              </td>
-                              <td className="p-4 text-[#26201D]">
-                                {act.date}
-                              </td>
-                              <td className="p-4 font-bold text-[#521849]">
-                                {act.bookedSpots}
-                              </td>
-                              <td className="p-4 text-[#574B45]">
-                                {act.totalSpots}
-                              </td>
-                              <td className="p-4">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-16 bg-[#EDE4D7] h-2 rounded-full overflow-hidden">
-                                    <div 
-                                      className={`h-full ${occupancy >= 100 ? 'bg-rose-500' : 'bg-[#521849]'}`} 
-                                      style={{ width: `${Math.min(100, occupancy)}%` }}
-                                    />
-                                  </div>
-                                  <span className="font-semibold text-[11px] text-[#26201D]">{occupancy}%</span>
-                                </div>
-                              </td>
-                              <td className="p-4">
-                                {act.status === 'celebrada' ? (
-                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-gray-200 text-gray-600">
-                                    CELEBRADA
-                                  </span>
-                                ) : (
-                                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                                    occupancy >= 100 
-                                      ? 'bg-rose-100 text-rose-800' 
-                                      : occupancy >= 75
-                                      ? 'bg-amber-100 text-amber-800'
-                                      : 'bg-emerald-100 text-emerald-800'
-                                  }`}>
-                                    {occupancy >= 100 ? 'Completo' : occupancy >= 75 ? 'Últimas plazas' : 'Disponible'}
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                        {sortedActivities.length === 0 && (
-                          <tr>
-                            <td colSpan={7} className="p-8 text-center text-[#574B45]">
-                              No hay actividades para mostrar métricas.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  );
-                })()}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {activeTab === 'metricas' && (
+        <ITMetricsDashboard />
+      )}
 
       {/* Tab 7: Cuentas */}
       {activeTab === 'cuentas' && (
         <AccountsManager />
+      )}
+
+      {/* Tab 8: Contacto */}
+      {activeTab === 'contacto' && (
+        <MessagesManager />
       )}
 
       {/* ========================================================================= */}

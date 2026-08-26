@@ -10,7 +10,7 @@ import {
   Unsubscribe 
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { Activity, AdminRole, WebMetric, Participant, Member, AdminNotification, Expense, Sponsorship } from '../types';
+import { Activity, AdminRole, WebMetric, Participant, Member, AdminNotification, Expense, Sponsorship, ContactMessage } from '../types';
 
 const ACTIVITIES_COLLECTION = 'activities';
 const METRICS_COLLECTION = 'metrics';
@@ -21,6 +21,7 @@ const MEMBERS_COLLECTION = 'members';
 const ADMIN_NOTIFICATIONS_COLLECTION = 'adminNotifications';
 const EXPENSES_COLLECTION = 'expenses';
 const SPONSORSHIPS_COLLECTION = 'sponsorships';
+const CONTACT_MESSAGES_COLLECTION = 'contactMessages';
 
 
 /**
@@ -549,4 +550,67 @@ export async function deleteSponsorshipFirestore(id: string): Promise<void> {
   const docRef = doc(db, SPONSORSHIPS_COLLECTION, id);
   await deleteDoc(docRef);
 }
+
+/**
+ * Subscribe to contact messages in real-time
+ */
+export function subscribeToContactMessagesFirestore(
+  onData: (messages: ContactMessage[]) => void,
+  onError: (error: Error) => void
+): Unsubscribe {
+  if (!db) {
+    throw new Error('Firestore is not initialized');
+  }
+
+  const messagesRef = collection(db, CONTACT_MESSAGES_COLLECTION);
+  return onSnapshot(
+    messagesRef,
+    (snapshot) => {
+      const list: ContactMessage[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({
+          ...(docSnap.data() as ContactMessage),
+          id: docSnap.id
+        });
+      });
+      // Sort newest first
+      list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      onData(list);
+    },
+    (err) => {
+      console.warn('Firestore contact messages subscription error:', err);
+      onError(err);
+    }
+  );
+}
+
+/**
+ * Save a Contact Message (can be called from public contact form or admin)
+ */
+export async function saveContactMessageFirestore(msg: ContactMessage): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const docRef = doc(db, CONTACT_MESSAGES_COLLECTION, msg.id);
+  const cleanData = sanitizeForFirestore(msg);
+  await setDoc(docRef, cleanData);
+}
+
+/**
+ * Update a Contact Message status / notes
+ */
+export async function updateContactMessageFirestore(id: string, updates: Partial<ContactMessage>): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const docRef = doc(db, CONTACT_MESSAGES_COLLECTION, id);
+  const cleanUpdates = sanitizeForFirestore(updates);
+  await updateDoc(docRef, cleanUpdates);
+}
+
+/**
+ * Delete a Contact Message
+ */
+export async function deleteContactMessageFirestore(id: string): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const docRef = doc(db, CONTACT_MESSAGES_COLLECTION, id);
+  await deleteDoc(docRef);
+}
+
 

@@ -21,7 +21,9 @@ import {
   Calendar,
   Users,
   ChevronRight,
-  TrendingUp
+  TrendingUp,
+  ShieldCheck,
+  UserX
 } from 'lucide-react';
 
 interface UnifiedPerson {
@@ -35,6 +37,10 @@ interface UnifiedPerson {
   cataAttendances: number;
   cursoAttendances: number;
   viajeAttendances: number;
+  totalCancelled: number;
+  totalNoShows: number;
+  totalJustified: number;
+  totalUnjustified: number;
   participations: Participant[];
   years: number[];
 }
@@ -122,8 +128,11 @@ export const HistoryManager: React.FC = () => {
         return;
       }
 
-      // Check attendance
-      const attended = p.attended === true || p.status === 'confirmada';
+      // Check attendance status
+      const attended = p.status === 'asistio' || p.attended === true || (p.status === 'confirmada' && act?.status === 'celebrada');
+      const isCancelled = p.status === 'cancelada';
+      const isNoShow = p.status === 'no_asistio';
+      const isJustified = p.justified === true;
 
       if (!map.has(key)) {
         // Resolve member status: check census first, then fallback to participant flag
@@ -140,6 +149,10 @@ export const HistoryManager: React.FC = () => {
           cataAttendances: 0,
           cursoAttendances: 0,
           viajeAttendances: 0,
+          totalCancelled: 0,
+          totalNoShows: 0,
+          totalJustified: 0,
+          totalUnjustified: 0,
           participations: [],
           years: []
         });
@@ -161,6 +174,14 @@ export const HistoryManager: React.FC = () => {
         if (actType === 'cata') record.cataAttendances += 1;
         else if (actType === 'curso') record.cursoAttendances += 1;
         else if (actType === 'viaje') record.viajeAttendances += 1;
+      } else if (isCancelled) {
+        record.totalCancelled += 1;
+        if (isJustified) record.totalJustified += 1;
+        else record.totalUnjustified += 1;
+      } else if (isNoShow) {
+        record.totalNoShows += 1;
+        if (isJustified) record.totalJustified += 1;
+        else record.totalUnjustified += 1;
       }
     });
 
@@ -298,6 +319,20 @@ export const HistoryManager: React.FC = () => {
     setMergeResult(`Se han actualizado automáticamente los registros en ${updatedCount} fichas diferentes con el nuevo nombre unificado.`);
   };
 
+  const handleToggleJustification = async (participantId: string, currentJustified?: boolean, currentReason?: string) => {
+    const nextJustified = !currentJustified;
+    let reason = currentReason;
+    if (nextJustified && !currentReason) {
+      const input = window.prompt('Motivo de la justificación (ej. Médica, Laboral, Fuerza mayor):', 'Justificada por secretaría');
+      if (input === null) return; // cancelado por el usuario
+      reason = input || 'Justificada por secretaría';
+    }
+    await updateParticipant(participantId, {
+      justified: nextJustified,
+      justificationReason: nextJustified ? reason : undefined
+    });
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Banner with Actions */}
@@ -305,11 +340,11 @@ export const HistoryManager: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h3 className="text-base font-bold font-serif text-[#26201D] flex items-center gap-2">
-              <History className="w-5 h-5 text-[#521849]" />
-              <span>Histórico y Trazabilidad de Asistentes</span>
+              <Users className="w-5 h-5 text-[#521849]" />
+              <span>Participantes e Historial de Asistencia</span>
             </h3>
             <p className="text-xs text-[#574B45] mt-0.5">
-              Consolidación de asistentes únicos por trayectoria, fidelidad y participación en catas, cursos y viajes.
+              Consolidación de comensales únicos por fidelidad, historial de asistencia, cancelaciones y ausencias justificadas.
             </p>
           </div>
 
@@ -712,56 +747,105 @@ export const HistoryManager: React.FC = () => {
             </div>
 
             {/* Quick Metrics */}
-            <div className="grid grid-cols-4 gap-3 mb-5 text-center">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5 text-center">
               <div className="p-3 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7]">
-                <span className="text-[10px] uppercase font-bold text-[#574B45] block">Total</span>
+                <span className="text-[10px] uppercase font-bold text-[#574B45] block">Asistencias</span>
                 <span className="text-xl font-bold font-mono text-[#521849]">{selectedPerson.totalAttendances}</span>
               </div>
               <div className="p-3 rounded-2xl bg-rose-50 border border-rose-100">
-                <span className="text-[10px] uppercase font-bold text-rose-800 block">Catas</span>
-                <span className="text-xl font-bold font-mono text-rose-900">{selectedPerson.cataAttendances}</span>
-              </div>
-              <div className="p-3 rounded-2xl bg-amber-50 border border-amber-100">
-                <span className="text-[10px] uppercase font-bold text-amber-800 block">Cursos</span>
-                <span className="text-xl font-bold font-mono text-amber-900">{selectedPerson.cursoAttendances}</span>
+                <span className="text-[10px] uppercase font-bold text-rose-800 block">Catas / Cursos</span>
+                <span className="text-xl font-bold font-mono text-rose-900">{selectedPerson.cataAttendances + selectedPerson.cursoAttendances}</span>
               </div>
               <div className="p-3 rounded-2xl bg-teal-50 border border-teal-100">
                 <span className="text-[10px] uppercase font-bold text-teal-800 block">Viajes</span>
                 <span className="text-xl font-bold font-mono text-teal-900">{selectedPerson.viajeAttendances}</span>
               </div>
+              <div className="p-3 rounded-2xl bg-amber-50 border border-amber-100">
+                <span className="text-[10px] uppercase font-bold text-amber-800 block">Canceladas / No Asistió</span>
+                <span className="text-xl font-bold font-mono text-amber-900">
+                  {selectedPerson.totalCancelled + selectedPerson.totalNoShows}
+                </span>
+                <span className="text-[9px] text-[#574B45] block mt-0.5">
+                  {selectedPerson.totalJustified > 0 ? `(${selectedPerson.totalJustified} justificadas)` : ''}
+                </span>
+              </div>
             </div>
 
             {/* Activity participation list */}
-            <h4 className="font-bold text-xs uppercase tracking-wider text-[#574B45] mb-3">
-              Historial de Reservas y Asistencias ({selectedPerson.participations.length})
-            </h4>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-bold text-xs uppercase tracking-wider text-[#574B45]">
+                Historial de Reservas y Asistencias ({selectedPerson.participations.length})
+              </h4>
+              <span className="text-[11px] text-[#8C7E77]">
+                Haz clic en «Justificar» para exonerar ausencias o cancelaciones
+              </span>
+            </div>
 
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+            <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
               {selectedPerson.participations.map(p => {
                 const act = activities.find(a => a.id === p.activityId);
-                const attended = p.attended === true || p.status === 'confirmada';
+                const attended = p.status === 'asistio' || p.attended === true || (p.status === 'confirmada' && act?.status === 'celebrada');
+                const isCancelled = p.status === 'cancelada';
+                const isNoShow = p.status === 'no_asistio';
 
                 return (
                   <div 
                     key={p.id}
-                    className="p-3 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] flex items-center justify-between text-xs"
+                    className="p-3.5 rounded-2xl border border-[#EDE4D7] bg-[#FCFAF7] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs"
                   >
                     <div>
-                      <span className="font-bold text-[#26201D] block">{p.activityTitle}</span>
-                      <div className="flex items-center gap-2 text-[10px] text-[#574B45] mt-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-[#26201D]">{p.activityTitle}</span>
+                        {p.justified && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-semibold text-[10px]">
+                            <ShieldCheck className="w-3 h-3 text-emerald-700" />
+                            <span>Justificada</span>
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#574B45] mt-1">
                         <span className="capitalize">{p.activityType || (act ? act.type : 'actividad')}</span>
                         <span>•</span>
                         <span>{act ? act.date : (p.createdAt ? new Date(p.createdAt).toLocaleDateString('es-ES') : '-')}</span>
                         <span>•</span>
                         <span>Tarifa: {p.totalAmount} €</span>
+                        {p.justificationReason && (
+                          <span className="text-amber-800 italic">
+                            (Motivo: {p.justificationReason})
+                          </span>
+                        )}
                       </div>
                     </div>
 
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                      attended ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-700'
-                    }`}>
-                      {attended ? 'Asistió' : 'Pendiente / No asistió'}
-                    </span>
+                    <div className="flex items-center gap-2 self-end sm:self-center">
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                        attended 
+                          ? 'bg-emerald-100 text-emerald-800' 
+                          : isCancelled
+                          ? 'bg-rose-100 text-rose-800'
+                          : isNoShow
+                          ? 'bg-amber-100 text-amber-900'
+                          : 'bg-stone-200 text-stone-700'
+                      }`}>
+                        {attended ? 'Asistió' : isCancelled ? 'Cancelación previa' : isNoShow ? 'No Asistió (Falta)' : 'Pendiente'}
+                      </span>
+
+                      {(isCancelled || isNoShow || !attended) && (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleJustification(p.id, p.justified, p.justificationReason)}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-bold border transition-colors cursor-pointer ${
+                            p.justified
+                              ? 'bg-stone-100 hover:bg-stone-200 text-[#574B45] border-stone-300'
+                              : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
+                          }`}
+                          title={p.justified ? 'Quitar condición de justificada' : 'Marcar como justificada'}
+                        >
+                          <ShieldCheck className="w-3 h-3" />
+                          <span>{p.justified ? 'Quitar justif.' : 'Justificar'}</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}

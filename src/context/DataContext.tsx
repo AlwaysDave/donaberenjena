@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Activity, AdminNotification, CataActivity, CursoActivity, Member, Participant, ReservationFormData, ViajeActivity, WebMetric, Expense, Sponsorship } from '../types';
+import { Activity, AdminNotification, CataActivity, CursoActivity, Member, Participant, ReservationFormData, ViajeActivity, WebMetric, Expense, Sponsorship, ContactMessage } from '../types';
 import { useAuth } from './AuthContext';
 import { db, isFirebaseConfigured } from '../services/firebase';
 import { INITIAL_PARTICIPANTS } from '../data/mockData';
-import { DEMO_ACTIVITIES, DEMO_PARTICIPANTS, DEMO_MEMBERS, DEMO_NOTIFICATIONS, DEMO_METRICS, DEMO_EXPENSES, DEMO_SPONSORSHIPS } from '../data/demoData';
+import { DEMO_ACTIVITIES, DEMO_PARTICIPANTS, DEMO_MEMBERS, DEMO_NOTIFICATIONS, DEMO_METRICS, DEMO_EXPENSES, DEMO_SPONSORSHIPS, DEMO_CONTACT_MESSAGES } from '../data/demoData';
 import {
   subscribeToActivitiesFirestore,
   subscribeToMetricsFirestore,
@@ -31,7 +31,11 @@ import {
   deleteSponsorshipFirestore,
   saveAdminNotificationFirestore,
   markAdminNotificationReadFirestore,
-  deleteAdminNotificationFirestore
+  deleteAdminNotificationFirestore,
+  subscribeToContactMessagesFirestore,
+  saveContactMessageFirestore,
+  updateContactMessageFirestore,
+  deleteContactMessageFirestore
 } from '../services/firestoreService';
 
 interface DataContextType {
@@ -44,6 +48,8 @@ interface DataContextType {
   adminNotifications: AdminNotification[];
   expenses: Expense[];
   sponsorships: Sponsorship[];
+  contactMessages: ContactMessage[];
+  unreadMessagesCount: number;
   unreadNotificationsCount: number;
   metrics: WebMetric;
   isConnected: boolean;
@@ -77,6 +83,11 @@ interface DataContextType {
   addSponsorship: (sponsorshipData: Omit<Sponsorship, 'id' | 'createdAt'>) => Promise<{ success: boolean; message: string }>;
   updateSponsorship: (id: string, updates: Partial<Sponsorship>) => Promise<void>;
   deleteSponsorship: (id: string) => Promise<void>;
+  // Contact Messages
+  sendContactMessage: (msgData: Omit<ContactMessage, 'id' | 'createdAt' | 'read' | 'status'>) => Promise<{ success: boolean; message: string }>;
+  markContactMessageRead: (id: string, read?: boolean) => Promise<void>;
+  updateContactMessageStatus: (id: string, status: 'nuevo' | 'leido' | 'respondido', replyNotes?: string) => Promise<void>;
+  deleteContactMessage: (id: string) => Promise<void>;
   useMockData: boolean;
   toggleMockData: () => void;
 }
@@ -108,6 +119,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [adminNotifications, setAdminNotifications] = useState<AdminNotification[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [sponsorships, setSponsorships] = useState<Sponsorship[]>([]);
+  const [contactMessages, setContactMessages] = useState<ContactMessage[]>([]);
   const [metrics, setMetrics] = useState<WebMetric>(DEFAULT_METRICS);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -118,6 +130,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [demoNotifications, setDemoNotifications] = useState<AdminNotification[]>(DEMO_NOTIFICATIONS);
   const [demoExpenses, setDemoExpenses] = useState<Expense[]>(DEMO_EXPENSES);
   const [demoSponsorships, setDemoSponsorships] = useState<Sponsorship[]>(DEMO_SPONSORSHIPS);
+  const [demoContactMessages, setDemoContactMessages] = useState<ContactMessage[]>(DEMO_CONTACT_MESSAGES);
   const [demoMetrics, setDemoMetrics] = useState<WebMetric>(DEMO_METRICS);
 
   const toggleMockData = () => {
@@ -130,9 +143,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const displayNotifications = useMockData ? demoNotifications : adminNotifications;
   const displayExpenses = useMockData ? demoExpenses : expenses;
   const displaySponsorships = useMockData ? demoSponsorships : sponsorships;
+  const displayContactMessages = useMockData ? demoContactMessages : contactMessages;
   const displayMetrics = useMockData ? demoMetrics : metrics;
 
   const unreadNotificationsCount = displayNotifications.filter(n => !n.read).length;
+  const unreadMessagesCount = displayContactMessages.filter(m => !m.read || m.status === 'nuevo').length;
 
   // Public real-time subscriptions (activities and metrics)
   useEffect(() => {
@@ -201,6 +216,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let unsubNotifications: (() => void) | null = null;
     let unsubExpenses: (() => void) | null = null;
     let unsubSponsorships: (() => void) | null = null;
+    let unsubContactMessages: (() => void) | null = null;
 
     try {
       unsubParticipants = subscribeToParticipantsFirestore(
@@ -277,12 +293,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Could not initialize sponsorships subscription:', err);
     }
 
+    try {
+      unsubContactMessages = subscribeToContactMessagesFirestore(
+        (firestoreMessages) => {
+          if (firestoreMessages) {
+            setContactMessages(firestoreMessages);
+          }
+        },
+        (err) => {
+          console.warn('Contact messages subscription notice:', err);
+        }
+      );
+    } catch (err) {
+      console.warn('Could not initialize contact messages subscription:', err);
+    }
+
     return () => {
       if (unsubParticipants) unsubParticipants();
       if (unsubMembers) unsubMembers();
       if (unsubNotifications) unsubNotifications();
       if (unsubExpenses) unsubExpenses();
       if (unsubSponsorships) unsubSponsorships();
+      if (unsubContactMessages) unsubContactMessages();
     };
   }, [isAuthenticated, useMockData]);
 
@@ -944,6 +976,88 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Contact Message Handlers
+  const sendContactMessage = async (msgData: Omit<ContactMessage, 'id' | 'createdAt' | 'read' | 'status'>): Promise<{ success: boolean; message: string }> => {
+    const newId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const newMsg: ContactMessage = {
+      ...msgData,
+      id: newId,
+      read: false,
+      status: 'nuevo',
+      createdAt: new Date().toISOString()
+    };
+
+    if (useMockData) {
+      setDemoContactMessages(prev => [newMsg, ...prev]);
+      return { success: true, message: 'Tu mensaje ha sido enviado correctamente.' };
+    }
+
+    setContactMessages(prev => [newMsg, ...prev]);
+    try {
+      if (isFirebaseConfigured() && db) {
+        await saveContactMessageFirestore(newMsg);
+      }
+      return { success: true, message: 'Tu mensaje ha sido enviado correctamente.' };
+    } catch (error: any) {
+      console.error('Error sending contact message:', error);
+      return { success: false, message: error.message || 'Error al enviar el mensaje de contacto.' };
+    }
+  };
+
+  const markContactMessageRead = async (id: string, read: boolean = true) => {
+    if (useMockData) {
+      setDemoContactMessages(prev => prev.map(m => m.id === id ? { ...m, read, status: read && m.status === 'nuevo' ? 'leido' : m.status } : m));
+      return;
+    }
+
+    setContactMessages(prev => prev.map(m => m.id === id ? { ...m, read, status: read && m.status === 'nuevo' ? 'leido' : m.status } : m));
+    try {
+      if (isFirebaseConfigured() && db) {
+        await updateContactMessageFirestore(id, { read, status: read ? 'leido' : 'nuevo' });
+      }
+    } catch (error) {
+      console.error('Error marking contact message read:', error);
+    }
+  };
+
+  const updateContactMessageStatus = async (id: string, status: 'nuevo' | 'leido' | 'respondido', replyNotes?: string) => {
+    const updates: Partial<ContactMessage> = {
+      status,
+      read: true,
+      ...(status === 'respondido' ? { repliedAt: new Date().toISOString(), replyNotes } : {})
+    };
+
+    if (useMockData) {
+      setDemoContactMessages(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
+      return;
+    }
+
+    setContactMessages(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
+    try {
+      if (isFirebaseConfigured() && db) {
+        await updateContactMessageFirestore(id, updates);
+      }
+    } catch (error) {
+      console.error('Error updating contact message status:', error);
+    }
+  };
+
+  const deleteContactMessage = async (id: string) => {
+    if (useMockData) {
+      setDemoContactMessages(prev => prev.filter(m => m.id !== id));
+      return;
+    }
+
+    setContactMessages(prev => prev.filter(m => m.id !== id));
+    try {
+      if (isFirebaseConfigured() && db) {
+        await deleteContactMessageFirestore(id);
+      }
+    } catch (error) {
+      console.error('Error deleting contact message:', error);
+    }
+  };
+
   return (
     <DataContext.Provider value={{
       activities: displayActivities,
@@ -955,6 +1069,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       adminNotifications: displayNotifications,
       expenses: displayExpenses,
       sponsorships: displaySponsorships,
+      contactMessages: displayContactMessages,
+      unreadMessagesCount,
       unreadNotificationsCount,
       metrics: displayMetrics,
       isConnected,
@@ -986,6 +1102,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       addSponsorship,
       updateSponsorship,
       deleteSponsorship,
+      // contact messages
+      sendContactMessage,
+      markContactMessageRead,
+      updateContactMessageStatus,
+      deleteContactMessage,
       useMockData,
       toggleMockData
     }}>

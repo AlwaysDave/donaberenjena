@@ -104,5 +104,16 @@ service cloud.firestore {
     match /sponsorships/{sponsorshipId} {
       allow read, write: if isAdmin();
     }
+
+    // =========================================================================
+    // 9. CONTACT MESSAGES COLLECTION
+    // Public creation with field size checks; Admin-only read, update, delete
+    // =========================================================================
+    match /contactMessages/{messageId} {
+      allow create: if request.resource.data.name is string &&
+                       request.resource.data.email is string &&
+                       request.resource.data.message is string;
+      allow read, update, delete: if isAdmin();
+    }
   }
 }

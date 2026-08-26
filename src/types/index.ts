@@ -181,6 +181,8 @@ export interface Participant {
   notes?: string;
   status: ParticipantStatus;
   attended?: boolean;
+  justified?: boolean; // Justificación para cancelación o no asistencia
+  justificationReason?: string;
   spotsCount?: number;
   totalAmount: number;
   paidAmount?: number;
@@ -188,6 +190,21 @@ export interface Participant {
   registeredAt: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface ContactMessage {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  subject: string;
+  message: string;
+  activityInterest?: string;
+  read: boolean;
+  status: 'nuevo' | 'leido' | 'respondido';
+  createdAt: string;
+  repliedAt?: string;
+  replyNotes?: string;
 }
 
 export interface Member {

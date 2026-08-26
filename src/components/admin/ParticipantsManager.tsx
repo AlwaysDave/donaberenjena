@@ -151,7 +151,8 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     const activeParticipants = relevant.filter(p => p.status !== 'cancelada' && p.status !== 'lista_de_espera');
     const waitingListCount = relevant.filter(p => p.status === 'lista_de_espera').length;
     const totalSpotsBooked = activeParticipants.length;
-    const totalExpectedRevenue = activeParticipants.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+    const sociosCount = activeParticipants.filter(p => p.isMember).length;
+    const noSociosCount = activeParticipants.filter(p => !p.isMember).length;
     const withAllergies = activeParticipants.filter(p => p.notes && p.notes.trim().length > 0).length;
     const attendedCount = relevant.filter(p => p.status === 'asistio').length;
 
@@ -171,9 +172,10 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       totalBookings: relevant.length,
       totalSpotsBooked,
       waitingListCount,
+      sociosCount,
+      noSociosCount,
       maxCapacity,
       occupancyRate,
-      totalExpectedRevenue,
       withAllergies,
       attendedCount
     };
@@ -547,19 +549,22 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
           </p>
         </div>
 
-        {/* Card 3: Recaudación Prevista */}
+        {/* Card 3: Socios vs No Socios */}
         <div className="bg-white rounded-2xl border border-[#EDE4D7] p-4 shadow-2xs">
           <div className="flex items-center justify-between text-xs text-[#574B45] mb-1">
-            <span className="font-semibold uppercase tracking-wider text-[10px]">Recaudación Prevista</span>
-            <DollarSign className="w-4 h-4 text-emerald-700" />
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Socios / No Socios</span>
+            <UserCheck className="w-4 h-4 text-emerald-700" />
           </div>
           <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-bold font-serif text-[#521849]">
-              {metrics.totalExpectedRevenue.toFixed(0)} €
+            <span className="text-2xl font-bold font-serif text-emerald-800">
+              {metrics.sociosCount}
+            </span>
+            <span className="text-xs text-[#574B45]">
+              / {metrics.noSociosCount} no socios
             </span>
           </div>
           <p className="text-[10px] text-[#574B45] mt-1">
-            Importe total de plazas activas
+            Distribución de asistentes confirmados
           </p>
         </div>
 

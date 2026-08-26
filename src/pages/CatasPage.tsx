@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { ActivityCard } from '../components/common/ActivityCard';
 import { CataCategory } from '../types';
@@ -118,12 +119,12 @@ export const CatasPage: React.FC = () => {
             Acogemos presentaciones de añadas, proyectos singulares y catas verticales en nuestro salón oficial de catas.
           </p>
         </div>
-        <a
-          href="mailto:catas@donaberenjena.es"
+        <Link
+          to="/contacto?asunto=propuesta_cata"
           className="px-5 py-2.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold tracking-wide transition-colors shrink-0"
         >
           Proponer una Cata
-        </a>
+        </Link>
       </div>
     </div>
   );

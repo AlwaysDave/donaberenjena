@@ -84,7 +84,7 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity }) => {
       className="group flex flex-col h-full rounded-2xl bg-white border border-[#EDE4D7] overflow-hidden transition-all duration-300 hover:shadow-lg hover:border-[#DFD3C2] hover:-translate-y-0.5"
     >
       {/* Image Container with Status Overlay */}
-      <div className="relative aspect-16/10 w-full overflow-hidden bg-[#F6F1EA]">
+      <Link to={`/actividad/${activity.id}`} className="relative aspect-16/10 w-full overflow-hidden bg-[#F6F1EA] block">
         <img
           src={activity.images[0] || 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=800&q=80'}
           alt={activity.title}
@@ -119,7 +119,7 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity }) => {
             )}
           </div>
         )}
-      </div>
+      </Link>
 
       {/* Card Content Body */}
       <div className="flex flex-col flex-1 p-5 md:p-6 justify-between gap-4">
@@ -173,7 +173,7 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity }) => {
             to={`/actividad/${activity.id}`}
             className="inline-flex items-center gap-1 text-xs font-semibold text-[#521849] group-hover:text-[#3E1037] group-hover:translate-x-0.5 transition-all"
           >
-            <span>{isHeld ? 'Ver memoria' : 'Ver ficha'}</span>
+            <span>{isHeld ? 'Ver memoria' : 'Ver Actividad'}</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>

@@ -23,7 +23,10 @@ import {
   DollarSign,
   TrendingUp,
   Receipt,
-  Eye
+  Eye,
+  Wine,
+  ChefHat,
+  Compass
 } from 'lucide-react';
 import { storage } from '../../services/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -127,7 +130,11 @@ export function AccountsManager() {
 
   // Available years
   const availableYears = useMemo(() => {
-    const years = new Set<number>(activities.map(a => new Date(a.date).getFullYear()));
+    const years = new Set<number>(activities.map(a => {
+      const parts = a.date.split('/');
+      if (parts.length === 3) return parseInt(parts[2], 10);
+      return new Date(a.date).getFullYear();
+    }).filter(y => !isNaN(y)));
     const sortedYears = Array.from(years).sort((a, b) => b - a);
     if (!sortedYears.includes(new Date().getFullYear())) {
       sortedYears.unshift(new Date().getFullYear());
@@ -140,9 +147,15 @@ export function AccountsManager() {
     return activities
       .filter(a => {
         if (selectedYear === 'all') return true;
-        return new Date(a.date).getFullYear().toString() === selectedYear;
+        const parts = a.date.split('/');
+        const year = parts.length === 3 ? parts[2] : new Date(a.date).getFullYear().toString();
+        return year === selectedYear;
       })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      .sort((a, b) => {
+        const dateA = new Date(a.date.split('/').reverse().join('-')).getTime() || new Date(a.date).getTime() || 0;
+        const dateB = new Date(b.date.split('/').reverse().join('-')).getTime() || new Date(b.date).getTime() || 0;
+        return dateA - dateB;
+      });
   }, [activities, selectedYear]);
 
   // Financial calculations
@@ -712,19 +725,22 @@ export function AccountsManager() {
                       {/* Actividad */}
                       <td className="p-4 max-w-xs">
                         <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-xl shrink-0 ${
-                            act.type === 'cata' ? 'bg-wine-100 text-wine-600' :
-                            act.type === 'curso' ? 'bg-amber-100 text-amber-600' :
-                            'bg-emerald-100 text-emerald-600'
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-semibold text-[11px] shrink-0 ${
+                            act.type === 'cata' 
+                              ? 'bg-[#521849]/10 text-[#521849]' 
+                              : act.type === 'curso'
+                              ? 'bg-[#C96043]/10 text-[#C96043]'
+                              : 'bg-[#4D6233]/10 text-[#4D6233]'
                           }`}>
-                            <ActivityIcon className="w-4 h-4" />
-                          </div>
+                            {act.type === 'cata' && <Wine className="w-3 h-3" />}
+                            {act.type === 'curso' && <ChefHat className="w-3 h-3" />}
+                            {act.type === 'viaje' && <Compass className="w-3 h-3" />}
+                            <span className="capitalize">{act.type}</span>
+                          </span>
                           <div>
                             <div className="font-semibold text-slate-900 line-clamp-1">{act.title}</div>
                             <div className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
                               <span>{formatDate(act.date)}</span>
-                              <span>•</span>
-                              <span className="capitalize">{act.type}</span>
                             </div>
                           </div>
                         </div>

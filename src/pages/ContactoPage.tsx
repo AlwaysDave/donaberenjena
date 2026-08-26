@@ -1,18 +1,40 @@
-import React, { useState } from 'react';
-import { Mail, Phone, MapPin, Clock, Send, CheckCircle2, MessageSquare } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Mail, Phone, MapPin, Clock, Send, CheckCircle2, MessageSquare, Loader2 } from 'lucide-react';
+import { useData } from '../context/DataContext';
 
 export const ContactoPage: React.FC = () => {
+  const { sendContactMessage } = useData();
+  const [searchParams] = useSearchParams();
+  const initialAsunto = searchParams.get('asunto') || 'consulta_general';
+
   const [formData, setFormData] = useState({
     nombre: '',
     email: '',
     telefono: '',
-    asunto: 'consulta_general',
+    asunto: initialAsunto,
     mensaje: ''
   });
-  const [submitted, setSubmitted] = useState(false);
+  useEffect(() => {
+    setFormData(prev => ({ ...prev, asunto: initialAsunto }));
+  }, [initialAsunto]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
+    
+    await sendContactMessage({
+      name: formData.nombre.trim(),
+      email: formData.email.trim(),
+      phone: formData.telefono.trim() || undefined,
+      subject: formData.asunto,
+      message: formData.mensaje.trim()
+    });
+
+    setLoading(false);
     setSubmitted(true);
     setTimeout(() => {
       setSubmitted(false);
@@ -23,7 +45,7 @@ export const ContactoPage: React.FC = () => {
         asunto: 'consulta_general',
         mensaje: ''
       });
-    }, 4000);
+    }, 5000);
   };
 
   return (
@@ -140,10 +162,20 @@ export const ContactoPage: React.FC = () => {
               <button
                 id="btn-enviar-contacto"
                 type="submit"
-                className="w-full py-3.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-sm font-semibold tracking-wide transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+                disabled={loading}
+                className="w-full py-3.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] disabled:opacity-60 text-white text-sm font-semibold tracking-wide transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
               >
-                <Send className="w-4 h-4" />
-                <span>Enviar Consulta</span>
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Enviando consulta...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    <span>Enviar Consulta</span>
+                  </>
+                )}
               </button>
             </form>
           )}

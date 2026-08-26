@@ -1,4 +1,4 @@
-import { Activity, Participant, WebMetric, CataActivity, Member, AdminNotification } from '../types';
+import { Activity, Participant, WebMetric, CataActivity, Member, AdminNotification, ContactMessage, ParticipantStatus } from '../types';
 
 // ==========================================
 // 1. BASE DE PERSONAS REALISTAS Y FIJAS
@@ -416,8 +416,10 @@ function buildParticipant(
   person: BasePerson,
   index: number,
   options: {
-    status?: 'confirmada' | 'pendiente_pago' | 'asistio' | 'cancelada' | 'lista_de_espera';
+    status?: ParticipantStatus;
     attended?: boolean;
+    justified?: boolean;
+    justificationReason?: string;
     groupId?: string;
     spotsCount?: number;
     notes?: string;
@@ -427,7 +429,7 @@ function buildParticipant(
   const isMember = person.isMember;
   const unitPrice = (isMember && activity.priceMember) ? activity.priceMember : activity.priceNonMember;
   const isPast = activity.status === 'celebrada';
-  const attended = options.attended ?? isPast;
+  const attended = options.attended ?? (options.status === 'cancelada' || options.status === 'no_asistio' ? false : isPast);
   const status = options.status ?? (isPast ? 'asistio' : (index % 4 === 0 ? 'pendiente_pago' : 'confirmada'));
   const daysAgo = options.registeredDaysAgo ?? (index + 2);
   const regDateIso = new Date(Date.now() - (1000 * 60 * 60 * 24 * daysAgo)).toISOString();
@@ -439,18 +441,20 @@ function buildParticipant(
     activityDate: activity.date,
     activityType: activity.type,
     fullName: person.fullName,
-    email: person.email,
-    phone: person.phone,
+    email: person.email || `usuario${index + 1}@example.com`,
+    phone: person.phone || `600 000 00${index + 1}`,
     isMember,
     membershipNumber: isMember ? person.membershipNumber : undefined,
-    groupId: options.groupId,
+    groupId: options.groupId || `grp-${activity.id}-${index + 1}`,
     spotsCount: options.spotsCount || 1,
     turn: 'Turno único',
     notes: options.notes,
     status,
     attended,
+    justified: options.justified,
+    justificationReason: options.justificationReason,
     totalAmount: unitPrice * (options.spotsCount || 1),
-    paidAmount: (status === 'pendiente_pago' || status === 'lista_de_espera') ? 0 : unitPrice * (options.spotsCount || 1),
+    paidAmount: (status === 'pendiente_pago' || status === 'lista_de_espera' || status === 'cancelada') ? 0 : unitPrice * (options.spotsCount || 1),
     paymentMethod: status === 'lista_de_espera' ? 'pendiente' : (index % 2 === 0 ? 'bizum' : 'transferencia'),
     registeredAt: regDateIso,
     createdAt: regDateIso,
@@ -459,22 +463,43 @@ function buildParticipant(
 }
 
 export const DEMO_PARTICIPANTS: Participant[] = [
-  // --- CATA 1 (Celebrada - Vermut 14 asistentes) ---
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[0], 0),  // María José (Socia)
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[1], 1, { groupId: 'grp-antonio-vermut' }), // Antonio (Socio) - Titular grupo
-  buildParticipant(DEMO_ACTIVITIES[0], { fullName: 'Elena Gómez (Acompañante)', isMember: true }, 2, { groupId: 'grp-antonio-vermut' }), // Acompañante
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[2], 3),  // Laura Martínez
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[4], 4),  // Carmen Jiménez (Socia)
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[5], 5),  // Francisco Torres (Socio)
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[6], 6),  // Isabel Romero (Socia)
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[7], 7),  // Manuel Ortega
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[8], 8),  // Pilar Gutiérrez
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[9], 9),  // David Muñoz (Socio)
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[10], 10), // Rocío Delgado
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[11], 11), // Alberto Ramírez (Socio)
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[12], 12), // Cristina Herrera (Socia)
-  // Caso de duplicado canónico:
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[20], 13), // José Antonio García López
+  // --- CATA 1 (Celebrada - Vermut: Asistentes reales, 2 cancelaciones y 1 no asistencia) ---
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[0], 0, { status: 'asistio', attended: true }),  // María José (Socia)
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[1], 1, { status: 'asistio', attended: true, groupId: 'grp-antonio-vermut' }), // Antonio (Socio) - Titular grupo
+  buildParticipant(DEMO_ACTIVITIES[0], { fullName: 'Elena Gómez (Acompañante)', isMember: true }, 2, { status: 'asistio', attended: true, groupId: 'grp-antonio-vermut' }), // Acompañante
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[2], 3, { status: 'asistio', attended: true }),  // Laura Martínez
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[4], 4, { status: 'asistio', attended: true }),  // Carmen Jiménez (Socia)
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[5], 5, { status: 'asistio', attended: true }),  // Francisco Torres (Socio)
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[6], 6, { status: 'asistio', attended: true }),  // Isabel Romero (Socia)
+  // 1. Cancelación justificada con preaviso:
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[7], 7, { 
+    status: 'cancelada', 
+    attended: false, 
+    justified: true, 
+    justificationReason: 'Avisó con 48h de antelación por motivos médicos justificados.',
+    notes: 'Cancelación con preaviso' 
+  }), // Manuel Ortega
+  // 2. Cancelación no justificada (mismo día):
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[8], 8, { 
+    status: 'cancelada', 
+    attended: false, 
+    justified: false, 
+    justificationReason: 'Canceló 2 horas antes del inicio sin causa de fuerza mayor.',
+    notes: 'Baja de última hora' 
+  }), // Pilar Gutiérrez
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[9], 9, { status: 'asistio', attended: true }),  // David Muñoz (Socio)
+  // 3. No asistencia (se apuntó pero no acudió ni avisó):
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[10], 10, { 
+    status: 'no_asistio', 
+    attended: false, 
+    justified: false, 
+    justificationReason: 'No acudió a la sala de catas ni notificó su ausencia.',
+    notes: 'No presentado en sala' 
+  }), // Rocío Delgado
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[11], 11, { status: 'asistio', attended: true }), // Alberto Ramírez (Socio)
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[12], 12, { status: 'asistio', attended: true }), // Cristina Herrera (Socia)
+  // Asistente adicional para aforo completo de los que estuvieron:
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[20], 13, { status: 'asistio', attended: true }), // José Antonio García López
 
   // --- CATA 2 (Próxima - Terruño: 14 asistentes confirmados + 4 en lista de espera) ---
   buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[0], 0),  // María José (Socia)
@@ -899,5 +924,36 @@ export const DEMO_SPONSORSHIPS: import('../types').Sponsorship[] = [
     createdAt: '2026-10-01T09:45:00.000Z'
   }
 ];
+
+// ==========================================
+// 9. MENSAJES DE CONTACTO DE DEMO
+// ==========================================
+export const DEMO_CONTACT_MESSAGES: ContactMessage[] = [
+  {
+    id: 'msg-demo-1-propuesta',
+    name: 'Gonzalo Rivas Medina',
+    email: 'gonzalo.rivas@distribuciones-clm.es',
+    phone: '654 987 321',
+    subject: 'propuesta_cata',
+    message: 'Buenas tardes. Somos una distribuidora gastronómica de Ciudad Real y nos gustaría organizar una cata privada de vinos y maridaje de autor para un grupo de 12 clientes a finales de mayo en vuestras instalaciones de Bolaños. ¿Podrían informarnos sobre tarifas de reserva de sala y disponibilidad? Muchas gracias de antemano.',
+    activityInterest: 'Cata privada para empresa',
+    read: false,
+    status: 'nuevo',
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString() // Hace 5 horas
+  },
+  {
+    id: 'msg-demo-2-socio',
+    name: 'Lucía Navarro Beltrán',
+    email: 'lucia.navarro@gmail.com',
+    phone: '612 345 678',
+    subject: 'hazte_socio',
+    message: 'Hola equipo de Doña Berenjena. Asistí el mes pasado como no socia a la cata de vermuts y me encantó el ambiente y la pasión con la que explicáis todo. Quería consultar los pasos y documentación necesaria para darme de alta como socia de número para esta temporada. ¡Un saludo!',
+    activityInterest: 'Alta de nuevo socio',
+    read: true,
+    status: 'leido',
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 36).toISOString() // Hace día y medio
+  }
+];
+
 
 

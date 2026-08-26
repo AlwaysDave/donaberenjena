@@ -303,59 +303,64 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
       {isModalOpen && (
         <div
           id="modal-reservation-backdrop"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/65 backdrop-blur-sm overflow-y-auto"
           onClick={() => setIsModalOpen(false)}
         >
           <div
             id="modal-reservation-content"
-            className="relative w-full max-w-xl rounded-2xl bg-white p-6 md:p-8 shadow-2xl border border-[#EDE4D7] max-h-[90vh] overflow-y-auto"
+            className="relative w-full max-w-xl rounded-3xl bg-white shadow-2xl border border-[#EDE4D7] max-h-[88vh] flex flex-col my-auto overflow-hidden animate-fadeIn"
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              id="btn-close-reservation-modal"
-              type="button"
-              onClick={() => setIsModalOpen(false)}
-              className="absolute top-5 right-5 p-1 rounded-full text-[#574B45] hover:text-[#26201D] hover:bg-[#F6F1EA] transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="mb-6">
-              <span className="text-xs uppercase tracking-wider font-semibold text-[#521849]">
-                Solicitud de Reserva
-              </span>
-              <h3 className="text-xl font-bold font-serif text-[#26201D] mt-1">
-                {activity.title}
-              </h3>
-              <p className="text-xs text-[#574B45] mt-1">
-                Fecha: {activity.date} {activity.time && `• ${activity.time}`}
-              </p>
+            {/* Sticky/Fixed Modal Header */}
+            <div className="p-5 sm:p-6 border-b border-[#EDE4D7] bg-[#FCFAF7] flex items-start justify-between gap-4 shrink-0">
+              <div className="min-w-0">
+                <span className="text-[11px] uppercase tracking-wider font-bold text-[#521849] block">
+                  {isSoldOut ? 'Lista de Espera' : 'Solicitud de Reserva'}
+                </span>
+                <h3 className="text-lg sm:text-xl font-bold font-serif text-[#26201D] mt-0.5 truncate" title={activity.title}>
+                  {activity.title}
+                </h3>
+                <p className="text-xs text-[#574B45] mt-0.5">
+                  Fecha: <span className="font-semibold text-[#26201D]">{activity.date}</span> {activity.time && `• ${activity.time}`}
+                </p>
+              </div>
+              <button
+                id="btn-close-reservation-modal"
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="p-2 rounded-xl text-[#574B45] hover:text-[#26201D] hover:bg-[#EDE4D7]/70 transition-colors shrink-0 cursor-pointer"
+                title="Cerrar ventana"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            {statusMessage ? (
-              <div
-                className={`p-4 rounded-xl mb-4 text-sm ${
-                  statusMessage.type === 'success'
-                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                    : 'bg-rose-50 text-rose-800 border border-rose-200'
-                }`}
-              >
-                <div className="flex items-center gap-2 font-medium">
-                  {statusMessage.type === 'success' ? (
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                  ) : (
-                    <HelpCircle className="w-5 h-5 text-rose-600" />
-                  )}
-                  <span>{statusMessage.text}</span>
+            {/* Scrollable Modal Body */}
+            <div className="p-5 sm:p-6 overflow-y-auto space-y-5">
+              {statusMessage ? (
+                <div
+                  className={`p-4 rounded-xl mb-4 text-sm ${
+                    statusMessage.type === 'success'
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                      : 'bg-rose-50 text-rose-800 border border-rose-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 font-medium">
+                    {statusMessage.type === 'success' ? (
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                    ) : (
+                      <HelpCircle className="w-5 h-5 text-rose-600" />
+                    )}
+                    <span>{statusMessage.text}</span>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-5">
-                {/* 1. Selector de Plazas */}
-                <div className="p-4 rounded-xl bg-[#FCFAF7] border border-[#EDE4D7]">
-                  <label className="block text-xs font-bold text-[#26201D] mb-1">
-                    Número de plazas que deseas reservar *
-                  </label>
+              ) : (
+                <form onSubmit={handleSubmit} className="space-y-5">
+                  {/* 1. Selector de Plazas */}
+                  <div className="p-4 rounded-xl bg-[#FCFAF7] border border-[#EDE4D7]">
+                    <label className="block text-xs font-bold text-[#26201D] mb-1">
+                      Número de plazas que deseas reservar *
+                    </label>
                   <select
                     id="select-reserva-plazas"
                     value={numSpots}
@@ -626,6 +631,7 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
                 </div>
               </form>
             )}
+            </div>
           </div>
         </div>
       )}
