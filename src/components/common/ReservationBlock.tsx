@@ -63,6 +63,8 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
   const availableSpots = Math.max(0, activity.totalSpots - activity.bookedSpots);
   const occupancyPercentage = Math.min(100, Math.round((activity.bookedSpots / activity.totalSpots) * 100));
   const isSoldOut = availableSpots <= 0;
+  const isCelebrated = activity.status === 'celebrada';
+  const isRegistrationClosed = activity.registrationStatus === 'cerrada' || isCelebrated;
 
   // Calculate total price based on member status of each attendee
   const titularPrice = titularData.isMember ? priceMember : priceNonMember;
@@ -232,7 +234,23 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
 
       {/* Main Reservation Call-to-Action Buttons */}
       <div className="space-y-3">
-        {isSoldOut ? (
+        {isCelebrated ? (
+          <div
+            id="badge-activity-celebrated"
+            className="w-full py-3.5 px-4 rounded-xl bg-[#F6F1EA] text-[#574B45] font-semibold text-sm text-center border border-[#EDE4D7] flex items-center justify-center gap-2 select-none"
+          >
+            <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+            <span>Actividad ya celebrada</span>
+          </div>
+        ) : activity.registrationStatus === 'cerrada' ? (
+          <div
+            id="badge-registration-closed"
+            className="w-full py-3.5 px-4 rounded-xl bg-stone-100 text-stone-700 font-semibold text-sm text-center border border-stone-300 flex items-center justify-center gap-2 select-none"
+          >
+            <X className="w-4 h-4 text-rose-600" />
+            <span>Inscripciones cerradas por la organización</span>
+          </div>
+        ) : isSoldOut ? (
           <button
             id="btn-waiting-list"
             type="button"

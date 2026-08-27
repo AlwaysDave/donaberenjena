@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useData } from '../../context/DataContext';
 import { Activity, ActivityType, CataActivity, CataCategory, CursoActivity, ViajeActivity, WineDetail, BodegaItem } from '../../types';
+import { sortActivitiesOldestFirst } from '../../utils/dateUtils';
 import { extractTextFromPdf, parseCataText, DEFAULT_OFFICIAL_LOCATION, getDefaultStartTime } from '../../services/pdfCataParser';
 import { searchBodegaLogo } from '../../services/bodegaLogoService';
 import { BodegaLogoSearchModal } from '../../components/admin/BodegaLogoSearchModal';
@@ -12,6 +13,7 @@ import { MembersManager } from '../../components/admin/MembersManager';
 import { HistoryManager } from '../../components/admin/HistoryManager';
 import { AccountsManager } from '../../components/admin/AccountsManager';
 import { MessagesManager } from '../../components/admin/MessagesManager';
+import { getAdminAuthHeader } from '../../services/authHelper';
 import { 
   Plus, 
   Trash2, 
@@ -85,18 +87,9 @@ export const ModoAvanzadoView: React.FC = () => {
   const upcomingTotalSpots = upcomingActivities.reduce((sum, a) => sum + (a.totalSpots || 0), 0);
   const upcomingBookedSpots = upcomingActivities.reduce((sum, a) => sum + (a.bookedSpots || 0), 0);
 
-  const filteredActivities = activities
-    .filter(act => filterTypes[act.type] && act.status !== 'celebrada')
-    .sort((a, b) => {
-      // Sort by date (assuming YYYY-MM-DD or similar standard format)
-      // If date is DD/MM/YYYY we need to parse it or just rely on a Date conversion if it's standard.
-      // Since it's usually YYYY-MM-DD in standard HTML date inputs, Date.parse will work.
-      // Or we can just use a simple string compare if it's YYYY-MM-DD.
-      // Let's parse it safely:
-      const dateA = new Date(a.date.split('/').reverse().join('-')).getTime() || new Date(a.date).getTime() || 0;
-      const dateB = new Date(b.date.split('/').reverse().join('-')).getTime() || new Date(b.date).getTime() || 0;
-      return dateA - dateB;
-    });
+  const filteredActivities = sortActivitiesOldestFirst(
+    activities.filter(act => filterTypes[act.type] && act.status !== 'celebrada')
+  );
 
   // Form State for Advanced Editor
   const [formData, setFormData] = useState<Partial<Activity>>({});
@@ -164,8 +157,13 @@ export const ModoAvanzadoView: React.FC = () => {
       const formData = new FormData();
       formData.append("file", file);
 
+      const authHeaders = await getAdminAuthHeader();
+
       const response = await fetch("/api/parse-cata", {
         method: "POST",
+        headers: {
+          ...authHeaders
+        },
         body: formData,
       });
 
@@ -317,6 +315,7 @@ export const ModoAvanzadoView: React.FC = () => {
       totalSpots: 14, // Point 3: 14 spots default
       bookedSpots: 0,
       status: 'proxima',
+      registrationStatus: 'abierta',
       location: DEFAULT_OFFICIAL_LOCATION, // Point 2: Sede oficial
       images: [
         type === 'cata' 
@@ -1240,6 +1239,18 @@ export const ModoAvanzadoView: React.FC = () => {
                   >
                     <option value="proxima">Próxima Actividad</option>
                     <option value="celebrada">Celebrada (Archivada)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#26201D] mb-1">Plazo de Reservas / Inscripción</label>
+                  <select
+                    value={formData.registrationStatus || (formData.status === 'celebrada' ? 'cerrada' : 'abierta')}
+                    onChange={(e) => setFormData({ ...formData, registrationStatus: e.target.value as any })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs"
+                  >
+                    <option value="abierta">Inscripciones Abiertas</option>
+                    <option value="cerrada">Inscripciones Cerradas / Completas</option>
                   </select>
                 </div>
 

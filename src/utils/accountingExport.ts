@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { Activity, Participant, Sponsorship, Expense } from '../types';
+import { formatDisplayDate } from './dateUtils';
 
 interface ActivityFinances {
   reservasFacturadas: number;
@@ -27,13 +28,7 @@ interface ExportAccountingOptions {
 }
 
 function formatDate(dateStr?: string): string {
-  if (!dateStr) return '';
-  const date = new Date(dateStr);
-  if (isNaN(date.getTime())) return dateStr;
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  return `${day}/${month}/${year}`;
+  return formatDisplayDate(dateStr);
 }
 
 function calculateColumnWidths(data: any[]): { wch: number }[] {

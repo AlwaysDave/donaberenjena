@@ -7,21 +7,35 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    // Checking if user is admin requires firestore which is available in storage rules
-    // using firestore.get.
+    // Check if user has an authorized profile in admins collection
     function isAdmin() {
       return isSignedIn() && firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid));
     }
 
+    // 1. Private Expense Receipts / Comprobantes Contables (Admin only read & write, max 15MB, PDF/images)
     match /receipts/{activityId}/{expenseId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      allow write: if isAdmin() &&
+                      request.resource.size < 15 * 1024 * 1024 &&
+                      (request.resource.contentType.matches('application/pdf') || 
+                       request.resource.contentType.matches('image/.*'));
     }
     
-    // Allow public read on any images uploaded (if they exist)
-    // but only admin write
+    // 2. Public Activity Images, Posters & Logos (Public read, admin write, max 10MB, images only)
     match /images/{allImages=**} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin() &&
+                      request.resource.size < 10 * 1024 * 1024 &&
+                      request.resource.contentType.matches('image/.*');
+    }
+
+    // 3. Public Activity Documents / Dossiers
+    match /activities/{activityId}/{allFiles=**} {
+      allow read: if true;
+      allow write: if isAdmin() &&
+                      request.resource.size < 15 * 1024 * 1024 &&
+                      (request.resource.contentType.matches('image/.*') || 
+                       request.resource.contentType.matches('application/pdf'));
     }
   }
 }

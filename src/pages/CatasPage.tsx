@@ -1,20 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { ActivityCard } from '../components/common/ActivityCard';
 import { CataCategory } from '../types';
 import { Wine, Sparkles, History, Calendar, Filter } from 'lucide-react';
+import { sortActivitiesNewestFirst, sortActivitiesOldestFirst } from '../utils/dateUtils';
 
 export const CatasPage: React.FC = () => {
   const { catas } = useData();
   const [activeTab, setActiveTab] = useState<'proximas' | 'celebradas'>('proximas');
   const [categoryFilter, setCategoryFilter] = useState<string>('todas');
 
-  const filteredCatas = catas.filter((cata) => {
-    const matchesStatus = cata.status === (activeTab === 'proximas' ? 'proxima' : 'celebrada');
-    const matchesCategory = categoryFilter === 'todas' || cata.category === categoryFilter;
-    return matchesStatus && matchesCategory;
-  });
+  const filteredCatas = useMemo(() => {
+    const matching = catas.filter((cata) => {
+      const matchesStatus = cata.status === (activeTab === 'proximas' ? 'proxima' : 'celebrada');
+      const matchesCategory = categoryFilter === 'todas' || cata.category === categoryFilter;
+      return matchesStatus && matchesCategory;
+    });
+
+    return activeTab === 'proximas'
+      ? sortActivitiesOldestFirst(matching)
+      : sortActivitiesNewestFirst(matching);
+  }, [catas, activeTab, categoryFilter]);
 
   const proximasCount = catas.filter(c => c.status === 'proxima').length;
   const celebradasCount = catas.filter(c => c.status === 'celebrada').length;

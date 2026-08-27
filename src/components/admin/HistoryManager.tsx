@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   UserX
 } from 'lucide-react';
+import { getAdminAuthHeader } from '../../services/authHelper';
 
 interface UnifiedPerson {
   id: string; // generated unique key
@@ -272,9 +273,13 @@ export const HistoryManager: React.FC = () => {
         return;
       }
 
+      const authHeaders = await getAdminAuthHeader();
       const res = await fetch('/api/analyze-participants', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...authHeaders
+        },
         body: JSON.stringify({ names: distinctNames })
       });
 

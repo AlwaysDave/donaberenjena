@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useData } from '../../context/DataContext';
 import { Activity, ActivityType, CataActivity, WineDetail, BodegaItem } from '../../types';
+import { sortActivitiesNewestFirst, sortActivitiesOldestFirst } from '../../utils/dateUtils';
 import { extractTextFromPdf, parseCataText, DEFAULT_OFFICIAL_LOCATION, getDefaultStartTime } from '../../services/pdfCataParser';
 import { searchBodegaLogo } from '../../services/bodegaLogoService';
 import { BodegaLogoSearchModal } from '../../components/admin/BodegaLogoSearchModal';
@@ -8,6 +9,8 @@ import { BodegaWebsiteSearchModal } from '../../components/admin/BodegaWebsiteSe
 import { BodegaManager } from '../../components/admin/BodegaManager';
 import { MembersManager } from '../../components/admin/MembersManager';
 import { QuickCheckIn } from '../../components/admin/QuickCheckIn';
+import { getAdminAuthHeader } from '../../services/authHelper';
+import { getActivityRegistrationState } from '../../utils/activityStatus';
 import { 
   Plus, 
   Calendar, 
@@ -39,6 +42,7 @@ export const ModoSencilloView: React.FC = () => {
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState<string | null>(null);
   const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
+  const [activityToToggleRegistration, setActivityToToggleRegistration] = useState<Activity | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Simplified creation form state
@@ -88,8 +92,8 @@ export const ModoSencilloView: React.FC = () => {
   const [editDate, setEditDate] = useState<string>('');
   const [editSpots, setEditSpots] = useState<number>(0);
 
-  const upcoming = activities.filter(a => a.status === 'proxima');
-  const held = activities.filter(a => a.status === 'celebrada');
+  const upcoming = sortActivitiesOldestFirst(activities.filter(a => a.status === 'proxima'));
+  const held = sortActivitiesNewestFirst(activities.filter(a => a.status === 'celebrada'));
 
   const handleDate1Change = (dateVal: string) => {
     setNewDate1(dateVal);
@@ -112,8 +116,13 @@ export const ModoSencilloView: React.FC = () => {
       const formData = new FormData();
       formData.append("file", file);
 
+      const authHeaders = await getAdminAuthHeader();
+
       const response = await fetch("/api/parse-cata", {
         method: "POST",
+        headers: {
+          ...authHeaders
+        },
         body: formData,
       });
 
@@ -273,6 +282,7 @@ export const ModoSencilloView: React.FC = () => {
       totalSpots: Number(newSpots),
       bookedSpots: 0,
       status: 'proxima',
+      registrationStatus: 'abierta',
       location: newLocation,
       images: [imageUrl],
       createdAt: new Date().toISOString().split('T')[0],
@@ -350,6 +360,25 @@ export const ModoSencilloView: React.FC = () => {
     await quickUpdateActivity(act.id, {
       status: nextStatus
     });
+  };
+
+  const handleToggleRegistration = async (act: Activity) => {
+    const isCurrentlyClosed = act.registrationStatus === 'cerrada';
+    if (!isCurrentlyClosed) {
+      if (act.bookedSpots > 0) {
+        setActivityToToggleRegistration(act);
+        return;
+      }
+      await quickUpdateActivity(act.id, { registrationStatus: 'cerrada' });
+    } else {
+      await quickUpdateActivity(act.id, { registrationStatus: 'abierta' });
+    }
+  };
+
+  const confirmCloseRegistration = async () => {
+    if (!activityToToggleRegistration) return;
+    await quickUpdateActivity(activityToToggleRegistration.id, { registrationStatus: 'cerrada' });
+    setActivityToToggleRegistration(null);
   };
 
   const totalUpcomingSpots = upcoming.reduce((acc, a) => acc + a.totalSpots, 0);
@@ -764,22 +793,48 @@ export const ModoSencilloView: React.FC = () => {
         <div className="grid grid-cols-1 gap-3">
           {upcoming.map((act) => {
             const isEditing = editingId === act.id;
+            const regState = getActivityRegistrationState(act);
+            const isClosed = act.registrationStatus === 'cerrada';
+
             return (
               <div
                 key={act.id}
                 className="p-5 rounded-2xl bg-white border border-[#EDE4D7] hover:border-[#DFD3C2] transition-all space-y-4 shadow-xs"
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <span className="text-[10px] px-2 py-0.5 rounded font-bold uppercase bg-[#521849]/10 text-[#521849]">
-                      {act.type}
-                    </span>
-                    <h4 className="text-base font-bold font-serif text-[#26201D] mt-1">
-                      {act.title}
-                    </h4>
+                  <div className="flex items-start gap-2.5">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[10px] px-2 py-0.5 rounded font-bold uppercase bg-[#521849]/10 text-[#521849]">
+                          {act.type}
+                        </span>
+                        <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${regState.colorClass}`}>
+                          {regState.badge}
+                        </span>
+                      </div>
+                      <h4 className="text-base font-bold font-serif text-[#26201D] mt-1">
+                        {act.title}
+                      </h4>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                    {/* Toggle registration status button */}
+                    <button
+                      type="button"
+                      onClick={() => handleToggleRegistration(act)}
+                      aria-label={isClosed ? `Abrir inscripciones para ${act.title}` : `Cerrar inscripciones para ${act.title}`}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                        isClosed
+                          ? 'border-stone-300 bg-stone-100 text-[#574B45] hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300'
+                          : 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-rose-50 hover:text-rose-800 hover:border-rose-300'
+                      }`}
+                      title={isClosed ? 'Inscripciones cerradas (clic para abrir)' : 'Inscripciones abiertas (clic para cerrar)'}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${isClosed ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                      <span>{isClosed ? 'Inscripciones Cerradas' : 'Inscripciones Abiertas'}</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => toggleStatus(act)}
@@ -920,6 +975,44 @@ export const ModoSencilloView: React.FC = () => {
         </div>
       </div>
       </>
+      )}
+
+      {/* Close Registration Confirmation Modal */}
+      {activityToToggleRegistration && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="relative w-full max-w-md bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-[#EDE4D7] space-y-5 animate-fadeIn">
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold font-serif text-[#26201D]">
+                ¿Cerrar inscripciones para esta actividad?
+              </h3>
+              <p className="text-xs text-[#574B45] mt-2">
+                La actividad <strong>«{activityToToggleRegistration.title}»</strong> cuenta actualmente con <strong>{activityToToggleRegistration.bookedSpots} plazas reservadas</strong>.
+              </p>
+              <p className="text-xs text-[#574B45] mt-1">
+                Al cerrar las inscripciones, ningún nuevo visitante podrá realizar reservas ni apuntarse en lista de espera desde la web pública.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setActivityToToggleRegistration(null)}
+                className="px-4 py-2 rounded-xl border border-[#EDE4D7] text-xs font-semibold text-[#574B45] hover:bg-[#F6F1EA] cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmCloseRegistration}
+                className="px-4 py-2 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold shadow-xs cursor-pointer"
+              >
+                Sí, cerrar inscripciones
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Delete Confirmation Modal */}

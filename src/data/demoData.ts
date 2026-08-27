@@ -254,6 +254,7 @@ export const DEMO_ACTIVITIES: Activity[] = [
     ],
     includesTasting: false,
     status: 'proxima',
+    registrationStatus: 'cerrada',
     createdAt: new Date('2026-04-10').toISOString(),
     updatedAt: new Date().toISOString()
   },

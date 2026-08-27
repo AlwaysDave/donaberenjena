@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { Activity, AdminRole, WebMetric, Participant, Member, AdminNotification, Expense, Sponsorship, ContactMessage } from '../types';
+import { sortActivitiesNewestFirst } from '../utils/dateUtils';
 
 const ACTIVITIES_COLLECTION = 'activities';
 const METRICS_COLLECTION = 'metrics';
@@ -90,15 +91,20 @@ export function subscribeToActivitiesFirestore(
       const activities: Activity[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
+        const status = data.status || 'proxima';
+        const registrationStatus = data.registrationStatus || (status === 'celebrada' ? 'cerrada' : 'abierta');
         activities.push({
           ...data,
           id: docSnap.id,
+          status,
+          registrationStatus,
           // Legacy migration
           priceMember: data.priceMember ?? data.price ?? 20,
           priceNonMember: data.priceNonMember ?? data.price ?? 25
         } as Activity);
       });
-      onData(activities);
+      const sorted = sortActivitiesNewestFirst(activities);
+      onData(sorted);
     },
     (err) => {
       console.warn('Firestore activities subscription error:', err);

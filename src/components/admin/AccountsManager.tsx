@@ -31,6 +31,7 @@ import {
 import { storage } from '../../services/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { exportAccountingToExcel } from '../../utils/accountingExport';
+import { formatDisplayDate, getActivityYear, sortActivitiesOldestFirst } from '../../utils/dateUtils';
 
 const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   bodega_proveedor: 'Bodega / Proveedor',
@@ -57,10 +58,7 @@ function formatCurrency(amount: number): string {
 }
 
 function formatDate(dateStr?: string): string {
-  if (!dateStr) return '';
-  const date = new Date(dateStr);
-  if (isNaN(date.getTime())) return dateStr;
-  return new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
+  return formatDisplayDate(dateStr);
 }
 
 export function AccountsManager() {
@@ -130,11 +128,7 @@ export function AccountsManager() {
 
   // Available years
   const availableYears = useMemo(() => {
-    const years = new Set<number>(activities.map(a => {
-      const parts = a.date.split('/');
-      if (parts.length === 3) return parseInt(parts[2], 10);
-      return new Date(a.date).getFullYear();
-    }).filter(y => !isNaN(y)));
+    const years = new Set<number>(activities.map(a => getActivityYear(a.date)).filter(y => !isNaN(y)));
     const sortedYears = Array.from(years).sort((a, b) => b - a);
     if (!sortedYears.includes(new Date().getFullYear())) {
       sortedYears.unshift(new Date().getFullYear());
@@ -144,18 +138,11 @@ export function AccountsManager() {
 
   // Filter activities by year
   const filteredActivities = useMemo(() => {
-    return activities
-      .filter(a => {
-        if (selectedYear === 'all') return true;
-        const parts = a.date.split('/');
-        const year = parts.length === 3 ? parts[2] : new Date(a.date).getFullYear().toString();
-        return year === selectedYear;
-      })
-      .sort((a, b) => {
-        const dateA = new Date(a.date.split('/').reverse().join('-')).getTime() || new Date(a.date).getTime() || 0;
-        const dateB = new Date(b.date.split('/').reverse().join('-')).getTime() || new Date(b.date).getTime() || 0;
-        return dateA - dateB;
-      });
+    const matching = activities.filter(a => {
+      if (selectedYear === 'all') return true;
+      return getActivityYear(a.date).toString() === selectedYear;
+    });
+    return sortActivitiesOldestFirst(matching);
   }, [activities, selectedYear]);
 
   // Financial calculations

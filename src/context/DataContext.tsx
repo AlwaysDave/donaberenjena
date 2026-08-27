@@ -363,17 +363,127 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };  const reserveSpots = async (id: string, requestedSpots: number, reservationData: ReservationFormData) => {
     const activity = activities.find(a => a.id === id);
     if (!activity) {
-      return { success: false, message: 'La actividad solicitada no existe.' };
+      return { success: false, message: 'La actividad solicitada no existe o no está disponible.' };
     }
 
-    const available = activity.totalSpots - activity.bookedSpots;
+    if (activity.status === 'celebrada') {
+      return { success: false, message: 'Esta actividad ya ha sido celebrada y no admite nuevas reservas.' };
+    }
+
+    if (activity.registrationStatus === 'cerrada') {
+      return { success: false, message: 'Las inscripciones para esta actividad se encuentran actualmente cerradas.' };
+    }
+
+    const available = Math.max(0, activity.totalSpots - activity.bookedSpots);
     if (requestedSpots > available) {
       return { 
         success: false, 
-        message: `Lo sentimos, solo quedan ${available} plaza(s) disponibles.` 
+        message: available === 0 
+          ? 'Lo sentimos, el aforo para esta actividad está completo.' 
+          : `Lo sentimos, solo quedan ${available} plaza(s) disponibles.` 
       };
     }
 
+    // Try calling server-side atomic endpoint if not in pure mock mode
+    if (!useMockData && isFirebaseConfigured()) {
+      try {
+        const response = await fetch('/api/reserve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            activityId: id,
+            spots: requestedSpots,
+            reservationData
+          })
+        });
+
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+          return {
+            success: false,
+            message: result.error || 'No se pudo completar la reserva. Por favor, inténtalo de nuevo.'
+          };
+        }
+
+        // On successful server transaction, sync local memory state immediately
+        const serverGroupId = result.groupId || `grp-${Date.now()}`;
+        const nowIso = new Date().toISOString();
+        const priceMember = activity.priceMember;
+        const priceNonMember = activity.priceNonMember;
+        const turnText = reservationData.turn || (activity.time ? `Turno (${activity.time})` : undefined);
+
+        const newParticipants: Participant[] = [];
+        const isTitularMember = reservationData.isMember ?? (reservationData.attendees?.[0]?.isMember ?? false);
+        const titularPrice = isTitularMember ? priceMember : priceNonMember;
+
+        newParticipants.push({
+          id: `part-${Date.now()}-0-${Math.random().toString(36).substring(2, 6)}`,
+          activityId: activity.id,
+          activityTitle: activity.title,
+          activityDate: activity.date,
+          activityType: activity.type,
+          fullName: reservationData.fullName.trim(),
+          email: reservationData.email.trim(),
+          phone: reservationData.phone.trim(),
+          isMember: isTitularMember,
+          groupId: serverGroupId,
+          turn: turnText,
+          membershipNumber: reservationData.membershipNumber?.trim() || undefined,
+          notes: reservationData.notes?.trim() || undefined,
+          status: 'confirmada',
+          totalAmount: titularPrice,
+          paidAmount: 0,
+          paymentMethod: reservationData.paymentMethod || 'bizum',
+          registeredAt: nowIso,
+          updatedAt: nowIso
+        });
+
+        for (let i = 1; i < requestedSpots; i++) {
+          const compData = reservationData.attendees?.[i];
+          const isCompMember = !!compData?.isMember;
+          const compPrice = isCompMember ? priceMember : priceNonMember;
+
+          newParticipants.push({
+            id: `part-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
+            activityId: activity.id,
+            activityTitle: activity.title,
+            activityDate: activity.date,
+            activityType: activity.type,
+            fullName: compData?.fullName?.trim() || `Acompañante ${i} (${reservationData.fullName.trim()})`,
+            email: compData?.email?.trim() || '',
+            phone: compData?.phone?.trim() || '',
+            isMember: isCompMember,
+            groupId: serverGroupId,
+            turn: turnText,
+            membershipNumber: compData?.membershipNumber?.trim() || undefined,
+            notes: compData?.notes?.trim() || undefined,
+            status: 'confirmada',
+            totalAmount: compPrice,
+            paidAmount: 0,
+            paymentMethod: reservationData.paymentMethod || 'bizum',
+            registeredAt: nowIso,
+            updatedAt: nowIso
+          });
+        }
+
+        setParticipants(prev => [...newParticipants, ...prev]);
+        setActivities(prev => prev.map(a => a.id === id ? { ...a, bookedSpots: a.bookedSpots + requestedSpots } : a));
+
+        return {
+          success: true,
+          message: result.message || `¡Plazas reservadas con éxito para ${reservationData.fullName}! En breve recibirás las instrucciones de abono.`,
+          groupId: serverGroupId
+        };
+      } catch (networkErr: any) {
+        console.error('Error invoking /api/reserve:', networkErr);
+        return {
+          success: false,
+          message: 'Error de conexión al tramitar la reserva. Por favor, comprueba tu red e inténtalo de nuevo.'
+        };
+      }
+    }
+
+    // Local / Mock Mode Atomic Reservation Flow
     const groupId = typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID()
       : `grp-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
@@ -407,7 +517,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       status: 'confirmada',
       totalAmount: titularPrice,
       paidAmount: 0,
-      paymentMethod: reservationData.paymentMethod || 'pendiente',
+      paymentMethod: reservationData.paymentMethod || 'bizum',
       registeredAt: nowIso,
       updatedAt: nowIso
     });
@@ -436,17 +546,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         status: 'confirmada',
         totalAmount: compPrice,
         paidAmount: 0,
-        paymentMethod: reservationData.paymentMethod || 'pendiente',
+        paymentMethod: reservationData.paymentMethod || 'bizum',
         registeredAt: nowIso,
         updatedAt: nowIso
       });
     }
 
-    // Optimistic update
+    // Local state commit
     setParticipants(prev => [...newParticipants, ...prev]);
     setActivities(prev => prev.map(a => a.id === id ? { ...a, bookedSpots: a.bookedSpots + requestedSpots } : a));
 
-    // Contrast check against members census (Prompt 4, Req 3)
+    // Contrast check against members census
     const activeCensus = displayMembers;
     for (const p of newParticipants) {
       const normalizedPName = normalizeText(p.fullName);
@@ -468,9 +578,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             createdAt: nowIso
           };
           setAdminNotifications(prev => [notif, ...prev]);
-          if (!useMockData && isFirebaseConfigured() && db) {
-            saveAdminNotificationFirestore(notif).catch(e => console.warn('Could not save notification:', e));
-          }
         }
       } else {
         if (matchedMember && matchedMember.active) {
@@ -485,31 +592,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             createdAt: nowIso
           };
           setAdminNotifications(prev => [notif, ...prev]);
-          if (!useMockData && isFirebaseConfigured() && db) {
-            saveAdminNotificationFirestore(notif).catch(e => console.warn('Could not save notification:', e));
-          }
         }
       }
     }
 
-    try {
-      if (!useMockData && isFirebaseConfigured() && db) {
-        await createReservationWithParticipantsFirestore(newParticipants, activity.id);
-      }
-      return { 
-        success: true, 
-        message: `¡Plazas reservadas con éxito para ${reservationData.fullName}! En breve recibirás un correo con las instrucciones de abono y acceso.`,
-        groupId
-      };
-    } catch (err: any) {
-      console.error('Error executing reservation on Firestore:', err);
-      // Even if Firestore fails momentarily, local optimistic state saved
-      return { 
-        success: true, 
-        message: `¡Solicitud registrada correctamente para ${reservationData.fullName}!`,
-        groupId
-      };
-    }
+    return { 
+      success: true, 
+      message: `¡Plazas reservadas con éxito para ${reservationData.fullName}! En breve recibirás las instrucciones de abono.`,
+      groupId
+    };
   };
 
   const addManualParticipant = async (participantData: Omit<Participant, 'id' | 'registeredAt'> & { id?: string }) => {

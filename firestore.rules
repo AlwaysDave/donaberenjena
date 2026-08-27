@@ -18,13 +18,12 @@ service cloud.firestore {
       return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
-    // Validates participant reservation payload created by public visitors
-    function isValidParticipantCreate(data) {
-      return data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 150 &&
+    // Validates contact form submission with anti-spam check
+    function isValidContactMessage(data) {
+      return data.name is string && data.name.size() >= 2 && data.name.size() <= 120 &&
              data.email is string && data.email.size() >= 5 && data.email.size() <= 150 &&
-             data.phone is string && data.phone.size() >= 5 && data.phone.size() <= 30 &&
-             data.spots is int && data.spots >= 1 && data.spots <= 50 &&
-             data.activityId is string && data.activityId.size() <= 128;
+             data.message is string && data.message.size() >= 10 && data.message.size() <= 3000 &&
+             (!('website' in data) || data.website == '');
     }
 
     // =========================================================================
@@ -45,23 +44,24 @@ service cloud.firestore {
 
     // =========================================================================
     // 2. PARTICIPANTS COLLECTION (PII PROTECTED)
-    // Public create allowed ONLY for legit validated reservation bookings.
-    // Read, update, and delete access strictly limited to authenticated Admins.
+    // All read and write operations restricted strictly to authenticated Admins.
+    // Public reservations are handled via the /api/reserve backend endpoint.
     // =========================================================================
     match /participants/{participantId} {
-      allow create: if isValidParticipantCreate(request.resource.data) || isAdmin();
-      allow read, update, delete: if isAdmin();
+      allow read, write: if isAdmin();
     }
 
     // =========================================================================
     // 3. ADMINS COLLECTION (RBAC PROFILES)
     // Read allowed only for the authenticated user on their own document.
-    // Write permitted only for existing authorized Admins on their own document.
-    // Self-elevation / public writes are strictly forbidden.
+    // Write permitted for Admins on their own document; self-elevation of role is forbidden.
     // =========================================================================
     match /admins/{uid} {
       allow read: if isOwner(uid);
-      allow write: if isOwner(uid) && isAdmin();
+      allow create: if isOwner(uid) && isAdmin();
+      allow update: if isOwner(uid) && isAdmin() &&
+                       (request.resource.data.role == resource.data.role);
+      allow delete: if isAdmin();
     }
 
     // =========================================================================
@@ -107,12 +107,10 @@ service cloud.firestore {
 
     // =========================================================================
     // 9. CONTACT MESSAGES COLLECTION
-    // Public creation with field size checks; Admin-only read, update, delete
+    // Public creation with field size and anti-spam checks; Admin-only read, update, delete
     // =========================================================================
     match /contactMessages/{messageId} {
-      allow create: if request.resource.data.name is string &&
-                       request.resource.data.email is string &&
-                       request.resource.data.message is string;
+      allow create: if isValidContactMessage(request.resource.data);
       allow read, update, delete: if isAdmin();
     }
   }

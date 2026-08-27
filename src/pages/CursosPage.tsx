@@ -1,15 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { ActivityCard } from '../components/common/ActivityCard';
 import { ChefHat, Calendar, History, Sparkles, UtensilsCrossed } from 'lucide-react';
+import { sortActivitiesNewestFirst, sortActivitiesOldestFirst } from '../utils/dateUtils';
 
 export const CursosPage: React.FC = () => {
   const { cursos } = useData();
   const [activeTab, setActiveTab] = useState<'proximos' | 'celebrados'>('proximos');
 
-  const filteredCursos = cursos.filter((curso) => {
-    return curso.status === (activeTab === 'proximos' ? 'proxima' : 'celebrada');
-  });
+  const filteredCursos = useMemo(() => {
+    const matching = cursos.filter((curso) => {
+      return curso.status === (activeTab === 'proximos' ? 'proxima' : 'celebrada');
+    });
+
+    return activeTab === 'proximos'
+      ? sortActivitiesOldestFirst(matching)
+      : sortActivitiesNewestFirst(matching);
+  }, [cursos, activeTab]);
 
   const proximosCount = cursos.filter(c => c.status === 'proxima').length;
   const celebradosCount = cursos.filter(c => c.status === 'celebrada').length;

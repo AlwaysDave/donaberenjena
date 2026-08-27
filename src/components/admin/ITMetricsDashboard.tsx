@@ -119,7 +119,7 @@ export const ITMetricsDashboard: React.FC = () => {
           <div className="flex items-center justify-between mt-3">
             {isGeminiConnected ? (
               <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <Zap className="w-3 h-3" /> Activa (Real)
+                <Zap className="w-3 h-3" /> Configuración disponible
               </span>
             ) : isGeminiConnected === null ? (
               <span className="text-[11px] font-semibold text-stone-600 bg-stone-100 px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -127,10 +127,10 @@ export const ITMetricsDashboard: React.FC = () => {
               </span>
             ) : (
               <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3" /> Sin conexión
+                <AlertTriangle className="w-3 h-3" /> Sin configurar
               </span>
             )}
-            <span className="text-[10px] text-stone-400 font-mono font-bold">Latencia: {isGeminiConnected ? '~300ms' : 'NULL'}</span>
+            <span className="text-[10px] text-stone-400 font-mono font-bold">Estado: {isGeminiConnected ? 'Disponible' : 'Inactivo'}</span>
           </div>
         </div>
 

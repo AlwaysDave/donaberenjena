@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import { Activity, Participant, ParticipantStatus, PaymentMethod } from '../../types';
+import { sortActivitiesOldestFirst } from '../../utils/dateUtils';
 import { 
   Users, 
   Search, 
@@ -96,7 +97,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
         filtered = [...filtered, selected];
       }
     }
-    return filtered.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    return sortActivitiesOldestFirst(filtered);
   }, [activities, selectedActivityId]);
 
   const currentActivity = useMemo(() => {

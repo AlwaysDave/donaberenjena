@@ -96,6 +96,7 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity }) => {
         <div className="absolute top-3 left-3 z-10">
           <StatusBadge
             status={activity.status}
+            registrationStatus={activity.registrationStatus}
             totalSpots={activity.totalSpots}
             bookedSpots={activity.bookedSpots}
           />

@@ -1,5 +1,6 @@
 export type ActivityType = 'cata' | 'viaje' | 'curso';
 export type ActivityStatus = 'proxima' | 'celebrada';
+export type RegistrationStatus = 'abierta' | 'cerrada';
 export type CataCategory = 'vino' | 'vermut' | 'cerveza' | 'aceite' | 'quesos' | 'destilados' | 'otros';
 
 export interface PdfDocument {
@@ -21,6 +22,7 @@ export interface BaseActivity {
   totalSpots: number;
   bookedSpots: number;
   status: ActivityStatus;
+  registrationStatus?: RegistrationStatus; // 'abierta' o 'cerrada'
   images: string[];
   documentPdf?: PdfDocument;
   location: string;
@@ -183,6 +185,10 @@ export interface Participant {
   attended?: boolean;
   justified?: boolean; // Justificación para cancelación o no asistencia
   justificationReason?: string;
+  justifiedBy?: string;
+  justifiedAt?: string;
+  cancellationReason?: string;
+  cancelledAt?: string;
   spotsCount?: number;
   totalAmount: number;
   paidAmount?: number;

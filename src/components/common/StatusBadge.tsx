@@ -1,9 +1,10 @@
 import React from 'react';
-import { ActivityStatus } from '../../types';
-import { Calendar, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ActivityStatus, RegistrationStatus } from '../../types';
+import { Calendar, CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
 
 interface StatusBadgeProps {
   status: ActivityStatus;
+  registrationStatus?: RegistrationStatus;
   totalSpots?: number;
   bookedSpots?: number;
   className?: string;
@@ -11,6 +12,7 @@ interface StatusBadgeProps {
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({
   status,
+  registrationStatus,
   totalSpots,
   bookedSpots,
   className = ''
@@ -23,6 +25,18 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
       >
         <CheckCircle2 className="w-3.5 h-3.5 text-[#DFD3C2]" />
         <span>Celebrada</span>
+      </span>
+    );
+  }
+
+  if (registrationStatus === 'cerrada') {
+    return (
+      <span
+        id="badge-status-inscripciones-cerradas"
+        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-stone-700 text-stone-100 backdrop-blur-xs shadow-xs ${className}`}
+      >
+        <XCircle className="w-3.5 h-3.5 text-stone-300" />
+        <span>Inscripciones Cerradas</span>
       </span>
     );
   }

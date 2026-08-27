@@ -15,6 +15,7 @@ import {
   ArrowUpRight
 } from 'lucide-react';
 import { Activity } from '../../types';
+import { formatDisplayDate, getActivityYear, sortActivitiesNewestFirst } from '../../utils/dateUtils';
 
 interface PastActivitiesManagerProps {
   onViewParticipants: (activityId: string) => void;
@@ -27,20 +28,19 @@ export const PastActivitiesManager: React.FC<PastActivitiesManagerProps> = ({ on
   const [selectedType, setSelectedType] = useState<string>('all');
 
   const pastActivities = useMemo(() => {
-    return activities
-      .filter(a => a.status === 'celebrada')
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const celebrated = activities.filter(a => a.status === 'celebrada');
+    return sortActivitiesNewestFirst(celebrated);
   }, [activities]);
 
   const availableYears = useMemo(() => {
-    const years = new Set(pastActivities.map(a => new Date(a.date).getFullYear().toString()));
+    const years = new Set(pastActivities.map(a => getActivityYear(a.date).toString()));
     return Array.from(years).sort((a, b) => Number(b) - Number(a));
   }, [pastActivities]);
 
   const filteredActivities = useMemo(() => {
     const q = (searchTerm || '').toLowerCase().trim();
     return pastActivities.filter(a => {
-      const yearMatch = selectedYear === 'all' || new Date(a.date).getFullYear().toString() === selectedYear;
+      const yearMatch = selectedYear === 'all' || getActivityYear(a.date).toString() === selectedYear;
       const searchMatch = !q || (a.title || '').toLowerCase().includes(q);
       const typeMatch = selectedType === 'all' || a.type === selectedType;
       return yearMatch && searchMatch && typeMatch;

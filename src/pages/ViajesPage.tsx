@@ -1,15 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { ActivityCard } from '../components/common/ActivityCard';
 import { Compass, Calendar, History, MapPin, Bus, Hotel } from 'lucide-react';
+import { sortActivitiesNewestFirst, sortActivitiesOldestFirst } from '../utils/dateUtils';
 
 export const ViajesPage: React.FC = () => {
   const { viajes } = useData();
   const [activeTab, setActiveTab] = useState<'proximos' | 'celebrados'>('proximos');
 
-  const filteredViajes = viajes.filter((viaje) => {
-    return viaje.status === (activeTab === 'proximos' ? 'proxima' : 'celebrada');
-  });
+  const filteredViajes = useMemo(() => {
+    const matching = viajes.filter((viaje) => {
+      return viaje.status === (activeTab === 'proximos' ? 'proxima' : 'celebrada');
+    });
+
+    return activeTab === 'proximos'
+      ? sortActivitiesOldestFirst(matching)
+      : sortActivitiesNewestFirst(matching);
+  }, [viajes, activeTab]);
 
   const proximosCount = viajes.filter(v => v.status === 'proxima').length;
   const celebradosCount = viajes.filter(v => v.status === 'celebrada').length;
