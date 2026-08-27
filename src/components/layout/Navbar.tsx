@@ -28,9 +28,6 @@ export const Navbar: React.FC = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuth();
   
-  // Hardcoded version for display
-  const appVersion = "v1.2.0";
-
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 20);
@@ -77,9 +74,6 @@ export const Navbar: React.FC = () => {
           
           <div className="flex items-center gap-4 text-[#DFD3C2]">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-semibold text-[#C96043] tracking-wide">
-                {appVersion}
-              </span>
             </div>
           </div>
         </div>
@@ -156,10 +150,6 @@ export const Navbar: React.FC = () => {
 
             {/* Mobile Menu Button */}
             <div className="flex items-center gap-2 lg:hidden">
-              <span className="text-[10px] font-semibold text-[#C96043] tracking-wide mr-1">
-                {appVersion}
-              </span>
-              
               <button
                 id="btn-mobile-menu-toggle"
                 type="button"

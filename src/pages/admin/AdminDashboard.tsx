@@ -34,7 +34,6 @@ export const AdminDashboard: React.FC = () => {
   } = useData();
   const navigate = useNavigate();
   const [showNotificationsDrawer, setShowNotificationsDrawer] = useState(false);
-  const appVersion = "v1.2.0";
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -63,16 +62,6 @@ export const AdminDashboard: React.FC = () => {
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#842A76] text-white font-semibold uppercase">
                   {user.baseRole === 'advanced' ? 'Admin Directiva' : 'Coordinador'}
                 </span>
-                
-                {currentRole === 'advanced' && (
-                  <>
-                    
-
-                    <span className="text-[10px] font-semibold text-[#DFD3C2] tracking-wide ml-1">
-                      {appVersion}
-                    </span>
-                  </>
-                )}
               </div>
               <p className="text-xs text-[#DFD3C2]">
                 Inición sesiada como: <strong className="text-white">{user.name}</strong> ({user.email})
