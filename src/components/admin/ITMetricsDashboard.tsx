@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
 import { useGeminiHealth } from '../../hooks/useGeminiHealth';
-import { buildInfo } from '../../config/buildInfo';
+import { buildInfo, appVersion } from '../../config/buildInfo';
 import { 
   Server, 
   Database, 
@@ -128,7 +128,7 @@ export const ITMetricsDashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-[#521849] border border-[#3E1037] shadow-xs text-white relative overflow-hidden" title="Identificador del commit que generó este despliegue">
+        <div className="p-5 rounded-2xl bg-[#521849] border border-[#3E1037] shadow-xs text-white relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-10">
             <Server className="w-16 h-16 text-white" />
           </div>
@@ -136,17 +136,11 @@ export const ITMetricsDashboard: React.FC = () => {
             <span className="text-xs font-bold uppercase tracking-wider">Entorno App</span>
             <Globe className="w-4 h-4 text-[#DFD3C2]" />
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-2 mt-4">
             <span className="text-xl font-bold font-serif text-white capitalize">{buildInfo.environment}</span>
-            <span className="text-xs text-[#DFD3C2] font-medium" title="Identificador del commit que generó este despliegue">
-              Versión desplegada: <strong className="text-white font-mono">{buildInfo.shortSha || 'Local / sin despliegue Git'}</strong>
+            <span className="text-[13px] text-[#DFD3C2] font-medium mt-1">
+              Versión de la app: <strong className="text-white font-mono">{appVersion}</strong>
             </span>
-          </div>
-          <div className="flex items-center justify-between mt-3">
-            <span className="text-[11px] font-semibold text-[#521849] bg-white/90 px-2 py-0.5 rounded-full flex items-center gap-1 max-w-[120px] truncate" title={buildInfo.branch || 'Local'}>
-              Rama: {buildInfo.branch || 'Local'}
-            </span>
-            <span className="text-[10px] text-[#DFD3C2] font-mono font-bold">Uptime: NULL</span>
           </div>
         </div>
       </div>

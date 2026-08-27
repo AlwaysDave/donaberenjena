@@ -14,10 +14,7 @@ interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
 
+declare const __APP_VERSION__: string;
 declare const __BUILD_INFO__: {
-  commitSha: string | null;
-  shortSha: string | null;
-  branch: string | null;
   environment: string;
-  source: 'vercel' | 'local';
 };
