@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
+import { useAuth } from '../../context/AuthContext';
 import { Participant, Activity } from '../../types';
+import { sortActivitiesAscending, formatDisplayDate } from '../../utils/dateUtils';
 import { 
   History, 
   Trophy, 
@@ -23,7 +25,9 @@ import {
   ChevronRight,
   TrendingUp,
   ShieldCheck,
-  UserX
+  UserX,
+  XCircle,
+  AlertTriangle
 } from 'lucide-react';
 import { getAdminAuthHeader } from '../../services/authHelper';
 
@@ -68,12 +72,20 @@ function isAnonymousName(name: string): boolean {
 
 export const HistoryManager: React.FC = () => {
   const { activities, participants, members, updateParticipant } = useData();
+  const { user } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedYear, setSelectedYear] = useState<string>('all');
   const [memberFilter, setMemberFilter] = useState<'all' | 'members' | 'non_members'>('all');
   const [showRankings, setShowRankings] = useState(false);
+  const [rankingCategory, setRankingCategory] = useState<'attendance' | 'no_shows' | 'cancelled'>('attendance');
+  const [sortField, setSortField] = useState<'attendances' | 'no_shows' | 'cancelled' | 'catas' | 'cursos' | 'viajes' | 'name'>('attendances');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [selectedPerson, setSelectedPerson] = useState<UnifiedPerson | null>(null);
+
+  // Justification modal state
+  const [justifyingParticipant, setJustifyingParticipant] = useState<Participant | null>(null);
+  const [justificationReasonInput, setJustificationReasonInput] = useState<string>('');
 
   // AI Merging state
   const [isAnalyzingAi, setIsAnalyzingAi] = useState(false);
@@ -129,8 +141,8 @@ export const HistoryManager: React.FC = () => {
         return;
       }
 
-      // Check attendance status
-      const attended = p.status === 'asistio' || p.attended === true || (p.status === 'confirmada' && act?.status === 'celebrada');
+      // Check attendance status strictly
+      const attended = (p.status === 'asistio' || p.attended === true) && p.status !== 'cancelada' && p.status !== 'no_asistio';
       const isCancelled = p.status === 'cancelada';
       const isNoShow = p.status === 'no_asistio';
       const isJustified = p.justified === true;
@@ -207,18 +219,88 @@ export const HistoryManager: React.FC = () => {
     });
   }, [unifiedPeople, searchQuery, memberFilter]);
 
-  // Top 10 Active People Ranking
+  // Sorted list based on table column header clicks
+  const sortedAndFilteredPeople = useMemo(() => {
+    return [...filteredPeople].sort((a, b) => {
+      let comparison = 0;
+      if (sortField === 'name') {
+        comparison = a.normalizedName.localeCompare(b.normalizedName);
+      } else if (sortField === 'attendances') {
+        comparison = b.totalAttendances - a.totalAttendances;
+      } else if (sortField === 'no_shows') {
+        comparison = b.totalNoShows - a.totalNoShows;
+      } else if (sortField === 'cancelled') {
+        comparison = b.totalCancelled - a.totalCancelled;
+      } else if (sortField === 'catas') {
+        comparison = b.cataAttendances - a.cataAttendances;
+      } else if (sortField === 'cursos') {
+        comparison = b.cursoAttendances - a.cursoAttendances;
+      } else if (sortField === 'viajes') {
+        comparison = b.viajeAttendances - a.viajeAttendances;
+      }
+      return sortOrder === 'desc' ? comparison : -comparison;
+    });
+  }, [filteredPeople, sortField, sortOrder]);
+
+  const handleToggleSort = (field: typeof sortField) => {
+    if (sortField === field) {
+      setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('desc');
+    }
+  };
+
+  // Aggregate Metrics for KPIs
+  const aggregateMetrics = useMemo(() => {
+    let totalAttendances = 0;
+    let totalCatas = 0;
+    let totalCursos = 0;
+    let totalViajes = 0;
+    let totalNoShows = 0;
+    let totalCancelled = 0;
+    let totalJustified = 0;
+
+    filteredPeople.forEach(p => {
+      totalAttendances += p.totalAttendances;
+      totalCatas += p.cataAttendances;
+      totalCursos += p.cursoAttendances;
+      totalViajes += p.viajeAttendances;
+      totalNoShows += p.totalNoShows;
+      totalCancelled += p.totalCancelled;
+      totalJustified += p.totalJustified;
+    });
+
+    return {
+      totalPeople: filteredPeople.length,
+      totalAttendances,
+      totalCatas,
+      totalCursos,
+      totalViajes,
+      totalNoShows,
+      totalCancelled,
+      totalJustified
+    };
+  }, [filteredPeople]);
+
+  // Top 10 People Ranking according to selected ranking category
   const topPeopleRanking = useMemo(() => {
-    return [...unifiedPeople]
-      .sort((a, b) => b.totalAttendances - a.totalAttendances)
-      .slice(0, 10);
-  }, [unifiedPeople]);
+    let list = [...unifiedPeople];
+    if (rankingCategory === 'attendance') {
+      list = list.filter(p => p.totalAttendances > 0).sort((a, b) => b.totalAttendances - a.totalAttendances);
+    } else if (rankingCategory === 'no_shows') {
+      list = list.filter(p => p.totalNoShows > 0).sort((a, b) => b.totalNoShows - a.totalNoShows);
+    } else if (rankingCategory === 'cancelled') {
+      list = list.filter(p => p.totalCancelled > 0).sort((a, b) => b.totalCancelled - a.totalCancelled);
+    }
+    return list.slice(0, 10);
+  }, [unifiedPeople, rankingCategory]);
 
   // Top 10 Popular Activities Ranking
   const topActivitiesRanking = useMemo(() => {
     return activities
       .map(act => {
-        const count = participants.filter(p => p.activityId === act.id && (p.attended === true || p.status === 'confirmada')).length;
+        const count = participants.filter(p => p.activityId === act.id && (p.status === 'asistio' || p.attended === true) && p.status !== 'cancelada' && p.status !== 'no_asistio').length;
         const year = new Date(act.date).getFullYear();
         return {
           ...act,
@@ -233,18 +315,31 @@ export const HistoryManager: React.FC = () => {
 
   // Export History to CSV
   const handleExportCsv = () => {
-    if (filteredPeople.length === 0) return;
+    if (sortedAndFilteredPeople.length === 0) return;
 
-    const headers = ['Nombre', 'Email', 'Teléfono', 'Socio', 'Total Asistencias', 'Catas', 'Cursos', 'Viajes'];
-    const rows = filteredPeople.map(p => [
+    const headers = [
+      'Nombre', 
+      'Email', 
+      'Teléfono', 
+      'Socio', 
+      'Catas', 
+      'Cursos', 
+      'Viajes', 
+      'Total Asistencias', 
+      'No Asistencias (Faltas)', 
+      'Cancelaciones'
+    ];
+    const rows = sortedAndFilteredPeople.map(p => [
       `"${p.normalizedName}"`,
       `"${p.email || ''}"`,
       `"${p.phone || ''}"`,
       `"${p.isMember ? 'Sí' : 'No'}"`,
-      p.totalAttendances,
       p.cataAttendances,
       p.cursoAttendances,
-      p.viajeAttendances
+      p.viajeAttendances,
+      p.totalAttendances,
+      p.totalNoShows,
+      p.totalCancelled
     ]);
 
     const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
@@ -324,18 +419,63 @@ export const HistoryManager: React.FC = () => {
     setMergeResult(`Se han actualizado automáticamente los registros en ${updatedCount} fichas diferentes con el nuevo nombre unificado.`);
   };
 
-  const handleToggleJustification = async (participantId: string, currentJustified?: boolean, currentReason?: string) => {
-    const nextJustified = !currentJustified;
-    let reason = currentReason;
-    if (nextJustified && !currentReason) {
-      const input = window.prompt('Motivo de la justificación (ej. Médica, Laboral, Fuerza mayor):', 'Justificada por secretaría');
-      if (input === null) return; // cancelado por el usuario
-      reason = input || 'Justificada por secretaría';
+  const handleStartJustification = (p: Participant) => {
+    if (p.justified) {
+      // Toggle off justification directly
+      updateParticipant(p.id, {
+        justified: false,
+        justificationReason: undefined,
+        justifiedAt: undefined,
+        justifiedBy: undefined
+      });
+      // Also update in selectedPerson local view if open
+      if (selectedPerson) {
+        setSelectedPerson(prev => prev ? {
+          ...prev,
+          totalJustified: Math.max(0, prev.totalJustified - 1),
+          totalUnjustified: prev.totalUnjustified + 1,
+          participations: prev.participations.map(item => item.id === p.id ? { ...item, justified: false, justificationReason: undefined, justifiedAt: undefined, justifiedBy: undefined } : item)
+        } : null);
+      }
+    } else {
+      // Open modal to capture reason
+      setJustifyingParticipant(p);
+      setJustificationReasonInput('');
     }
-    await updateParticipant(participantId, {
-      justified: nextJustified,
-      justificationReason: nextJustified ? reason : undefined
+  };
+
+  const handleConfirmJustification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!justifyingParticipant) return;
+
+    const reason = justificationReasonInput.trim() || 'Justificada por secretaría';
+    const justifiedAt = new Date().toISOString();
+    const justifiedBy = user?.name || user?.email || 'Secretaría / Administración';
+
+    await updateParticipant(justifyingParticipant.id, {
+      justified: true,
+      justificationReason: reason,
+      justifiedAt,
+      justifiedBy
     });
+
+    if (selectedPerson) {
+      setSelectedPerson(prev => prev ? {
+        ...prev,
+        totalJustified: prev.totalJustified + 1,
+        totalUnjustified: Math.max(0, prev.totalUnjustified - 1),
+        participations: prev.participations.map(item => item.id === justifyingParticipant.id ? {
+          ...item,
+          justified: true,
+          justificationReason: reason,
+          justifiedAt,
+          justifiedBy
+        } : item)
+      } : null);
+    }
+
+    setJustifyingParticipant(null);
+    setJustificationReasonInput('');
   };
 
   return (
@@ -420,130 +560,326 @@ export const HistoryManager: React.FC = () => {
 
       {/* RANKINGS PANEL (If toggled) */}
       {showRankings && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 animate-fadeIn">
-          {/* Top 10 Asistentes Más Fieles */}
-          <div className="bg-white rounded-3xl border border-[#EDE4D7] p-5 shadow-xs">
-            <div className="flex items-center justify-between pb-3 border-b border-[#EDE4D7] mb-4">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-amber-100 text-amber-800">
-                  <Trophy className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-sm font-serif text-[#26201D]">
-                    Top 10 Asistentes Más Activos
-                  </h4>
-                  <p className="text-[11px] text-[#574B45]">
-                    {selectedYear === 'all' ? 'Histórico global acumulado' : `Año ${selectedYear}`}
-                  </p>
-                </div>
-              </div>
-              <span className="text-xs font-bold text-[#521849] px-2.5 py-1 rounded-full bg-[#521849]/10">
-                Fidelidad
-              </span>
-            </div>
-
-            <div className="space-y-2">
-              {topPeopleRanking.length === 0 ? (
-                <p className="text-xs text-[#8C7E77] text-center py-6">No hay datos de asistencia para este periodo.</p>
-              ) : (
-                topPeopleRanking.map((p, idx) => (
-                  <div 
-                    key={p.id}
-                    className="flex items-center justify-between p-2.5 rounded-xl hover:bg-[#FCFAF7] border border-[#EDE4D7]/50 text-xs transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${
-                        idx === 0 ? 'bg-amber-400 text-amber-950 shadow-xs' :
-                        idx === 1 ? 'bg-stone-300 text-stone-900' :
-                        idx === 2 ? 'bg-amber-700 text-white' :
-                        'bg-stone-100 text-stone-600'
-                      }`}>
-                        {idx + 1}
-                      </span>
-                      <div>
-                        <span className="font-bold text-[#26201D] block">{p.normalizedName}</span>
-                        <div className="flex items-center gap-2 text-[10px] text-[#574B45]">
-                          <span>{p.isMember ? '⭐ Socio' : 'Tarifa General'}</span>
-                          <span>•</span>
-                          <span>{p.cataAttendances} catas, {p.cursoAttendances} cursos, {p.viajeAttendances} viajes</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="text-right">
-                      <span className="font-bold font-mono text-sm text-[#521849]">
-                        {p.totalAttendances}
-                      </span>
-                      <span className="text-[10px] text-[#8C7E77] block">asistencias</span>
-                    </div>
-                  </div>
-                ))
-              )}
+        <div className="space-y-4 animate-fadeIn">
+          {/* Ranking Category Selector Tabs */}
+          <div className="bg-[#FCFAF7] p-2 rounded-2xl border border-[#EDE4D7] flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-bold text-[#574B45] uppercase tracking-wider px-2">Criterio de Ranking:</span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setRankingCategory('attendance')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  rankingCategory === 'attendance'
+                    ? 'bg-[#521849] text-white shadow-2xs'
+                    : 'bg-white hover:bg-[#F6F1EA] text-[#574B45] border border-[#EDE4D7]'
+                }`}
+              >
+                <Trophy className="w-3.5 h-3.5" />
+                <span>👑 Más Asistencias (Fidelidad)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRankingCategory('no_shows')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  rankingCategory === 'no_shows'
+                    ? 'bg-amber-700 text-white shadow-2xs'
+                    : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200'
+                }`}
+              >
+                <UserX className="w-3.5 h-3.5" />
+                <span>⚠️ Más No Asistencias (Faltas)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRankingCategory('cancelled')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  rankingCategory === 'cancelled'
+                    ? 'bg-rose-700 text-white shadow-2xs'
+                    : 'bg-rose-50 hover:bg-rose-100 text-rose-900 border border-rose-200'
+                }`}
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                <span>❌ Más Cancelaciones (Bajas)</span>
+              </button>
             </div>
           </div>
 
-          {/* Top 10 Actividades Más Populares */}
-          <div className="bg-white rounded-3xl border border-[#EDE4D7] p-5 shadow-xs">
-            <div className="flex items-center justify-between pb-3 border-b border-[#EDE4D7] mb-4">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-purple-100 text-purple-800">
-                  <TrendingUp className="w-4 h-4" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {/* Top 10 Asistentes según Criterio */}
+            <div className="bg-white rounded-3xl border border-[#EDE4D7] p-5 shadow-xs">
+              <div className="flex items-center justify-between pb-3 border-b border-[#EDE4D7] mb-4">
+                <div className="flex items-center gap-2">
+                  <div className={`p-2 rounded-xl ${
+                    rankingCategory === 'attendance' ? 'bg-amber-100 text-amber-800' :
+                    rankingCategory === 'no_shows' ? 'bg-amber-100 text-amber-900' :
+                    'bg-rose-100 text-rose-800'
+                  }`}>
+                    {rankingCategory === 'attendance' && <Trophy className="w-4 h-4" />}
+                    {rankingCategory === 'no_shows' && <UserX className="w-4 h-4" />}
+                    {rankingCategory === 'cancelled' && <XCircle className="w-4 h-4" />}
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm font-serif text-[#26201D]">
+                      {rankingCategory === 'attendance' && 'Top 10 Asistentes Más Fieles'}
+                      {rankingCategory === 'no_shows' && 'Top 10 Mayores No Asistencias'}
+                      {rankingCategory === 'cancelled' && 'Top 10 Mayores Cancelaciones'}
+                    </h4>
+                    <p className="text-[11px] text-[#574B45]">
+                      {selectedYear === 'all' ? 'Histórico global acumulado' : `Año ${selectedYear}`}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="font-bold text-sm font-serif text-[#26201D]">
-                    Top 10 Actividades Más Concurridas
-                  </h4>
-                  <p className="text-[11px] text-[#574B45]">
-                    {selectedYear === 'all' ? 'Ranking histórico' : `Año ${selectedYear}`}
-                  </p>
-                </div>
+                <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                  rankingCategory === 'attendance' ? 'text-[#521849] bg-[#521849]/10' :
+                  rankingCategory === 'no_shows' ? 'text-amber-900 bg-amber-100' :
+                  'text-rose-900 bg-rose-100'
+                }`}>
+                  {rankingCategory === 'attendance' ? 'Fidelidad' : rankingCategory === 'no_shows' ? 'Ausencias' : 'Bajas'}
+                </span>
               </div>
-              <span className="text-xs font-bold text-purple-900 px-2.5 py-1 rounded-full bg-purple-100">
-                Afluencia
-              </span>
-            </div>
 
-            <div className="space-y-2">
-              {topActivitiesRanking.length === 0 ? (
-                <p className="text-xs text-[#8C7E77] text-center py-6">No hay actividades en este periodo.</p>
-              ) : (
-                topActivitiesRanking.map((act, idx) => (
-                  <div 
-                    key={act.id}
-                    className="flex items-center justify-between p-2.5 rounded-xl hover:bg-[#FCFAF7] border border-[#EDE4D7]/50 text-xs transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${
-                        idx === 0 ? 'bg-amber-400 text-amber-950 shadow-xs' :
-                        idx === 1 ? 'bg-stone-300 text-stone-900' :
-                        idx === 2 ? 'bg-amber-700 text-white' :
-                        'bg-stone-100 text-stone-600'
-                      }`}>
-                        {idx + 1}
-                      </span>
-                      <div>
-                        <span className="font-bold text-[#26201D] block truncate max-w-[200px] sm:max-w-xs">{act.title}</span>
-                        <div className="flex items-center gap-2 text-[10px] text-[#574B45]">
-                          <span className="capitalize">{act.type}</span>
-                          <span>•</span>
-                          <span>{act.date}</span>
+              <div className="space-y-2">
+                {topPeopleRanking.length === 0 ? (
+                  <p className="text-xs text-[#8C7E77] text-center py-6">No hay registros para este ranking en este periodo.</p>
+                ) : (
+                  topPeopleRanking.map((p, idx) => (
+                    <div 
+                      key={p.id}
+                      onClick={() => setSelectedPerson(p)}
+                      className="flex items-center justify-between p-2.5 rounded-xl hover:bg-[#FCFAF7] border border-[#EDE4D7]/50 text-xs transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${
+                          idx === 0 ? 'bg-amber-400 text-amber-950 shadow-xs' :
+                          idx === 1 ? 'bg-stone-300 text-stone-900' :
+                          idx === 2 ? 'bg-amber-700 text-white' :
+                          'bg-stone-100 text-stone-600'
+                        }`}>
+                          {idx + 1}
+                        </span>
+                        <div>
+                          <span className="font-bold text-[#26201D] block">{p.normalizedName}</span>
+                          <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-[#574B45]">
+                            <span>{p.isMember ? '⭐ Socio' : 'Tarifa General'}</span>
+                            <span>•</span>
+                            <span>{p.cataAttendances} catas, {p.cursoAttendances} cursos, {p.viajeAttendances} viajes</span>
+                            {(p.totalNoShows > 0 || p.totalCancelled > 0) && (
+                              <>
+                                <span>•</span>
+                                {p.totalNoShows > 0 && (
+                                  <span className="text-amber-800 font-medium">⚠️ {p.totalNoShows} faltas</span>
+                                )}
+                                {p.totalCancelled > 0 && (
+                                  <span className="text-rose-800 font-medium">❌ {p.totalCancelled} canc.</span>
+                                )}
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="text-right">
-                      <span className="font-bold font-mono text-sm text-purple-900">
-                        {act.attendanceCount} / {act.totalSpots}
-                      </span>
-                      <span className="text-[10px] text-[#8C7E77] block">asistieron</span>
+                      <div className="text-right">
+                        {rankingCategory === 'attendance' && (
+                          <>
+                            <span className="font-bold font-mono text-sm text-[#521849]">
+                              {p.totalAttendances}
+                            </span>
+                            <span className="text-[10px] text-[#8C7E77] block">asistencias</span>
+                          </>
+                        )}
+                        {rankingCategory === 'no_shows' && (
+                          <>
+                            <span className="font-bold font-mono text-sm text-amber-800">
+                              {p.totalNoShows}
+                            </span>
+                            <span className="text-[10px] text-amber-700 block">
+                              {p.totalJustified > 0 ? `(${p.totalJustified} just.)` : 'no asistió'}
+                            </span>
+                          </>
+                        )}
+                        {rankingCategory === 'cancelled' && (
+                          <>
+                            <span className="font-bold font-mono text-sm text-rose-800">
+                              {p.totalCancelled}
+                            </span>
+                            <span className="text-[10px] text-rose-700 block">canceladas</span>
+                          </>
+                        )}
+                      </div>
                     </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Top 10 Actividades Más Populares */}
+            <div className="bg-white rounded-3xl border border-[#EDE4D7] p-5 shadow-xs">
+              <div className="flex items-center justify-between pb-3 border-b border-[#EDE4D7] mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-purple-100 text-purple-800">
+                    <TrendingUp className="w-4 h-4" />
                   </div>
-                ))
-              )}
+                  <div>
+                    <h4 className="font-bold text-sm font-serif text-[#26201D]">
+                      Top 10 Actividades Más Concurridas
+                    </h4>
+                    <p className="text-[11px] text-[#574B45]">
+                      {selectedYear === 'all' ? 'Ranking histórico' : `Año ${selectedYear}`}
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-bold text-purple-900 px-2.5 py-1 rounded-full bg-purple-100">
+                  Afluencia
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                {topActivitiesRanking.length === 0 ? (
+                  <p className="text-xs text-[#8C7E77] text-center py-6">No hay actividades en este periodo.</p>
+                ) : (
+                  topActivitiesRanking.map((act, idx) => (
+                    <div 
+                      key={act.id}
+                      className="flex items-center justify-between p-2.5 rounded-xl hover:bg-[#FCFAF7] border border-[#EDE4D7]/50 text-xs transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${
+                          idx === 0 ? 'bg-amber-400 text-amber-950 shadow-xs' :
+                          idx === 1 ? 'bg-stone-300 text-stone-900' :
+                          idx === 2 ? 'bg-amber-700 text-white' :
+                          'bg-stone-100 text-stone-600'
+                        }`}>
+                          {idx + 1}
+                        </span>
+                        <div>
+                          <span className="font-bold text-[#26201D] block truncate max-w-[200px] sm:max-w-xs">{act.title}</span>
+                          <div className="flex items-center gap-2 text-[10px] text-[#574B45]">
+                            <span className="capitalize">{act.type}</span>
+                            <span>•</span>
+                            <span>{new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="font-bold font-mono text-sm text-purple-900">
+                          {act.attendanceCount} / {act.totalSpots}
+                        </span>
+                        <span className="text-[10px] text-[#8C7E77] block">asistieron</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* Aggregate KPI Metric Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {/* Card 1: Total Personas Únicas */}
+        <div className="bg-white rounded-2xl border border-[#EDE4D7] p-3.5 shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-[#574B45] mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Asistentes Únicos</span>
+            <Users className="w-4 h-4 text-[#521849]" />
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-bold font-serif text-[#26201D]">
+              {aggregateMetrics.totalPeople}
+            </span>
+            <span className="text-[11px] text-[#574B45]">personas</span>
+          </div>
+          <p className="text-[10px] text-[#8C7E77] mt-1 truncate">
+            {selectedYear === 'all' ? 'En todo el histórico' : `En el año ${selectedYear}`}
+          </p>
+        </div>
+
+        {/* Card 2: Total Asistencias Efectivas */}
+        <div className="bg-white rounded-2xl border border-purple-200/80 bg-purple-50/20 p-3.5 shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-purple-900 mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Total Asistencias</span>
+            <Trophy className="w-4 h-4 text-purple-600" />
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-bold font-serif text-purple-950">
+              {aggregateMetrics.totalAttendances}
+            </span>
+            <span className="text-[11px] text-purple-700">participaciones</span>
+          </div>
+          <p className="text-[10px] text-purple-800 mt-1 truncate">
+            Presencias confirmadas en sala
+          </p>
+        </div>
+
+        {/* Card 3: Catas */}
+        <div className="bg-white rounded-2xl border border-rose-200 bg-rose-50/20 p-3.5 shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-rose-900 mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Catas</span>
+            <Wine className="w-4 h-4 text-rose-600" />
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-bold font-serif text-rose-950">
+              {aggregateMetrics.totalCatas}
+            </span>
+            <span className="text-[11px] text-rose-800">asistencias</span>
+          </div>
+          <p className="text-[10px] text-rose-700 mt-1 truncate">
+            Eventos enológicos
+          </p>
+        </div>
+
+        {/* Card 4: Cursos y Viajes */}
+        <div className="bg-white rounded-2xl border border-teal-200 bg-teal-50/20 p-3.5 shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-teal-900 mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Cursos & Viajes</span>
+            <GraduationCap className="w-4 h-4 text-teal-600" />
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-bold font-serif text-teal-950">
+              {aggregateMetrics.totalCursos + aggregateMetrics.totalViajes}
+            </span>
+            <span className="text-[11px] text-teal-800">asistencias</span>
+          </div>
+          <p className="text-[10px] text-teal-700 mt-1 truncate">
+            {aggregateMetrics.totalCursos} cursos • {aggregateMetrics.totalViajes} viajes
+          </p>
+        </div>
+
+        {/* Card 5: No Asistencias (Faltas) */}
+        <div className="bg-white rounded-2xl border border-amber-200 bg-amber-50/30 p-3.5 shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-amber-900 mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">No Asistencias</span>
+            <UserX className="w-4 h-4 text-amber-600" />
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-bold font-serif text-amber-950">
+              {aggregateMetrics.totalNoShows}
+            </span>
+            <span className="text-[11px] text-amber-800">faltas</span>
+          </div>
+          <p className="text-[10px] text-amber-700 mt-1 truncate">
+            {aggregateMetrics.totalJustified > 0 ? `${aggregateMetrics.totalJustified} justificadas` : 'Sin justificar'}
+          </p>
+        </div>
+
+        {/* Card 6: Cancelaciones */}
+        <div className="bg-white rounded-2xl border border-rose-200 bg-rose-50/30 p-3.5 shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-rose-900 mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Cancelaciones</span>
+            <XCircle className="w-4 h-4 text-rose-600" />
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-bold font-serif text-rose-950">
+              {aggregateMetrics.totalCancelled}
+            </span>
+            <span className="text-[11px] text-rose-800">bajas</span>
+          </div>
+          <p className="text-[10px] text-rose-700 mt-1 truncate">
+            Bajas previas de reservas
+          </p>
+        </div>
+      </div>
 
       {/* Filters Toolbar */}
       <div className="bg-white rounded-2xl border border-[#EDE4D7] p-4 shadow-2xs">
@@ -617,27 +953,87 @@ export const HistoryManager: React.FC = () => {
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="bg-[#FCFAF7] border-b border-[#EDE4D7] text-[#574B45] uppercase tracking-wider font-semibold">
-                <th className="p-4">Persona / Asistente</th>
+                <th 
+                  className="p-4 cursor-pointer hover:text-[#26201D] transition-colors select-none"
+                  onClick={() => handleToggleSort('name')}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Persona / Asistente</span>
+                    {sortField === 'name' && <ArrowUpDown className="w-3 h-3 text-[#521849]" />}
+                  </div>
+                </th>
                 <th className="p-4">Contacto</th>
                 <th className="p-4">Condición</th>
-                <th className="p-4 text-center">Catas</th>
-                <th className="p-4 text-center">Cursos</th>
-                <th className="p-4 text-center">Viajes</th>
-                <th className="p-4 text-center font-bold text-[#521849]">Total Asistencias</th>
+                <th 
+                  className="p-4 text-center cursor-pointer hover:text-[#26201D] transition-colors select-none"
+                  onClick={() => handleToggleSort('catas')}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <span>Catas</span>
+                    {sortField === 'catas' && <ArrowUpDown className="w-3 h-3 text-[#521849]" />}
+                  </div>
+                </th>
+                <th 
+                  className="p-4 text-center cursor-pointer hover:text-[#26201D] transition-colors select-none"
+                  onClick={() => handleToggleSort('cursos')}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <span>Cursos</span>
+                    {sortField === 'cursos' && <ArrowUpDown className="w-3 h-3 text-[#521849]" />}
+                  </div>
+                </th>
+                <th 
+                  className="p-4 text-center cursor-pointer hover:text-[#26201D] transition-colors select-none"
+                  onClick={() => handleToggleSort('viajes')}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <span>Viajes</span>
+                    {sortField === 'viajes' && <ArrowUpDown className="w-3 h-3 text-[#521849]" />}
+                  </div>
+                </th>
+                <th 
+                  className="p-4 text-center cursor-pointer hover:text-amber-900 transition-colors select-none"
+                  onClick={() => handleToggleSort('no_shows')}
+                >
+                  <div className="flex items-center justify-center gap-1 text-amber-800">
+                    <UserX className="w-3.5 h-3.5" />
+                    <span>No Asist.</span>
+                    {sortField === 'no_shows' && <ArrowUpDown className="w-3 h-3 text-amber-800" />}
+                  </div>
+                </th>
+                <th 
+                  className="p-4 text-center cursor-pointer hover:text-rose-900 transition-colors select-none"
+                  onClick={() => handleToggleSort('cancelled')}
+                >
+                  <div className="flex items-center justify-center gap-1 text-rose-800">
+                    <XCircle className="w-3.5 h-3.5" />
+                    <span>Canceladas</span>
+                    {sortField === 'cancelled' && <ArrowUpDown className="w-3 h-3 text-rose-800" />}
+                  </div>
+                </th>
+                <th 
+                  className="p-4 text-center font-bold text-[#521849] cursor-pointer hover:text-[#3E1037] transition-colors select-none"
+                  onClick={() => handleToggleSort('attendances')}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <span>Total Asistencias</span>
+                    {sortField === 'attendances' && <ArrowUpDown className="w-3 h-3 text-[#521849]" />}
+                  </div>
+                </th>
                 <th className="p-4 text-right">Detalles</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#EDE4D7]">
-              {filteredPeople.length === 0 ? (
+              {sortedAndFilteredPeople.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-[#8C7E77]">
+                  <td colSpan={10} className="p-8 text-center text-[#8C7E77]">
                     <Users className="w-8 h-8 mx-auto mb-2 text-[#EDE4D7]" />
                     <p className="font-semibold text-sm text-[#574B45]">No hay registros históricos</p>
                     <p className="text-xs mt-1">Prueba a seleccionar otro año o restablecer los filtros de búsqueda.</p>
                   </td>
                 </tr>
               ) : (
-                filteredPeople.map((person) => (
+                sortedAndFilteredPeople.map((person) => (
                   <tr 
                     key={person.id}
                     className="hover:bg-[#FCFAF7] transition-colors cursor-pointer"
@@ -688,6 +1084,36 @@ export const HistoryManager: React.FC = () => {
                     </td>
                     <td className="p-4 text-center font-mono">
                       <span className="px-2 py-0.5 rounded bg-teal-50 text-teal-900 font-semibold">{person.viajeAttendances}</span>
+                    </td>
+
+                    {/* No Asistencias */}
+                    <td className="p-4 text-center font-mono">
+                      {person.totalNoShows > 0 ? (
+                        <span 
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-100 text-amber-900 font-semibold border border-amber-200"
+                          title={`${person.totalNoShows} no asistencias (${person.totalJustified} justificadas)`}
+                        >
+                          <UserX className="w-3 h-3 text-amber-700" />
+                          <span>{person.totalNoShows}</span>
+                        </span>
+                      ) : (
+                        <span className="text-stone-300 font-mono">0</span>
+                      )}
+                    </td>
+
+                    {/* Cancelaciones */}
+                    <td className="p-4 text-center font-mono">
+                      {person.totalCancelled > 0 ? (
+                        <span 
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-50 text-rose-800 font-semibold border border-rose-200"
+                          title={`${person.totalCancelled} cancelaciones`}
+                        >
+                          <XCircle className="w-3 h-3 text-rose-600" />
+                          <span>{person.totalCancelled}</span>
+                        </span>
+                      ) : (
+                        <span className="text-stone-300 font-mono">0</span>
+                      )}
                     </td>
 
                     {/* Total Attendances */}
@@ -752,26 +1178,34 @@ export const HistoryManager: React.FC = () => {
             </div>
 
             {/* Quick Metrics */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5 text-center">
-              <div className="p-3 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7]">
-                <span className="text-[10px] uppercase font-bold text-[#574B45] block">Asistencias</span>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 mb-5 text-center">
+              <div className="p-3 rounded-2xl bg-purple-50/50 border border-purple-200">
+                <span className="text-[10px] uppercase font-bold text-purple-900 block">Asistencias</span>
                 <span className="text-xl font-bold font-mono text-[#521849]">{selectedPerson.totalAttendances}</span>
               </div>
               <div className="p-3 rounded-2xl bg-rose-50 border border-rose-100">
-                <span className="text-[10px] uppercase font-bold text-rose-800 block">Catas / Cursos</span>
-                <span className="text-xl font-bold font-mono text-rose-900">{selectedPerson.cataAttendances + selectedPerson.cursoAttendances}</span>
+                <span className="text-[10px] uppercase font-bold text-rose-800 block">Catas</span>
+                <span className="text-xl font-bold font-mono text-rose-900">{selectedPerson.cataAttendances}</span>
               </div>
               <div className="p-3 rounded-2xl bg-teal-50 border border-teal-100">
-                <span className="text-[10px] uppercase font-bold text-teal-800 block">Viajes</span>
-                <span className="text-xl font-bold font-mono text-teal-900">{selectedPerson.viajeAttendances}</span>
+                <span className="text-[10px] uppercase font-bold text-teal-800 block">Cursos / Viajes</span>
+                <span className="text-xl font-bold font-mono text-teal-900">{selectedPerson.cursoAttendances + selectedPerson.viajeAttendances}</span>
               </div>
-              <div className="p-3 rounded-2xl bg-amber-50 border border-amber-100">
-                <span className="text-[10px] uppercase font-bold text-amber-800 block">Canceladas / No Asistió</span>
+              <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200">
+                <span className="text-[10px] uppercase font-bold text-amber-900 block">No Asistencias</span>
                 <span className="text-xl font-bold font-mono text-amber-900">
-                  {selectedPerson.totalCancelled + selectedPerson.totalNoShows}
+                  {selectedPerson.totalNoShows}
                 </span>
-                <span className="text-[9px] text-[#574B45] block mt-0.5">
-                  {selectedPerson.totalJustified > 0 ? `(${selectedPerson.totalJustified} justificadas)` : ''}
+                {selectedPerson.totalJustified > 0 && (
+                  <span className="text-[9px] text-emerald-800 font-semibold block mt-0.5">
+                    {selectedPerson.totalJustified} justificada{selectedPerson.totalJustified > 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+              <div className="p-3 rounded-2xl bg-rose-50/80 border border-rose-200">
+                <span className="text-[10px] uppercase font-bold text-rose-900 block">Canceladas</span>
+                <span className="text-xl font-bold font-mono text-rose-950">
+                  {selectedPerson.totalCancelled}
                 </span>
               </div>
             </div>
@@ -789,16 +1223,16 @@ export const HistoryManager: React.FC = () => {
             <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
               {selectedPerson.participations.map(p => {
                 const act = activities.find(a => a.id === p.activityId);
-                const attended = p.status === 'asistio' || p.attended === true || (p.status === 'confirmada' && act?.status === 'celebrada');
+                const attended = (p.status === 'asistio' || p.attended === true) && p.status !== 'cancelada' && p.status !== 'no_asistio';
                 const isCancelled = p.status === 'cancelada';
                 const isNoShow = p.status === 'no_asistio';
 
                 return (
                   <div 
                     key={p.id}
-                    className="p-3.5 rounded-2xl border border-[#EDE4D7] bg-[#FCFAF7] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs"
+                    className="p-3.5 rounded-2xl border border-[#EDE4D7] bg-[#FCFAF7] flex flex-col sm:flex-row sm:items-start justify-between gap-2.5 text-xs"
                   >
-                    <div>
+                    <div className="flex-1 space-y-1.5">
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-[#26201D]">{p.activityTitle}</span>
                         {p.justified && (
@@ -808,21 +1242,51 @@ export const HistoryManager: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#574B45] mt-1">
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#574B45]">
                         <span className="capitalize">{p.activityType || (act ? act.type : 'actividad')}</span>
                         <span>•</span>
-                        <span>{act ? act.date : (p.createdAt ? new Date(p.createdAt).toLocaleDateString('es-ES') : '-')}</span>
+                        <span>{act ? formatDisplayDate(act.date) : (p.createdAt ? formatDisplayDate(p.createdAt) : '-')}</span>
                         <span>•</span>
                         <span>Tarifa: {p.totalAmount} €</span>
-                        {p.justificationReason && (
-                          <span className="text-amber-800 italic">
-                            (Motivo: {p.justificationReason})
-                          </span>
-                        )}
                       </div>
+
+                      {/* Motivo de Cancelación detallado */}
+                      {isCancelled && (
+                        <div className="mt-1 p-2 rounded-xl bg-rose-50 border border-rose-200/80 text-[11px] space-y-0.5 text-rose-950">
+                          <div className="font-semibold flex items-center gap-1 text-rose-900">
+                            <XCircle className="w-3 h-3 text-rose-600 shrink-0" />
+                            <span>Cancelación Registrada:</span>
+                          </div>
+                          <p className="italic text-rose-800">
+                            «{p.cancellationReason || p.justificationReason || 'Sin motivo detallado'}»
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2 text-[10px] text-rose-900/80 mt-0.5">
+                            {p.cancelledAt && <span>Fecha: {new Date(p.cancelledAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>}
+                            {p.cancelledBy && <span>• Por: {p.cancelledBy}</span>}
+                            {p.refundAmount !== undefined && (
+                              <span className="font-bold text-rose-950 bg-rose-200/60 px-1.5 py-0.5 rounded">
+                                Devolución: {p.refundAmount} €
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Motivo de Justificación para No Asistencia */}
+                      {isNoShow && p.justificationReason && (
+                        <div className="flex flex-col mt-1 p-2 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900">
+                          <span className="font-semibold text-amber-950">Motivo de justificación:</span>
+                          <span className="italic text-amber-800">«{p.justificationReason}»</span>
+                          {(p.justifiedAt || p.justifiedBy) && (
+                            <span className="text-[10px] text-amber-800/80 mt-0.5">
+                              Por {p.justifiedBy || 'Secretaría'} el {p.justifiedAt ? new Date(p.justifiedAt).toLocaleDateString('es-ES') : ''}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
-                    <div className="flex items-center gap-2 self-end sm:self-center">
+                    <div className="flex items-center gap-2 self-end sm:self-start shrink-0">
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
                         attended 
                           ? 'bg-emerald-100 text-emerald-800' 
@@ -832,22 +1296,22 @@ export const HistoryManager: React.FC = () => {
                           ? 'bg-amber-100 text-amber-900'
                           : 'bg-stone-200 text-stone-700'
                       }`}>
-                        {attended ? 'Asistió' : isCancelled ? 'Cancelación previa' : isNoShow ? 'No Asistió (Falta)' : 'Pendiente'}
+                        {attended ? 'Asistió' : isCancelled ? 'Cancelada' : isNoShow ? 'No Asistió (Falta)' : 'Pendiente'}
                       </span>
 
-                      {(isCancelled || isNoShow || !attended) && (
+                      {(isCancelled || isNoShow) && (
                         <button
                           type="button"
-                          onClick={() => handleToggleJustification(p.id, p.justified, p.justificationReason)}
+                          onClick={() => handleStartJustification(p)}
                           className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-bold border transition-colors cursor-pointer ${
-                            p.justified
-                              ? 'bg-stone-100 hover:bg-stone-200 text-[#574B45] border-stone-300'
+                            p.justified 
+                              ? 'bg-stone-100 hover:bg-rose-50 text-stone-700 hover:text-rose-800 border-stone-300 hover:border-rose-300' 
                               : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
                           }`}
-                          title={p.justified ? 'Quitar condición de justificada' : 'Marcar como justificada'}
+                          title={p.justified ? "Quitar justificación" : "Marcar como justificada"}
                         >
                           <ShieldCheck className="w-3 h-3" />
-                          <span>{p.justified ? 'Quitar justif.' : 'Justificar'}</span>
+                          <span>{p.justified ? 'Desjustificar' : 'Justificar'}</span>
                         </button>
                       )}
                     </div>
@@ -967,6 +1431,85 @@ export const HistoryManager: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {/* MODAL: Justification Dialog */}
+      {justifyingParticipant && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-[#EDE4D7] my-8 animate-scaleUp">
+            <div className="flex items-center justify-between pb-3 border-b border-[#EDE4D7] mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-emerald-100 text-emerald-800">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold font-serif text-[#26201D]">
+                    Justificar Ausencia o Cancelación
+                  </h3>
+                  <p className="text-xs text-[#574B45]">
+                    {justifyingParticipant.fullName}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setJustifyingParticipant(null);
+                  setJustificationReasonInput('');
+                }}
+                className="p-1.5 rounded-xl hover:bg-[#F6F1EA] text-[#574B45] cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmJustification} className="space-y-4">
+              <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200 text-xs text-amber-900 space-y-1">
+                <div className="font-semibold text-amber-950 flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Actividad: {justifyingParticipant.activityTitle}</span>
+                </div>
+                <p className="text-[11px] text-amber-800">
+                  Al justificar, el registro no computará negativamente en el histórico de faltas sin aviso.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#26201D] mb-1">
+                  Motivo de la justificación <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={justificationReasonInput}
+                  onChange={(e) => setJustificationReasonInput(e.target.value)}
+                  placeholder="Ej. Notificado por email por motivos laborales / médicos con antelación..."
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-[#521849]"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-[#EDE4D7]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setJustifyingParticipant(null);
+                    setJustificationReasonInput('');
+                  }}
+                  className="px-4 py-2 rounded-xl border border-[#EDE4D7] bg-white text-[#574B45] text-xs font-semibold hover:bg-[#F6F1EA] cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={!justificationReasonInput.trim()}
+                  className="px-5 py-2 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Guardar Justificación</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

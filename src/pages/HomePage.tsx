@@ -1,18 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { ActivityCard } from '../components/common/ActivityCard';
 import { Wine, ChefHat, Compass, ArrowRight, Sparkles, Award, Users, BookOpen, Calendar, MapPin } from 'lucide-react';
+import { sortActivitiesAscending } from '../utils/dateUtils';
 
 export const HomePage: React.FC = () => {
   const { activities } = useData();
   const [filterType, setFilterType] = useState<'all' | 'cata' | 'curso' | 'viaje'>('all');
 
-  const upcomingActivities = activities.filter(a => a.status === 'proxima');
-  const featuredActivities = upcomingActivities.filter(a => {
-    if (filterType === 'all') return true;
-    return a.type === filterType;
-  });
+  const upcomingActivities = useMemo(() => {
+    return activities.filter(a => a.status === 'proxima');
+  }, [activities]);
+
+  const featuredActivities = useMemo(() => {
+    const matching = upcomingActivities.filter(a => {
+      if (filterType === 'all') return true;
+      return a.type === filterType;
+    });
+    return sortActivitiesAscending(matching);
+  }, [upcomingActivities, filterType]);
 
   return (
     <div className="space-y-16 md:space-y-24 pb-16">

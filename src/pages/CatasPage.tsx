@@ -4,7 +4,7 @@ import { useData } from '../context/DataContext';
 import { ActivityCard } from '../components/common/ActivityCard';
 import { CataCategory } from '../types';
 import { Wine, Sparkles, History, Calendar, Filter } from 'lucide-react';
-import { sortActivitiesNewestFirst, sortActivitiesOldestFirst } from '../utils/dateUtils';
+import { sortActivitiesAscending } from '../utils/dateUtils';
 
 export const CatasPage: React.FC = () => {
   const { catas } = useData();
@@ -18,9 +18,7 @@ export const CatasPage: React.FC = () => {
       return matchesStatus && matchesCategory;
     });
 
-    return activeTab === 'proximas'
-      ? sortActivitiesOldestFirst(matching)
-      : sortActivitiesNewestFirst(matching);
+    return sortActivitiesAscending(matching);
   }, [catas, activeTab, categoryFilter]);
 
   const proximasCount = catas.filter(c => c.status === 'proxima').length;

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Expense, ExpenseCategory, Activity, Sponsorship, SponsorshipStatus, Participant } from '../../types';
 import { useData } from '../../context/DataContext';
 import { 
@@ -31,7 +31,8 @@ import {
 import { storage } from '../../services/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { exportAccountingToExcel } from '../../utils/accountingExport';
-import { formatDisplayDate, getActivityYear, sortActivitiesOldestFirst } from '../../utils/dateUtils';
+import { formatDisplayDate, getActivityYear, sortActivitiesAscending } from '../../utils/dateUtils';
+import { Pagination } from '../common/Pagination';
 
 const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   bodega_proveedor: 'Bodega / Proveedor',
@@ -136,14 +137,42 @@ export function AccountsManager() {
     return sortedYears.map(String);
   }, [activities]);
 
-  // Filter activities by year
+  // Pagination state for activities accounting table
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+
+  // Reset page when year filter or page size changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedYear, pageSize]);
+
+  // Filter activities by year (Ascending sort)
   const filteredActivities = useMemo(() => {
     const matching = activities.filter(a => {
       if (selectedYear === 'all') return true;
       return getActivityYear(a.date).toString() === selectedYear;
     });
-    return sortActivitiesOldestFirst(matching);
+    return sortActivitiesAscending(matching);
   }, [activities, selectedYear]);
+
+  // Paginated activities slice
+  const paginatedActivities = useMemo(() => {
+    const totalItems = filteredActivities.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+    const safePage = Math.min(Math.max(1, currentPage), totalPages);
+    const start = (safePage - 1) * pageSize;
+    return filteredActivities.slice(start, start + pageSize);
+  }, [filteredActivities, currentPage, pageSize]);
+
+  // Sync safePage to state
+  useEffect(() => {
+    const totalItems = filteredActivities.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+    const safePage = Math.min(Math.max(1, currentPage), totalPages);
+    if (currentPage !== safePage) {
+      setCurrentPage(safePage);
+    }
+  }, [filteredActivities.length, pageSize, currentPage]);
 
   // Financial calculations
   const financesByActivity = useMemo(() => {
@@ -686,7 +715,7 @@ export function AccountsManager() {
                   </td>
                 </tr>
               ) : (
-                filteredActivities.map(act => {
+                paginatedActivities.map(act => {
                   const fin = financesByActivity[act.id] || {
                     reservasFacturadas: 0,
                     reservasCobradas: 0,
@@ -885,6 +914,16 @@ export function AccountsManager() {
             </tbody>
           </table>
         </div>
+
+        {/* Paginación */}
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filteredActivities.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+          itemLabel="actividades"
+        />
       </div>
 
       {/* ========================================================================= */}

@@ -5,11 +5,9 @@ export interface ParsedCataInfo {
   subtitle?: string;
   bodegaName: string;
   bodegaRegion?: string;
-  dates: string[]; // Two dates if detected: [date1, date2]
   date: string; // First date
-  date2?: string; // Second date
   time: string; // e.g. "21:00" or "13:00"
-  time2?: string; // e.g. "13:00"
+  shifts?: { id: string; name: string; time: string }[];
   price: number; // Default 25.00
   totalSpots: number; // Default 14
   location: string; // Complete official location
@@ -270,7 +268,7 @@ export function parseCataText(rawText: string): ParsedCataInfo {
   let subtitle = '';
   const dates: string[] = [];
   let date1 = new Date().toISOString().split('T')[0];
-  let date2 = '';
+  
   let location = DEFAULT_OFFICIAL_LOCATION;
   let bodegaName = '';
   let bodegaRegion = '';
@@ -311,8 +309,8 @@ export function parseCataText(rawText: string): ParsedCataInfo {
       const monthNum = MONTHS_MAP[monthStr] || '06';
 
       date1 = `${year}-${monthNum}-${day1}`;
-      date2 = `${year}-${monthNum}-${day2}`;
-      dates.push(date1, date2);
+      
+      dates.push(date1);
       break;
     }
 
@@ -542,16 +540,13 @@ export function parseCataText(rawText: string): ParsedCataInfo {
   }
 
   const time1 = getDefaultStartTime(date1);
-  const time2 = date2 ? getDefaultStartTime(date2) : undefined;
+  
 
   return {
     title: title || 'Cata de Bodega',
     subtitle: subtitle || (bodegaName ? `Con ${bodegaName}` : 'Vino Artesano y Ecologico'),
-    dates,
     date: date1,
-    date2: date2 || undefined,
     time: time1,
-    time2: time2,
     price: detectedPrice || 25.0, // Default 25.00€
     totalSpots: 14, // Default 14
     location,

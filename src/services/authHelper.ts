@@ -9,7 +9,9 @@ export async function getAdminAuthHeader(): Promise<Record<string, string>> {
   try {
     if (auth?.currentUser) {
       const token = await auth.currentUser.getIdToken();
-      return { Authorization: `Bearer ${token}` };
+      if (token) {
+        return { Authorization: `Bearer ${token}` };
+      }
     }
   } catch (err) {
     console.warn('Could not get Firebase Auth ID token:', err);

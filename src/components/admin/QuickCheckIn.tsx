@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   AlertCircle
 } from 'lucide-react';
+import { sortActivitiesAscending } from '../../utils/dateUtils';
 
 interface QuickCheckInProps {
   initialActivityId?: string;
@@ -24,15 +25,12 @@ interface QuickCheckInProps {
 export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId }) => {
   const { activities, participants, updateParticipant, addParticipant } = useData();
 
-  // Pick default activity: today's or closest upcoming
-  const upcomingActivities = useMemo(() => {
-    return activities
-      .filter(a => a.status === 'proxima')
-      .sort((a, b) => a.date.localeCompare(b.date));
+  const sortedActivities = useMemo(() => {
+    return sortActivitiesAscending(activities);
   }, [activities]);
 
   const [selectedActivityId, setSelectedActivityId] = useState<string>(
-    initialActivityId || (upcomingActivities[0]?.id || activities[0]?.id || '')
+    initialActivityId || (sortedActivities[0]?.id || '')
   );
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -136,9 +134,9 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId })
               onChange={(e) => setSelectedActivityId(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] font-semibold text-xs text-[#26201D] focus:outline-none focus:border-[#521849] focus:bg-white cursor-pointer"
             >
-              {activities.map(act => (
+              {sortedActivities.map(act => (
                 <option key={act.id} value={act.id}>
-                  {act.title} ({act.date} {act.time ? `- ${act.time}` : ''}) {act.status === 'celebrada' ? '[Celebrada]' : ''}
+                  {act.title} ({new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })} {act.time ? `- ${act.time}` : ''}) {act.status === 'celebrada' ? '[Celebrada]' : ''}
                 </option>
               ))}
             </select>

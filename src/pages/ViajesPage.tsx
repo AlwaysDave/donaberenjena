@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { ActivityCard } from '../components/common/ActivityCard';
 import { Compass, Calendar, History, MapPin, Bus, Hotel } from 'lucide-react';
-import { sortActivitiesNewestFirst, sortActivitiesOldestFirst } from '../utils/dateUtils';
+import { sortActivitiesAscending } from '../utils/dateUtils';
 
 export const ViajesPage: React.FC = () => {
   const { viajes } = useData();
@@ -13,9 +13,7 @@ export const ViajesPage: React.FC = () => {
       return viaje.status === (activeTab === 'proximos' ? 'proxima' : 'celebrada');
     });
 
-    return activeTab === 'proximos'
-      ? sortActivitiesOldestFirst(matching)
-      : sortActivitiesNewestFirst(matching);
+    return sortActivitiesAscending(matching);
   }, [viajes, activeTab]);
 
   const proximosCount = viajes.filter(v => v.status === 'proxima').length;

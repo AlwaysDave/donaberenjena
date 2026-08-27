@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
+import { useGeminiHealth } from '../../hooks/useGeminiHealth';
 import { 
   Server, 
   Database, 
@@ -21,18 +22,8 @@ import {
 
 export const ITMetricsDashboard: React.FC = () => {
   const { activities, members, participants, isConnected } = useData();
-  const [isGeminiConnected, setIsGeminiConnected] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    // Check Gemini API status
-    fetch('/api/health/gemini')
-      .then(res => {
-        setIsGeminiConnected(res.ok);
-      })
-      .catch(() => {
-        setIsGeminiConnected(false);
-      });
-  }, []);
+  const { status: geminiStatus, latency: geminiLatency, errorMsg: geminiError } = useGeminiHealth();
+  const isGeminiConnected = geminiStatus === 'ok' ? true : geminiStatus === 'checking' ? null : false;
 
   const totalDocuments = activities.length + members.length + participants.length;
   // Storage is unconnected, show NULL
@@ -126,11 +117,13 @@ export const ITMetricsDashboard: React.FC = () => {
                 Comprobando...
               </span>
             ) : (
-              <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3" /> Sin configurar
+              <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full flex items-center gap-1" title={geminiError || undefined}>
+                <AlertTriangle className="w-3 h-3" /> {geminiError || 'Sin configurar'}
               </span>
             )}
-            <span className="text-[10px] text-stone-400 font-mono font-bold">Estado: {isGeminiConnected ? 'Disponible' : 'Inactivo'}</span>
+            <span className="text-[10px] text-stone-400 font-mono font-bold">
+              Latencia: {geminiLatency !== null ? `${geminiLatency}ms` : 'NULL'}
+            </span>
           </div>
         </div>
 

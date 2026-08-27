@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
 import { 
   Calendar, 
@@ -15,7 +15,8 @@ import {
   ArrowUpRight
 } from 'lucide-react';
 import { Activity } from '../../types';
-import { formatDisplayDate, getActivityYear, sortActivitiesNewestFirst } from '../../utils/dateUtils';
+import { formatDisplayDate, getActivityYear, sortActivitiesAscending } from '../../utils/dateUtils';
+import { Pagination } from '../common/Pagination';
 
 interface PastActivitiesManagerProps {
   onViewParticipants: (activityId: string) => void;
@@ -27,9 +28,18 @@ export const PastActivitiesManager: React.FC<PastActivitiesManagerProps> = ({ on
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<string>('all');
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedType, selectedYear, pageSize]);
+
   const pastActivities = useMemo(() => {
     const celebrated = activities.filter(a => a.status === 'celebrada');
-    return sortActivitiesNewestFirst(celebrated);
+    return celebrated;
   }, [activities]);
 
   const availableYears = useMemo(() => {
@@ -39,12 +49,15 @@ export const PastActivitiesManager: React.FC<PastActivitiesManagerProps> = ({ on
 
   const filteredActivities = useMemo(() => {
     const q = (searchTerm || '').toLowerCase().trim();
-    return pastActivities.filter(a => {
+    const matching = pastActivities.filter(a => {
       const yearMatch = selectedYear === 'all' || getActivityYear(a.date).toString() === selectedYear;
       const searchMatch = !q || (a.title || '').toLowerCase().includes(q);
       const typeMatch = selectedType === 'all' || a.type === selectedType;
       return yearMatch && searchMatch && typeMatch;
     });
+
+    // Regla: primero filtrar y después ordenar de menor a mayor fecha (ascendente)
+    return sortActivitiesAscending(matching);
   }, [pastActivities, selectedYear, searchTerm, selectedType]);
 
   // Analytics for filtered activities (Strictly Non-Economic)
@@ -58,25 +71,24 @@ export const PastActivitiesManager: React.FC<PastActivitiesManagerProps> = ({ on
     const activitiesData = filteredActivities.map(act => {
       const actParticipants = participants.filter(p => p.activityId === act.id);
       
-      // Categorías de asistentes
-      const attendedList = actParticipants.filter(p => p.status === 'asistio');
+      // Categorías de asistentes (solo status === 'asistio' o attended === true)
+      const attendedList = actParticipants.filter(p => (p.status === 'asistio' || p.attended === true) && p.status !== 'cancelada' && p.status !== 'no_asistio');
       const noShowList = actParticipants.filter(p => p.status === 'no_asistio');
       const cancelledList = actParticipants.filter(p => p.status === 'cancelada');
-      const confirmedList = actParticipants.filter(p => p.status === 'confirmada');
 
       // Asistentes reales totales
-      const totalAttended = attendedList.length > 0 ? attendedList.length : confirmedList.length; // fallback si no se marcó el check-in individual
+      const totalAttended = attendedList.length;
       
       // Asistentes únicos dentro de la actividad (por email o nombre)
       const actUniqueAttendees = new Set(
-        (attendedList.length > 0 ? attendedList : confirmedList)
+        attendedList
           .map(p => p.email?.toLowerCase().trim() || p.fullName?.toLowerCase().trim())
           .filter(Boolean)
       );
 
       // Socios vs No Socios
-      const sociosAttended = (attendedList.length > 0 ? attendedList : confirmedList).filter(p => p.isMember).length;
-      const noSociosAttended = (attendedList.length > 0 ? attendedList : confirmedList).filter(p => !p.isMember).length;
+      const sociosAttended = attendedList.filter(p => p.isMember).length;
+      const noSociosAttended = attendedList.filter(p => !p.isMember).length;
 
       // Actualizar contadores globales
       totalAttendanceCount += totalAttended;
@@ -110,6 +122,25 @@ export const PastActivitiesManager: React.FC<PastActivitiesManagerProps> = ({ on
       activitiesData
     };
   }, [filteredActivities, participants]);
+
+  // Paginated slice of rows
+  const paginatedActivities = useMemo(() => {
+    const totalItems = analytics.activitiesData.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+    const safePage = Math.min(Math.max(1, currentPage), totalPages);
+    const start = (safePage - 1) * pageSize;
+    return analytics.activitiesData.slice(start, start + pageSize);
+  }, [analytics.activitiesData, currentPage, pageSize]);
+
+  // Sync safePage to state
+  useEffect(() => {
+    const totalItems = analytics.activitiesData.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+    const safePage = Math.min(Math.max(1, currentPage), totalPages);
+    if (currentPage !== safePage) {
+      setCurrentPage(safePage);
+    }
+  }, [analytics.activitiesData.length, pageSize, currentPage]);
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -227,7 +258,7 @@ export const PastActivitiesManager: React.FC<PastActivitiesManagerProps> = ({ on
                   </td>
                 </tr>
               ) : (
-                analytics.activitiesData.map(act => (
+                paginatedActivities.map(act => (
                   <tr key={act.id} className="hover:bg-[#FCFAF7] transition-colors">
                     {/* Tipo */}
                     <td className="p-4">
@@ -355,6 +386,16 @@ export const PastActivitiesManager: React.FC<PastActivitiesManagerProps> = ({ on
             </tbody>
           </table>
         </div>
+
+        {/* Paginación */}
+        <Pagination
+          currentPage={currentPage}
+          totalItems={analytics.activitiesData.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+          itemLabel="actividades celebradas"
+        />
       </div>
     </div>
   );

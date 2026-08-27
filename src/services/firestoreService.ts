@@ -11,7 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { Activity, AdminRole, WebMetric, Participant, Member, AdminNotification, Expense, Sponsorship, ContactMessage } from '../types';
-import { sortActivitiesNewestFirst } from '../utils/dateUtils';
+import { sortActivitiesAscending } from '../utils/dateUtils';
 
 const ACTIVITIES_COLLECTION = 'activities';
 const METRICS_COLLECTION = 'metrics';
@@ -103,7 +103,7 @@ export function subscribeToActivitiesFirestore(
           priceNonMember: data.priceNonMember ?? data.price ?? 25
         } as Activity);
       });
-      const sorted = sortActivitiesNewestFirst(activities);
+      const sorted = sortActivitiesAscending(activities);
       onData(sorted);
     },
     (err) => {

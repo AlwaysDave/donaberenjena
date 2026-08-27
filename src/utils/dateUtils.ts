@@ -44,88 +44,93 @@ export function parseActivityDate(dateStr?: string | null): number {
 }
 
 /**
+ * Comparator to sort activities oldest first / ascending by date (earliest date first).
+ * Empty or invalid dates are safely pushed to the end.
+ * Tiebreakers: time, title, id.
+ */
+export function compareActivitiesAscending(
+  a: { date?: string; time?: string; title?: string; id?: string },
+  b: { date?: string; time?: string; title?: string; id?: string }
+): number {
+  const rawA = parseActivityDate(a?.date);
+  const rawB = parseActivityDate(b?.date);
+  const timeA = rawA > 0 ? rawA : Number.MAX_SAFE_INTEGER;
+  const timeB = rawB > 0 ? rawB : Number.MAX_SAFE_INTEGER;
+
+  if (timeA !== timeB) {
+    return timeA - timeB; // Ascending: earliest timestamp first
+  }
+
+  const hourA = a?.time || '';
+  const hourB = b?.time || '';
+  const hourComp = hourA.localeCompare(hourB);
+  if (hourComp !== 0) return hourComp;
+
+  const titleA = a?.title || '';
+  const titleB = b?.title || '';
+  const titleComp = titleA.localeCompare(titleB, 'es', { sensitivity: 'base' });
+  if (titleComp !== 0) return titleComp;
+
+  const idA = a?.id || '';
+  const idB = b?.id || '';
+  return idA.localeCompare(idB);
+}
+
+/**
  * Comparator to sort activities newest first (descending by date).
  * In case of a tie in dates, uses title and id as stable tiebreakers.
  */
 export function compareActivitiesNewestFirst(
-  a: { date?: string; title?: string; id?: string },
-  b: { date?: string; title?: string; id?: string }
+  a: { date?: string; time?: string; title?: string; id?: string },
+  b: { date?: string; time?: string; title?: string; id?: string }
 ): number {
-  const timeA = parseActivityDate(a.date);
-  const timeB = parseActivityDate(b.date);
+  const rawA = parseActivityDate(a?.date);
+  const rawB = parseActivityDate(b?.date);
+  const timeA = rawA > 0 ? rawA : 0;
+  const timeB = rawB > 0 ? rawB : 0;
 
   if (timeB !== timeA) {
     return timeB - timeA; // Descending: newest first
   }
 
-  const titleA = a.title || '';
-  const titleB = b.title || '';
+  const hourA = a?.time || '';
+  const hourB = b?.time || '';
+  const hourComp = hourB.localeCompare(hourA);
+  if (hourComp !== 0) return hourComp;
+
+  const titleA = a?.title || '';
+  const titleB = b?.title || '';
   const titleComp = titleA.localeCompare(titleB, 'es', { sensitivity: 'base' });
   if (titleComp !== 0) return titleComp;
 
-  const idA = a.id || '';
-  const idB = b.id || '';
+  const idA = a?.id || '';
+  const idB = b?.id || '';
   return idA.localeCompare(idB);
 }
 
 /**
- * Comparator to sort activities oldest first (ascending by date).
+ * Comparator alias for ascending sorting (earliest date first).
  */
-export function compareActivitiesOldestFirst(
-  a: { date?: string; title?: string; id?: string },
-  b: { date?: string; title?: string; id?: string }
-): number {
-  const timeA = parseActivityDate(a.date);
-  const timeB = parseActivityDate(b.date);
-
-  if (timeA !== timeB) {
-    return timeA - timeB; // Ascending: oldest first
-  }
-
-  const titleA = a.title || '';
-  const titleB = b.title || '';
-  const titleComp = titleA.localeCompare(titleB, 'es', { sensitivity: 'base' });
-  if (titleComp !== 0) return titleComp;
-
-  const idA = a.id || '';
-  const idB = b.id || '';
-  return idA.localeCompare(idB);
-}
+export const compareActivitiesOldestFirst = compareActivitiesAscending;
 
 /**
- * Returns a new array of activities sorted newest first (date descending).
+ * Returns a new array of activities sorted ascending by date (earliest date first).
+ * Empty or invalid dates are pushed to the end.
  */
-export function sortActivitiesNewestFirst<T extends Partial<Activity> = Activity>(items: T[]): T[] {
-  return [...items].sort((a: any, b: any) => {
-    const timeA = parseActivityDate(a?.date);
-    const timeB = parseActivityDate(b?.date);
-    if (timeB !== timeA) return timeB - timeA;
-    const titleA = a?.title || '';
-    const titleB = b?.title || '';
-    const titleComp = titleA.localeCompare(titleB, 'es', { sensitivity: 'base' });
-    if (titleComp !== 0) return titleComp;
-    const idA = a?.id || '';
-    const idB = b?.id || '';
-    return idA.localeCompare(idB);
-  });
+export function sortActivitiesAscending<T extends Partial<Activity> = Activity>(items: T[]): T[] {
+  return [...items].sort((a: any, b: any) => compareActivitiesAscending(a, b));
 }
 
 /**
  * Returns a new array of activities sorted oldest first (date ascending).
  */
-export function sortActivitiesOldestFirst<T extends Partial<Activity> = Activity>(items: T[]): T[] {
-  return [...items].sort((a: any, b: any) => {
-    const timeA = parseActivityDate(a?.date);
-    const timeB = parseActivityDate(b?.date);
-    if (timeA !== timeB) return timeA - timeB;
-    const titleA = a?.title || '';
-    const titleB = b?.title || '';
-    const titleComp = titleA.localeCompare(titleB, 'es', { sensitivity: 'base' });
-    if (titleComp !== 0) return titleComp;
-    const idA = a?.id || '';
-    const idB = b?.id || '';
-    return idA.localeCompare(idB);
-  });
+export const sortActivitiesOldestFirst = sortActivitiesAscending;
+
+/**
+ * Returns a new array of activities sorted newest first (date descending).
+ */
+export function sortActivitiesNewestFirst<T extends Partial<Activity> = Activity>(items: T[]): T[] {
+  return [...items].sort((a: any, b: any) => compareActivitiesNewestFirst(a, b));
 }
 
 /**
@@ -167,10 +172,29 @@ export function formatDateShort(dateStr?: string | null): string {
 }
 
 /**
- * Display helper for tables and summaries.
+ * Display helper for cards, tables, and summaries: "28 feb 2026" (or "28 feb 2026, 21:00" if time is provided).
  */
-export function formatDisplayDate(dateStr?: string | null): string {
-  return formatDateShort(dateStr);
+export function formatDisplayDate(dateStr?: string | null, timeStr?: string | null): string {
+  if (!dateStr) return '-';
+  const timestamp = parseActivityDate(dateStr);
+  if (timestamp === 0) {
+    return timeStr && timeStr.trim() ? `${dateStr}, ${timeStr.trim()}` : dateStr;
+  }
+
+  try {
+    const formatted = new Intl.DateTimeFormat('es-ES', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    }).format(new Date(timestamp));
+    const cleanDate = formatted.replace(/\./g, '');
+    if (timeStr && timeStr.trim()) {
+      return `${cleanDate}, ${timeStr.trim()}`;
+    }
+    return cleanDate;
+  } catch {
+    return dateStr;
+  }
 }
 
 /**

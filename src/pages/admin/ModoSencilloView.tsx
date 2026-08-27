@@ -51,9 +51,7 @@ export const ModoSencilloView: React.FC = () => {
   const [newSubtitle, setNewSubtitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [newDate1, setNewDate1] = useState('');
-  const [newDate2, setNewDate2] = useState('');
   const [newTime1, setNewTime1] = useState('21:00');
-  const [newTime2, setNewTime2] = useState('13:00');
   const [newPriceMember, setNewPriceMember] = useState(20.0); // Default 20.00€
   const [newPriceNonMember, setNewPriceNonMember] = useState(25.0); // Default 25.00€
   const [newSpots, setNewSpots] = useState(14); // Default 14
@@ -92,17 +90,12 @@ export const ModoSencilloView: React.FC = () => {
   const [editDate, setEditDate] = useState<string>('');
   const [editSpots, setEditSpots] = useState<number>(0);
 
-  const upcoming = sortActivitiesOldestFirst(activities.filter(a => a.status === 'proxima'));
+  const upcoming = sortActivitiesNewestFirst(activities.filter(a => a.status === 'proxima'));
   const held = sortActivitiesNewestFirst(activities.filter(a => a.status === 'celebrada'));
 
   const handleDate1Change = (dateVal: string) => {
     setNewDate1(dateVal);
     setNewTime1(getDefaultStartTime(dateVal));
-  };
-
-  const handleDate2Change = (dateVal: string) => {
-    setNewDate2(dateVal);
-    setNewTime2(getDefaultStartTime(dateVal));
   };
 
   const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -161,14 +154,6 @@ export const ModoSencilloView: React.FC = () => {
         return m ? `${m[1].padStart(2, '0')}:${m[2]}` : '';
       };
       setNewTime1(formatTime(parsed.time) || (parsed.date ? getDefaultStartTime(parsed.date) : '21:00'));
-
-      if (parsed.date2) {
-        setNewDate2(parsed.date2);
-        setNewTime2(formatTime(parsed.time2) || (parsed.date2 ? getDefaultStartTime(parsed.date2) : '13:00'));
-      } else {
-        setNewDate2('');
-        setNewTime2('');
-      }
 
       setNewPriceNonMember(Number(Number(parsed.price || 25.0).toFixed(2)));
       setNewPriceMember(Number(Number(parsed.price || 20.0).toFixed(2)));
@@ -314,25 +299,9 @@ export const ModoSencilloView: React.FC = () => {
 
     recordsToCreate.push(baseRecord1);
 
-    // Record 2 (Fecha 2, if specified)
-    if (newDate2 && newDate2.trim().length > 0) {
-      const baseRecord2: Activity = {
-        ...baseRecord1,
-        id: `${newType}-${Date.now()}-f2`,
-        date: newDate2,
-        time: newTime2,
-        bookedSpots: 0,
-        createdAt: new Date().toISOString().split('T')[0],
-        updatedAt: new Date().toISOString().split('T')[0]
-      };
-      recordsToCreate.push(baseRecord2);
-    }
+    await addActivity(baseRecord1);
 
-    for (const record of recordsToCreate) {
-      await addActivity(record);
-    }
-
-    setSavedSuccess(`¡${recordsToCreate.length === 2 ? '2 convocatorias generadas (Fecha 1 y Fecha 2)' : 'Convocatoria generada'} con éxito en Firestore!`);
+    setSavedSuccess(`¡Convocatoria generada con éxito en Firestore!`);
     setShowCreateForm(false);
     setTimeout(() => setSavedSuccess(null), 4000);
   };
@@ -575,38 +544,6 @@ export const ModoSencilloView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7] sm:col-span-2 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-[#521849] flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-[#C96043]" />
-                    Fecha 2 (Segundo Turno / Registro 2 - Opcional)
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[11px] text-[#574B45] mb-1">Fecha</label>
-                    <input
-                      type="date"
-                      value={newDate2}
-                      onChange={(e) => handleDate2Change(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-[#574B45] mb-1 flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-[#521849]" />
-                      Hora Inicio
-                    </label>
-                    <input
-                      type="time"
-                      value={newTime2}
-                      onChange={(e) => setNewTime2(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
-                    />
-                  </div>
-                </div>
-              </div>
-
               {/* Point 3: Default 20€/25€ & 14 spots */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -747,7 +684,7 @@ export const ModoSencilloView: React.FC = () => {
                 type="submit"
                 className="px-6 py-2.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
               >
-                {newDate2 ? 'Guardar Ficha (Generar 2 Convocatorias en BD)' : 'Guardar Ficha en BD'}
+                'Guardar Ficha en BD'
               </button>
             </div>
           </form>
@@ -886,7 +823,7 @@ export const ModoSencilloView: React.FC = () => {
                     ) : (
                       <span className="font-bold text-[#26201D] flex items-center gap-1">
                         <Calendar className="w-3.5 h-3.5 text-[#521849]" />
-                        {act.date} {act.time ? `(${act.time})` : ''}
+                        {new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })} {act.time ? `(${act.time})` : ''}
                       </span>
                     )}
                   </div>

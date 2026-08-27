@@ -1,7 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
+import { useAuth } from '../../context/AuthContext';
 import { Activity, Participant, ParticipantStatus, PaymentMethod } from '../../types';
-import { sortActivitiesOldestFirst } from '../../utils/dateUtils';
+import { sortActivitiesAscending, formatDisplayDate } from '../../utils/dateUtils';
+import { Pagination } from '../common/Pagination';
 import { 
   Users, 
   Search, 
@@ -28,7 +30,11 @@ import {
   DollarSign, 
   Calendar,
   Layers,
-  UserCheck
+  UserCheck,
+  UserX,
+  XCircle,
+  Ban,
+  RefreshCw
 } from 'lucide-react';
 
 interface ParticipantsManagerProps {
@@ -48,6 +54,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     deleteParticipant, 
     markAttendance 
   } = useData();
+  const { user } = useAuth();
 
   const [selectedActivityId, setSelectedActivityId] = useState<string>(initialActivityId || 'all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -58,6 +65,15 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
   const [participantToDelete, setParticipantToDelete] = useState<Participant | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
   const [copiedNotification, setCopiedNotification] = useState<string | null>(null);
+
+  // Dedicated Cancellation Modal state
+  const [cancellationModalParticipant, setCancellationModalParticipant] = useState<Participant | null>(null);
+  const [cancellationReasonInput, setCancellationReasonInput] = useState<string>('');
+  const [cancellationRefundInput, setCancellationRefundInput] = useState<string>('');
+  const [cancellationError, setCancellationError] = useState<string | null>(null);
+
+  // Dedicated Reactivation Confirmation Modal state
+  const [reactivationParticipant, setReactivationParticipant] = useState<Participant | null>(null);
 
   // Form State for Adding / Editing Participant
   const [formData, setFormData] = useState<{
@@ -72,6 +88,8 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     notes: string;
     status: ParticipantStatus;
     paymentMethod: PaymentMethod;
+    cancellationReason?: string;
+    refundAmount?: string;
   }>({
     activityId: '',
     fullName: '',
@@ -82,7 +100,9 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     membershipNumber: '',
     notes: '',
     status: 'confirmada',
-    paymentMethod: 'bizum'
+    paymentMethod: 'bizum',
+    cancellationReason: '',
+    refundAmount: ''
   });
 
   // Filtered Activities (focusing on Catas and other events with bookings)
@@ -97,13 +117,22 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
         filtered = [...filtered, selected];
       }
     }
-    return sortActivitiesOldestFirst(filtered);
+    return sortActivitiesAscending(filtered);
   }, [activities, selectedActivityId]);
 
   const currentActivity = useMemo(() => {
     if (selectedActivityId === 'all') return null;
     return activities.find(a => a.id === selectedActivityId) || null;
   }, [activities, selectedActivityId]);
+
+  // Pagination state for participants
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedActivityId, statusFilter, searchTerm, pageSize]);
 
   // Filtered Participants
   const filteredParticipants = useMemo(() => {
@@ -139,6 +168,25 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     });
   }, [participants, selectedActivityId, statusFilter, searchTerm, activities]);
 
+  // Paginated slice
+  const paginatedParticipants = useMemo(() => {
+    const totalItems = filteredParticipants.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+    const safePage = Math.min(Math.max(1, currentPage), totalPages);
+    const start = (safePage - 1) * pageSize;
+    return filteredParticipants.slice(start, start + pageSize);
+  }, [filteredParticipants, currentPage, pageSize]);
+
+  // Sync safePage to state
+  useEffect(() => {
+    const totalItems = filteredParticipants.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+    const safePage = Math.min(Math.max(1, currentPage), totalPages);
+    if (currentPage !== safePage) {
+      setCurrentPage(safePage);
+    }
+  }, [filteredParticipants.length, pageSize, currentPage]);
+
   // Key Metrics Calculations
   const metrics = useMemo(() => {
     const relevant = selectedActivityId === 'all' 
@@ -155,7 +203,11 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     const sociosCount = activeParticipants.filter(p => p.isMember).length;
     const noSociosCount = activeParticipants.filter(p => !p.isMember).length;
     const withAllergies = activeParticipants.filter(p => p.notes && p.notes.trim().length > 0).length;
-    const attendedCount = relevant.filter(p => p.status === 'asistio').length;
+    const attendedCount = relevant.filter(p => p.status === 'asistio' || p.attended === true).length;
+    const noShowCount = relevant.filter(p => p.status === 'no_asistio').length;
+    const cancelledCount = relevant.filter(p => p.status === 'cancelada').length;
+    const confirmedCount = relevant.filter(p => p.status === 'confirmada').length;
+    const pendingPaymentCount = relevant.filter(p => p.status === 'pendiente_pago').length;
 
     let maxCapacity = 0;
     if (selectedActivityId === 'all') {
@@ -178,7 +230,11 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       maxCapacity,
       occupancyRate,
       withAllergies,
-      attendedCount
+      attendedCount,
+      noShowCount,
+      cancelledCount,
+      confirmedCount,
+      pendingPaymentCount
     };
   }, [participants, selectedActivityId, activities, currentActivity]);
 
@@ -197,7 +253,9 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       membershipNumber: '',
       notes: '',
       status: 'confirmada',
-      paymentMethod: 'bizum'
+      paymentMethod: 'bizum',
+      cancellationReason: '',
+      refundAmount: ''
     });
     setIsModalOpen(true);
   };
@@ -216,9 +274,64 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       membershipNumber: p.membershipNumber || '',
       notes: p.notes || '',
       status: p.status,
-      paymentMethod: p.paymentMethod || 'bizum'
+      paymentMethod: p.paymentMethod || 'bizum',
+      cancellationReason: p.cancellationReason || '',
+      refundAmount: p.refundAmount !== undefined ? String(p.refundAmount) : ''
     });
     setIsModalOpen(true);
+  };
+
+  // Open dedicated cancellation modal
+  const handleOpenCancellationModal = (p: Participant) => {
+    setCancellationModalParticipant(p);
+    setCancellationReasonInput('');
+    setCancellationRefundInput(p.totalAmount ? String(p.totalAmount) : '');
+    setCancellationError(null);
+  };
+
+  // Confirm cancellation with mandatory reason and optional refund
+  const handleConfirmCancellation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cancellationModalParticipant) return;
+
+    if (!cancellationReasonInput.trim()) {
+      setCancellationError('Por favor, indica el motivo de la cancelación.');
+      return;
+    }
+
+    let parsedRefund: number | undefined = undefined;
+    if (cancellationRefundInput.trim() !== '') {
+      const num = parseFloat(cancellationRefundInput.replace(',', '.'));
+      if (isNaN(num) || num < 0) {
+        setCancellationError('Introduce un importe numérico válido en euros para la devolución (o déjalo vacío).');
+        return;
+      }
+      parsedRefund = num;
+    }
+
+    await updateParticipant(cancellationModalParticipant.id, {
+      status: 'cancelada',
+      attended: false,
+      cancellationReason: cancellationReasonInput.trim(),
+      cancelledAt: new Date().toISOString(),
+      cancelledBy: user?.name || user?.email || 'Secretaría / Administración',
+      refundAmount: parsedRefund
+    });
+
+    setCancellationModalParticipant(null);
+    setCancellationReasonInput('');
+    setCancellationRefundInput('');
+    setCancellationError(null);
+  };
+
+  // Confirm reactivation of a cancelled reservation
+  const handleConfirmReactivation = async () => {
+    if (!reactivationParticipant) return;
+    await updateParticipant(reactivationParticipant.id, {
+      status: 'confirmada',
+      attended: false
+    });
+    setReactivationParticipant(null);
   };
 
   // Save Participant Form (Add or Edit)
@@ -234,7 +347,15 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     const calculatedPrice = formData.isMember ? priceMember : priceNonMember;
 
     if (editingParticipant) {
-      // Update
+      const isNowCancelled = formData.status === 'cancelada';
+      let parsedRefund: number | undefined = undefined;
+      if (formData.refundAmount && formData.refundAmount.trim() !== '') {
+        const num = parseFloat(formData.refundAmount.replace(',', '.'));
+        if (!isNaN(num) && num >= 0) {
+          parsedRefund = num;
+        }
+      }
+
       await updateParticipant(editingParticipant.id, {
         fullName: formData.fullName.trim(),
         email: formData.email.trim(),
@@ -245,7 +366,13 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
         notes: formData.notes.trim() || undefined,
         status: formData.status,
         paymentMethod: formData.paymentMethod,
-        totalAmount: calculatedPrice
+        totalAmount: calculatedPrice,
+        ...(isNowCancelled ? {
+          cancellationReason: formData.cancellationReason?.trim() || editingParticipant.cancellationReason || 'Cancelada en edición',
+          cancelledAt: editingParticipant.cancelledAt || new Date().toISOString(),
+          cancelledBy: editingParticipant.cancelledBy || user?.name || user?.email || 'Administración',
+          refundAmount: parsedRefund !== undefined ? parsedRefund : editingParticipant.refundAmount
+        } : {})
       });
     } else {
       // Create
@@ -282,9 +409,29 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     setParticipantToDelete(null);
   };
 
-  // Export to CSV
+  // Export to CSV with full cancellation and tracking columns
   const handleExportCsv = () => {
-    const headers = ['ID', 'Grupo Reserva', 'Actividad', 'Fecha', 'Nombre Asistente', 'Es Socio', 'Email', 'Telefono', 'Turno', 'N_Socio', 'Alergias_Observaciones', 'Estado', 'Metodo_Pago', 'Total_Euros', 'Fecha_Registro'];
+    const headers = [
+      'ID', 
+      'Grupo Reserva', 
+      'Actividad', 
+      'Fecha', 
+      'Nombre Asistente', 
+      'Es Socio', 
+      'Email', 
+      'Telefono', 
+      'Turno', 
+      'N_Socio', 
+      'Alergias_Observaciones', 
+      'Estado', 
+      'Metodo_Pago', 
+      'Total_Euros', 
+      'Motivo_Cancelacion',
+      'Fecha_Cancelacion',
+      'Responsable_Cancelacion',
+      'Importe_Devuelto_Euros',
+      'Fecha_Registro'
+    ];
     const rows = filteredParticipants.map(p => [
       `"${p.id}"`,
       `"${p.groupId || ''}"`,
@@ -300,6 +447,10 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       `"${p.status}"`,
       `"${p.paymentMethod || ''}"`,
       p.totalAmount || 0,
+      `"${(p.cancellationReason || p.justificationReason || '').replace(/"/g, '""')}"`,
+      `"${p.cancelledAt || ''}"`,
+      `"${(p.cancelledBy || '').replace(/"/g, '""')}"`,
+      p.refundAmount !== undefined ? p.refundAmount : '',
       `"${p.registeredAt || ''}"`
     ]);
 
@@ -447,7 +598,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                   const actSpots = actParticipants.filter(p => p.status !== 'cancelada').length;
                   return (
                     <option key={act.id} value={act.id}>
-                      {act.type === 'cata' ? '🍷' : act.type === 'curso' ? '🍳' : '🧳'} {act.date} — {act.title} ({actSpots}/{act.totalSpots} plazas)
+                      {act.type === 'cata' ? '🍷' : act.type === 'curso' ? '🍳' : '🧳'} {new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })} — {act.title} ({actSpots}/{act.totalSpots} plazas)
                     </option>
                   );
                 })}
@@ -467,12 +618,13 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
               onChange={(e) => setStatusFilter(e.target.value)}
               className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-medium text-[#26201D] focus:outline-none focus:border-[#521849] focus:bg-white cursor-pointer"
             >
-              <option value="all">Todos los estados</option>
-              <option value="confirmada">✅ Confirmadas</option>
-              <option value="pendiente_pago">⏳ Pendientes de Pago</option>
-              <option value="lista_de_espera">📋 Lista de Espera</option>
-              <option value="asistio">🎉 Asistió (Presente)</option>
-              <option value="cancelada">❌ Canceladas</option>
+              <option value="all">Todos los estados ({metrics.totalBookings})</option>
+              <option value="confirmada">✅ Confirmadas ({metrics.confirmedCount})</option>
+              <option value="asistio">🎉 Asistió / En Sala ({metrics.attendedCount})</option>
+              <option value="no_asistio">⚠️ No asistió ({metrics.noShowCount})</option>
+              <option value="cancelada">❌ Canceladas ({metrics.cancelledCount})</option>
+              <option value="pendiente_pago">⏳ Pendientes de Pago ({metrics.pendingPaymentCount})</option>
+              <option value="lista_de_espera">📋 Lista de Espera ({metrics.waitingListCount})</option>
             </select>
           </div>
 
@@ -503,86 +655,213 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Interactive Quick Status Filter Pills */}
+        <div className="pt-2 border-t border-[#F6F1EA] flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] font-bold text-[#574B45] uppercase tracking-wider mr-1">Filtro Rápido:</span>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('all')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              statusFilter === 'all'
+                ? 'bg-[#521849] text-white shadow-2xs'
+                : 'bg-[#FCFAF7] hover:bg-[#F6F1EA] text-[#574B45] border border-[#EDE4D7]'
+            }`}
+          >
+            Todos ({metrics.totalBookings})
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('confirmada')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+              statusFilter === 'confirmada'
+                ? 'bg-emerald-700 text-white shadow-2xs'
+                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200'
+            }`}
+          >
+            <CheckCircle className="w-3 h-3" />
+            <span>Confirmadas ({metrics.confirmedCount})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('asistio')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+              statusFilter === 'asistio'
+                ? 'bg-purple-700 text-white shadow-2xs'
+                : 'bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200'
+            }`}
+          >
+            <Sparkles className="w-3 h-3" />
+            <span>En Sala ({metrics.attendedCount})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('no_asistio')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+              statusFilter === 'no_asistio'
+                ? 'bg-amber-600 text-white shadow-2xs'
+                : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300'
+            }`}
+          >
+            <UserX className="w-3 h-3" />
+            <span>No Asistió ({metrics.noShowCount})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('cancelada')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+              statusFilter === 'cancelada'
+                ? 'bg-rose-700 text-white shadow-2xs'
+                : 'bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200'
+            }`}
+          >
+            <XCircle className="w-3 h-3" />
+            <span>Canceladas ({metrics.cancelledCount})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('pendiente_pago')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+              statusFilter === 'pendiente_pago'
+                ? 'bg-amber-700 text-white shadow-2xs'
+                : 'bg-amber-50/60 hover:bg-amber-100/80 text-amber-900 border border-amber-200'
+            }`}
+          >
+            <Clock className="w-3 h-3" />
+            <span>Pendientes ({metrics.pendingPaymentCount})</span>
+          </button>
+          {metrics.waitingListCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setStatusFilter('lista_de_espera')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                statusFilter === 'lista_de_espera'
+                  ? 'bg-blue-700 text-white shadow-2xs'
+                  : 'bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200'
+              }`}
+            >
+              <Clock className="w-3 h-3" />
+              <span>Lista Espera ({metrics.waitingListCount})</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {/* Card 1: Plazas Ocupadas */}
-        <div className="bg-white rounded-2xl border border-[#EDE4D7] p-4 shadow-2xs">
+      {/* KPI Cards Grid with No-Shows and Cancellations */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {/* Card 1: Plazas Ocupadas / Aforo */}
+        <div className="bg-white rounded-2xl border border-[#EDE4D7] p-3.5 shadow-2xs">
           <div className="flex items-center justify-between text-xs text-[#574B45] mb-1">
             <span className="font-semibold uppercase tracking-wider text-[10px]">Aforo Ocupado</span>
             <Users className="w-4 h-4 text-[#521849]" />
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold font-serif text-[#26201D]">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-bold font-serif text-[#26201D]">
               {metrics.totalSpotsBooked}
             </span>
             {metrics.maxCapacity > 0 && (
-              <span className="text-xs text-[#574B45]">
-                / {metrics.maxCapacity} plazas
+              <span className="text-[11px] text-[#574B45]">
+                / {metrics.maxCapacity}
               </span>
             )}
           </div>
           {metrics.maxCapacity > 0 && (
-            <div className="mt-2 w-full bg-[#EDE4D7] h-1.5 rounded-full overflow-hidden">
+            <div className="mt-1.5 w-full bg-[#EDE4D7] h-1.5 rounded-full overflow-hidden">
               <div 
                 className="bg-[#521849] h-full rounded-full transition-all duration-300"
                 style={{ width: `${metrics.occupancyRate}%` }}
               />
             </div>
           )}
-        </div>
-
-        {/* Card 2: Total Reservas */}
-        <div className="bg-white rounded-2xl border border-[#EDE4D7] p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-[#574B45] mb-1">
-            <span className="font-semibold uppercase tracking-wider text-[10px]">Reservas Registradas</span>
-            <Layers className="w-4 h-4 text-[#521849]" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold font-serif text-[#26201D]">
-              {metrics.totalBookings}
-            </span>
-            <span className="text-xs text-[#574B45]">solicitudes</span>
-          </div>
-          <p className="text-[10px] text-[#574B45] mt-1">
-            {metrics.attendedCount > 0 ? `${metrics.attendedCount} plazas confirmadas en sala` : 'Pendientes de confirmar asistencia'}
+          <p className="text-[10px] text-[#574B45] mt-1 truncate">
+            {metrics.occupancyRate}% de ocupación
           </p>
         </div>
 
-        {/* Card 3: Socios vs No Socios */}
-        <div className="bg-white rounded-2xl border border-[#EDE4D7] p-4 shadow-2xs">
+        {/* Card 2: Asistieron / En Sala */}
+        <div className="bg-white rounded-2xl border border-purple-200/80 bg-purple-50/20 p-3.5 shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-purple-900 mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">En Sala / Asistió</span>
+            <Sparkles className="w-4 h-4 text-purple-600" />
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-bold font-serif text-purple-950">
+              {metrics.attendedCount}
+            </span>
+            <span className="text-[11px] text-purple-700">plazas</span>
+          </div>
+          <p className="text-[10px] text-purple-800 mt-1 truncate">
+            {metrics.attendedCount > 0 ? 'Asistencia confirmada' : 'Pendiente check-in'}
+          </p>
+        </div>
+
+        {/* Card 3: No Asistencias */}
+        <div className="bg-white rounded-2xl border border-amber-200 bg-amber-50/30 p-3.5 shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-amber-900 mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">No Asistencias</span>
+            <UserX className="w-4 h-4 text-amber-600" />
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-bold font-serif text-amber-950">
+              {metrics.noShowCount}
+            </span>
+            <span className="text-[11px] text-amber-800">faltas</span>
+          </div>
+          <p className="text-[10px] text-amber-700 mt-1 truncate">
+            {metrics.noShowCount > 0 ? '⚠️ No presentados' : 'Sin ausencias registradas'}
+          </p>
+        </div>
+
+        {/* Card 4: Cancelaciones */}
+        <div className="bg-white rounded-2xl border border-rose-200 bg-rose-50/30 p-3.5 shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-rose-900 mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Cancelaciones</span>
+            <XCircle className="w-4 h-4 text-rose-600" />
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-bold font-serif text-rose-950">
+              {metrics.cancelledCount}
+            </span>
+            <span className="text-[11px] text-rose-800">bajas</span>
+          </div>
+          <p className="text-[10px] text-rose-700 mt-1 truncate">
+            {metrics.cancelledCount > 0 ? 'Plazas liberadas' : 'Cero cancelaciones'}
+          </p>
+        </div>
+
+        {/* Card 5: Lista de Espera */}
+        <div className="bg-white rounded-2xl border border-blue-200 bg-blue-50/20 p-3.5 shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-blue-900 mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Lista de Espera</span>
+            <Clock className="w-4 h-4 text-blue-600" />
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-bold font-serif text-blue-950">
+              {metrics.waitingListCount}
+            </span>
+            <span className="text-[11px] text-blue-800">en cola</span>
+          </div>
+          <p className="text-[10px] text-blue-700 mt-1 truncate">
+            {metrics.waitingListCount > 0 ? 'Pendientes de vacante' : 'Sin personas en espera'}
+          </p>
+        </div>
+
+        {/* Card 6: Socios vs No Socios */}
+        <div className="bg-white rounded-2xl border border-[#EDE4D7] p-3.5 shadow-2xs">
           <div className="flex items-center justify-between text-xs text-[#574B45] mb-1">
             <span className="font-semibold uppercase tracking-wider text-[10px]">Socios / No Socios</span>
             <UserCheck className="w-4 h-4 text-emerald-700" />
           </div>
           <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-bold font-serif text-emerald-800">
+            <span className="text-xl sm:text-2xl font-bold font-serif text-emerald-800">
               {metrics.sociosCount}
             </span>
-            <span className="text-xs text-[#574B45]">
+            <span className="text-[11px] text-[#574B45]">
               / {metrics.noSociosCount} no socios
             </span>
           </div>
-          <p className="text-[10px] text-[#574B45] mt-1">
-            Distribución de asistentes confirmados
-          </p>
-        </div>
-
-        {/* Card 4: Alergias e Intolerancias */}
-        <div className="bg-white rounded-2xl border border-[#EDE4D7] p-4 shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-[#574B45] mb-1">
-            <span className="font-semibold uppercase tracking-wider text-[10px]">Alergias / Menú</span>
-            <AlertTriangle className={`w-4 h-4 ${metrics.withAllergies > 0 ? 'text-amber-600' : 'text-stone-400'}`} />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className={`text-2xl font-bold font-serif ${metrics.withAllergies > 0 ? 'text-amber-700' : 'text-[#26201D]'}`}>
-              {metrics.withAllergies}
-            </span>
-            <span className="text-xs text-[#574B45]">con notas</span>
-          </div>
-          <p className="text-[10px] text-[#574B45] mt-1">
-            {metrics.withAllergies > 0 ? '⚠️ Revisar adaptaciones de cocina' : 'Sin intolerancias reportadas'}
+          <p className="text-[10px] text-[#574B45] mt-1 truncate">
+            {metrics.withAllergies > 0 ? `⚠️ ${metrics.withAllergies} con alergias` : 'Distribución confirmada'}
           </p>
         </div>
       </div>
@@ -636,7 +915,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-[#EDE4D7]">
-              {filteredParticipants.map((p) => (
+              {paginatedParticipants.map((p) => (
                 <tr 
                   key={p.id} 
                   className={`hover:bg-[#FCFAF7] transition-colors ${
@@ -736,22 +1015,53 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                           ? 'bg-amber-100 text-amber-800'
                           : p.status === 'asistio'
                           ? 'bg-purple-100 text-purple-800'
+                          : p.status === 'no_asistio'
+                          ? 'bg-amber-100 text-amber-900 border border-amber-300'
                           : p.status === 'lista_de_espera'
                           ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                          : 'bg-rose-100 text-rose-800'
+                          : 'bg-rose-100 text-rose-800 border border-rose-200'
                       }`}>
                         {p.status === 'confirmada' && <CheckCircle className="w-3 h-3 text-emerald-600" />}
                         {p.status === 'pendiente_pago' && <Clock className="w-3 h-3 text-amber-600" />}
                         {p.status === 'asistio' && <Sparkles className="w-3 h-3 text-purple-600" />}
+                        {p.status === 'no_asistio' && <UserX className="w-3 h-3 text-amber-700" />}
                         {p.status === 'lista_de_espera' && <Clock className="w-3 h-3 text-blue-600" />}
-                        {p.status === 'cancelada' && <X className="w-3 h-3 text-rose-600" />}
+                        {p.status === 'cancelada' && <XCircle className="w-3 h-3 text-rose-600" />}
                         <span>
                           {p.status === 'confirmada' ? 'Confirmada' :
                            p.status === 'pendiente_pago' ? 'Pendiente Pago' :
                            p.status === 'asistio' ? 'Asistió (En Sala)' :
+                           p.status === 'no_asistio' ? 'No Asistió' :
                            p.status === 'lista_de_espera' ? 'Lista de Espera' : 'Cancelada'}
                         </span>
                       </span>
+
+                      {/* Motivo de cancelación si está cancelada */}
+                      {p.status === 'cancelada' && (p.cancellationReason || p.cancelledAt || p.refundAmount !== undefined) && (
+                        <div className="p-1.5 rounded-lg bg-rose-50 border border-rose-200/80 text-[10px] text-rose-950 space-y-0.5 max-w-[220px]">
+                          {p.cancellationReason && (
+                            <p className="line-clamp-2 italic text-rose-900" title={p.cancellationReason}>
+                              «{p.cancellationReason}»
+                            </p>
+                          )}
+                          <div className="text-[9px] text-rose-800/80">
+                            {p.cancelledAt && <span>{new Date(p.cancelledAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>}
+                            {p.cancelledBy && <span> • Por {p.cancelledBy}</span>}
+                          </div>
+                          {p.refundAmount !== undefined && (
+                            <div className="font-bold text-rose-950 bg-rose-200/60 px-1.5 py-0.5 rounded text-[9px] inline-block">
+                              Devolución: {p.refundAmount} €
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Nota de justificación si es no asistencia */}
+                      {p.status === 'no_asistio' && p.justified && (
+                        <div className="p-1 rounded-md bg-emerald-50 border border-emerald-200 text-[9px] text-emerald-900 font-semibold inline-block">
+                          ✓ Falta Justificada {p.justificationReason ? `(${p.justificationReason})` : ''}
+                        </div>
+                      )}
 
                       {p.paymentMethod && (
                         <div className="text-[10px] text-[#574B45] font-medium flex items-center gap-1">
@@ -799,9 +1109,49 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                         type="button"
                         onClick={() => markAttendance(p.id, false)}
                         className="p-1.5 rounded-lg border border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100 cursor-pointer"
-                        title="Desmarcar Asistencia"
+                        title="Desmarcar Asistencia (volver a Confirmada)"
                       >
                         <Sparkles className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {p.status !== 'no_asistio' && p.status !== 'cancelada' && p.status !== 'lista_de_espera' && (
+                      <button
+                        type="button"
+                        onClick={() => updateParticipant(p.id, { status: 'no_asistio', attended: false })}
+                        className="p-1.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 cursor-pointer"
+                        title="Marcar No Asistencia (Falta)"
+                      >
+                        <UserX className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {p.status === 'no_asistio' && (
+                      <button
+                        type="button"
+                        onClick={() => updateParticipant(p.id, { status: 'confirmada' })}
+                        className="p-1.5 rounded-lg border border-amber-300 bg-white text-amber-800 hover:bg-amber-50 cursor-pointer"
+                        title="Restablecer a Confirmada"
+                      >
+                        <CheckCircle className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {p.status !== 'cancelada' && p.status !== 'lista_de_espera' && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenCancellationModal(p)}
+                        className="p-1.5 rounded-lg border border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 cursor-pointer"
+                        title="Cancelar Reserva (Libera plaza con motivo y devolución)"
+                      >
+                        <XCircle className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {p.status === 'cancelada' && (
+                      <button
+                        type="button"
+                        onClick={() => setReactivationParticipant(p)}
+                        className="p-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 cursor-pointer"
+                        title="Reactivar Reserva Cancelada"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
                       </button>
                     )}
                     <button
@@ -840,6 +1190,16 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
             </tbody>
           </table>
         </div>
+
+        {/* Paginación */}
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filteredParticipants.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+          itemLabel="reservas"
+        />
       </div>
 
       {/* MODAL: AÑADIR / EDITAR PARTICIPANTE */}
@@ -881,7 +1241,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                   <option value="">-- Selecciona una actividad --</option>
                   {activeActivities.map(act => (
                     <option key={act.id} value={act.id}>
-                      {act.date} — {act.title} ({act.priceNonMember}€/plaza)
+                      {new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })} — {act.title} ({act.priceNonMember}€/plaza)
                     </option>
                   ))}
                 </select>
@@ -992,6 +1352,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                     <option value="pendiente_pago">Pendiente de Pago</option>
                     <option value="lista_de_espera">Lista de Espera</option>
                     <option value="asistio">Asistió (En Sala)</option>
+                    <option value="no_asistio">No Asistió (Falta)</option>
                     <option value="cancelada">Cancelada (Libera Aforo)</option>
                   </select>
                 </div>
@@ -1013,6 +1374,43 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                   </select>
                 </div>
               </div>
+
+              {/* Campos condicionales de Cancelación si el estado es cancelada */}
+              {formData.status === 'cancelada' && (
+                <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 space-y-3 animate-fadeIn">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-rose-950">
+                    <XCircle className="w-4 h-4 text-rose-600" />
+                    <span>Detalles de Cancelación de Reserva</span>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-rose-950 mb-1">
+                      Motivo de la baja / cancelación *
+                    </label>
+                    <textarea
+                      required={formData.status === 'cancelada'}
+                      rows={2}
+                      value={formData.cancellationReason || ''}
+                      onChange={(e) => setFormData({ ...formData, cancellationReason: e.target.value })}
+                      placeholder="Indicar motivo de la cancelación..."
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-rose-300 bg-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-rose-950 mb-1">
+                      Importe reembolsado / devuelto (€)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={formData.refundAmount || ''}
+                      onChange={(e) => setFormData({ ...formData, refundAmount: e.target.value })}
+                      placeholder="0.00 (dejar vacío si no procede devolución)"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-rose-300 bg-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Alergias / Observaciones */}
               <div>
@@ -1184,6 +1582,152 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                 <p>Generado el {new Date().toLocaleString('es-ES')}</p>
                 <p>Doña Berenjena — Sede Oficial (C/ Mayor 14, Planta 1)</p>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: REGISTRAR CANCELACIÓN DE RESERVA */}
+      {cancellationModalParticipant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto animate-fadeIn">
+          <div className="relative w-full max-w-md rounded-3xl bg-white p-6 sm:p-7 shadow-2xl border border-[#EDE4D7] my-8 animate-scaleUp">
+            <div className="flex items-center justify-between pb-3 border-b border-[#EDE4D7] mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-rose-100 text-rose-700">
+                  <XCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold font-serif text-[#26201D]">
+                    Cancelar Reserva
+                  </h3>
+                  <p className="text-xs text-[#574B45]">
+                    {cancellationModalParticipant.fullName}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCancellationModalParticipant(null)}
+                className="p-1.5 rounded-xl hover:bg-[#F6F1EA] text-[#574B45] cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmCancellation} className="space-y-4">
+              <div className="p-3 rounded-2xl bg-amber-50/80 border border-amber-200 text-xs text-amber-900 space-y-1">
+                <div className="font-semibold text-amber-950 flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Actividad: {cancellationModalParticipant.activityTitle}</span>
+                </div>
+                <p className="text-[11px] text-amber-800">
+                  Esta acción cambiará el estado a <strong>Cancelada</strong> y liberará de inmediato la plaza para el aforo y la lista de espera.
+                </p>
+              </div>
+
+              {cancellationError && (
+                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{cancellationError}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-[#26201D] mb-1">
+                  Motivo de la cancelación / baja <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={cancellationReasonInput}
+                  onChange={(e) => setCancellationReasonInput(e.target.value)}
+                  placeholder="Ej. Aviso por teléfono / WhatsApp con más de 48h de antelación..."
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#26201D] mb-1">
+                  Importe devuelto o abonado (€)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={cancellationRefundInput}
+                  onChange={(e) => setCancellationRefundInput(e.target.value)}
+                  placeholder="0.00 (dejar vacío si no procede devolución)"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+                <p className="text-[10px] text-[#574B45] mt-1">
+                  Importe de la reserva original: <strong>{cancellationModalParticipant.totalAmount || 0} €</strong>.
+                </p>
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-[#EDE4D7]">
+                <button
+                  type="button"
+                  onClick={() => setCancellationModalParticipant(null)}
+                  className="px-4 py-2 rounded-xl border border-[#EDE4D7] bg-white text-[#574B45] text-xs font-semibold hover:bg-[#F6F1EA] cursor-pointer"
+                >
+                  Volver
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <XCircle className="w-4 h-4" />
+                  <span>Confirmar Cancelación</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: REACTIVAR RESERVA CANCELADA */}
+      {reactivationParticipant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
+          <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-[#EDE4D7] animate-scaleUp">
+            <div className="flex items-center gap-3 pb-3 border-b border-[#EDE4D7]">
+              <div className="p-2.5 rounded-2xl bg-emerald-100 text-emerald-800">
+                <RefreshCw className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold font-serif text-[#26201D]">
+                  Reactivar Reserva Cancelada
+                </h3>
+                <p className="text-xs text-[#574B45]">
+                  {reactivationParticipant.fullName}
+                </p>
+              </div>
+            </div>
+
+            <div className="py-4 space-y-2 text-xs text-[#574B45]">
+              <p>
+                ¿Deseas reactivar la reserva para la actividad <strong>{reactivationParticipant.activityTitle}</strong>?
+              </p>
+              <p className="text-amber-900 bg-amber-50 p-2.5 rounded-xl border border-amber-200">
+                ⚠️ El estado pasará a <strong>Confirmada</strong> y volverá a computar como plaza ocupada en el aforo.
+              </p>
+            </div>
+
+            <div className="pt-3 flex items-center justify-end gap-2 border-t border-[#EDE4D7]">
+              <button
+                type="button"
+                onClick={() => setReactivationParticipant(null)}
+                className="px-4 py-2 rounded-xl border border-[#EDE4D7] bg-white text-[#574B45] text-xs font-semibold hover:bg-[#F6F1EA] cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReactivation}
+                className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <Check className="w-4 h-4" />
+                <span>Sí, Reactivar Reserva</span>
+              </button>
             </div>
           </div>
         </div>

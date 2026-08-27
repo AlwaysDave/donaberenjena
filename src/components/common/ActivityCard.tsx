@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Activity, CataActivity, CursoActivity, ViajeActivity } from '../../types';
 import { StatusBadge } from './StatusBadge';
 import { Calendar, MapPin, ChefHat, Wine, Compass, ArrowRight, Clock, Users } from 'lucide-react';
+import { formatDisplayDate } from '../../utils/dateUtils';
 
 interface ActivityCardProps {
   activity: Activity;
@@ -150,7 +151,7 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity }) => {
             <div className="flex items-center gap-4 text-xs text-[#574B45]">
               <span className="inline-flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-[#521849]" />
-                {activity.date}
+                {formatDisplayDate(activity.date)}
               </span>
               {activity.time && (
                 <span className="inline-flex items-center gap-1 hidden sm:inline-flex">

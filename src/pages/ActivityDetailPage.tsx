@@ -26,6 +26,8 @@ import {
   HeartHandshake
 } from 'lucide-react';
 
+import { formatDisplayDate } from '../utils/dateUtils';
+
 export const ActivityDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -156,7 +158,7 @@ export const ActivityDetailPage: React.FC = () => {
             <div className="pt-3 flex flex-wrap items-center gap-y-2 gap-x-6 text-xs sm:text-sm text-[#3D3430] border-t border-[#F6F1EA]">
               <span className="inline-flex items-center gap-1.5 font-medium">
                 <Calendar className="w-4 h-4 text-[#521849]" />
-                {activity.date}
+                {formatDisplayDate(activity.date)}
               </span>
               {activity.time && (
                 <span className="inline-flex items-center gap-1.5">

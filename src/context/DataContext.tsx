@@ -571,6 +571,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const notif: AdminNotification = {
             id: notifId,
             type: 'socio_mismatch',
+            severity: 'attention',
+            title: 'Discrepancia de Socio (Reserva)',
+            dedupeKey: `socio_mismatch_${p.activityId}_${p.id}`,
             message: `Aviso de reserva: "${p.fullName}" se indicó como SOCIO para "${p.activityTitle}", pero no figura en el censo activo de socios.`,
             activityId: p.activityId,
             participantId: p.id,
@@ -585,6 +588,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const notif: AdminNotification = {
             id: notifId,
             type: 'socio_mismatch',
+            severity: 'info',
+            title: 'Socio registrado como No Socio',
+            dedupeKey: `socio_mismatch_active_${p.activityId}_${p.id}`,
             message: `Aviso de reserva: "${p.fullName}" se registró como NO SOCIO para "${p.activityTitle}", pero figura como socio activo (${matchedMember.membershipNumber || 'S/N'}). Se le podría haber cobrado tarifa general.`,
             activityId: p.activityId,
             participantId: p.id,
@@ -645,6 +651,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const notif: AdminNotification = {
         id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         type: 'socio_mismatch',
+        severity: 'attention',
+        title: 'Discrepancia de Socio (Manual)',
+        dedupeKey: `socio_mismatch_manual_${newParticipant.activityId}_${newParticipant.id}`,
         message: `Aviso manual: "${newParticipant.fullName}" se añadió como SOCIO pero no figura en el censo activo de socios.`,
         activityId: newParticipant.activityId,
         participantId: newParticipant.id,

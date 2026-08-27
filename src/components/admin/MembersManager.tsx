@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
 import { Member, AdminNotification } from '../../types';
+import { Pagination } from '../common/Pagination';
 import { 
   Users, 
   UserPlus, 
@@ -20,12 +21,22 @@ import {
   X, 
   FileText, 
   Bell, 
-  RefreshCw 
+  RefreshCw,
+  History,
+  Sparkles,
+  Wine,
+  ChefHat,
+  Compass,
+  Calendar,
+  ChevronRight
 } from 'lucide-react';
+import { formatDisplayDate, parseActivityDate } from '../../utils/dateUtils';
 
 export const MembersManager: React.FC = () => {
   const { 
     members, 
+    activities,
+    participants,
     addMember, 
     updateMember, 
     deleteMember, 
@@ -42,6 +53,7 @@ export const MembersManager: React.FC = () => {
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [memberToDelete, setMemberToDelete] = useState<Member | null>(null);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
+  const [selectedMemberForHistory, setSelectedMemberForHistory] = useState<Member | null>(null);
 
   // Form state
   const [formData, setFormData] = useState<{
@@ -69,6 +81,15 @@ export const MembersManager: React.FC = () => {
   const mismatchNotifs = adminNotifications.filter(n => n.type === 'socio_mismatch');
   const unreadMismatches = mismatchNotifs.filter(n => !n.read);
 
+  // Pagination state for members
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+
+  // Reset page when search, filter or pageSize changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, pageSize]);
+
   // Filtered members list
   const filteredMembers = useMemo(() => {
     return members.filter(m => {
@@ -86,6 +107,92 @@ export const MembersManager: React.FC = () => {
       return true;
     }).sort((a, b) => (a.membershipNumber || a.fullName).localeCompare(b.membershipNumber || b.fullName));
   }, [members, searchQuery, statusFilter]);
+
+  // Paginated members slice
+  const paginatedMembers = useMemo(() => {
+    const totalItems = filteredMembers.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+    const safePage = Math.min(Math.max(1, currentPage), totalPages);
+    const start = (safePage - 1) * pageSize;
+    return filteredMembers.slice(start, start + pageSize);
+  }, [filteredMembers, currentPage, pageSize]);
+
+  // Sync safePage to state
+  useEffect(() => {
+    const totalItems = filteredMembers.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+    const safePage = Math.min(Math.max(1, currentPage), totalPages);
+    if (currentPage !== safePage) {
+      setCurrentPage(safePage);
+    }
+  }, [filteredMembers.length, pageSize, currentPage]);
+
+  // Helper to compute member trajectory & real attendances
+  const getMemberHistoryData = (member: Member) => {
+    const memberEmail = member.email?.toLowerCase().trim();
+    const memberName = member.fullName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    
+    const memberParticipations = participants.filter(p => {
+      if (p.memberId && p.memberId === member.id) return true;
+      if (memberEmail && p.email && p.email.toLowerCase().trim() === memberEmail) return true;
+      const pName = (p.fullName || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      if (pName && pName === memberName) return true;
+      return false;
+    });
+
+    // Real attendances only (status === 'asistio' or attended === true, never cancelada or no_asistio)
+    const attendedList = memberParticipations.filter(p => (p.status === 'asistio' || p.attended === true) && p.status !== 'cancelada' && p.status !== 'no_asistio');
+    const totalAttendances = attendedList.length;
+
+    const cataAttendances = attendedList.filter(p => {
+      const act = activities.find(a => a.id === p.activityId);
+      return p.activityType === 'cata' || act?.type === 'cata';
+    }).length;
+
+    const cursoAttendances = attendedList.filter(p => {
+      const act = activities.find(a => a.id === p.activityId);
+      return p.activityType === 'curso' || act?.type === 'curso';
+    }).length;
+
+    const viajeAttendances = attendedList.filter(p => {
+      const act = activities.find(a => a.id === p.activityId);
+      return p.activityType === 'viaje' || act?.type === 'viaje';
+    }).length;
+
+    const totalCancelled = memberParticipations.filter(p => p.status === 'cancelada').length;
+    const totalNoShows = memberParticipations.filter(p => p.status === 'no_asistio').length;
+    const totalJustified = memberParticipations.filter(p => p.justified).length;
+
+    // Sort newest first (reverse chronological)
+    const sortedParticipations = [...memberParticipations].sort((a, b) => {
+      const actA = activities.find(act => act.id === a.activityId);
+      const actB = activities.find(act => act.id === b.activityId);
+      const dateA = actA?.date || a.createdAt || '';
+      const dateB = actB?.date || b.createdAt || '';
+      const timeA = parseActivityDate(dateA);
+      const timeB = parseActivityDate(dateB);
+      if (timeB !== timeA) return timeB - timeA;
+      const hourA = actA?.time || '';
+      const hourB = actB?.time || '';
+      const hourComp = hourB.localeCompare(hourA);
+      if (hourComp !== 0) return hourComp;
+      const titleA = a.activityTitle || actA?.title || '';
+      const titleB = b.activityTitle || actB?.title || '';
+      return titleA.localeCompare(titleB, 'es', { sensitivity: 'base' });
+    });
+
+    return {
+      memberParticipations,
+      sortedParticipations,
+      totalAttendances,
+      cataAttendances,
+      cursoAttendances,
+      viajeAttendances,
+      totalCancelled,
+      totalNoShows,
+      totalJustified
+    };
+  };
 
   // Open add modal
   const handleOpenAdd = () => {
@@ -450,6 +557,7 @@ export const MembersManager: React.FC = () => {
                 <th className="p-4">Nombre y Apellidos</th>
                 <th className="p-4">Contacto</th>
                 <th className="p-4">Estado Censo</th>
+                <th className="p-4 text-center">Asistencias</th>
                 <th className="p-4">Fecha de Alta</th>
                 <th className="p-4 text-right">Acciones</th>
               </tr>
@@ -457,7 +565,7 @@ export const MembersManager: React.FC = () => {
             <tbody className="divide-y divide-[#EDE4D7]">
               {filteredMembers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-[#8C7E77]">
+                  <td colSpan={7} className="p-8 text-center text-[#8C7E77]">
                     <Users className="w-8 h-8 mx-auto mb-2 text-[#EDE4D7]" />
                     <p className="font-semibold text-sm text-[#574B45]">No se encontraron socios</p>
                     <p className="text-xs mt-1">
@@ -466,7 +574,9 @@ export const MembersManager: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                filteredMembers.map((m) => (
+                paginatedMembers.map((m) => {
+                  const memberStats = getMemberHistoryData(m);
+                  return (
                   <tr 
                     key={m.id}
                     className={`hover:bg-[#FCFAF7] transition-colors ${!m.active ? 'bg-stone-50/50 opacity-70' : ''}`}
@@ -480,7 +590,14 @@ export const MembersManager: React.FC = () => {
 
                     {/* Nombre */}
                     <td className="p-4">
-                      <span className="font-bold text-[#26201D] text-sm font-serif">{m.fullName}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMemberForHistory(m)}
+                        className="text-left font-bold text-[#26201D] hover:text-[#521849] text-sm font-serif transition-colors cursor-pointer block"
+                        title="Ver trayectoria y reservas de este socio"
+                      >
+                        {m.fullName}
+                      </button>
                       {m.notes && (
                         <p className="text-[11px] text-[#8C7E77] italic mt-0.5">{m.notes}</p>
                       )}
@@ -532,14 +649,35 @@ export const MembersManager: React.FC = () => {
                       </button>
                     </td>
 
+                    {/* Asistencias Reales */}
+                    <td className="p-4 text-center">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMemberForHistory(m)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#521849]/10 hover:bg-[#521849]/20 text-[#521849] font-mono font-bold text-xs cursor-pointer transition-colors"
+                        title="Ver desglose e historial de actividades"
+                      >
+                        <Sparkles className="w-3 h-3 text-[#521849]" />
+                        <span>{memberStats.totalAttendances}</span>
+                      </button>
+                    </td>
+
                     {/* Fecha de alta */}
                     <td className="p-4 text-[#574B45] text-xs">
-                      {m.createdAt ? new Date(m.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                      {m.createdAt ? formatDisplayDate(m.createdAt) : '-'}
                     </td>
 
                     {/* Acciones */}
                     <td className="p-4 text-right">
                       <div className="flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedMemberForHistory(m)}
+                          className="p-1.5 rounded-lg hover:bg-[#EDE4D7] text-[#521849] transition-colors cursor-pointer"
+                          title="Ver historial de actividades del socio"
+                        >
+                          <History className="w-4 h-4" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleOpenEdit(m)}
@@ -559,11 +697,22 @@ export const MembersManager: React.FC = () => {
                       </div>
                     </td>
                   </tr>
-                ))
+                );
+              })
               )}
             </tbody>
           </table>
         </div>
+
+        {/* Paginación */}
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filteredMembers.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+          itemLabel="socios censados"
+        />
       </div>
 
       {/* MODAL: Add / Edit Member */}
@@ -887,6 +1036,190 @@ export const MembersManager: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* MEMBER HISTORY & ATTENDANCE MODAL */}
+      {selectedMemberForHistory && (() => {
+        const history = getMemberHistoryData(selectedMemberForHistory);
+        return (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-fadeIn">
+            <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-[#EDE4D7] my-8 animate-scaleUp max-h-[90vh] flex flex-col">
+              {/* Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-[#EDE4D7] shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-[#521849]/10 text-[#521849]">
+                    <History className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-bold font-serif text-[#26201D]">
+                        {selectedMemberForHistory.fullName}
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-md bg-[#521849]/10 text-[#521849] font-mono text-xs font-bold">
+                        {selectedMemberForHistory.membershipNumber || 'S/N'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#574B45] mt-0.5">
+                      Historial completo de actividades y asistencias registradas
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedMemberForHistory(null)}
+                  className="p-1.5 rounded-xl hover:bg-[#F6F1EA] text-[#574B45] cursor-pointer transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* KPI Summary Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 my-4 shrink-0">
+                <div className="p-3 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7] text-center">
+                  <span className="text-[10px] uppercase tracking-wider font-semibold text-[#574B45] block">
+                    Asistencias Reales
+                  </span>
+                  <span className="text-xl font-bold font-serif text-[#521849] mt-0.5 block">
+                    {history.totalAttendances}
+                  </span>
+                </div>
+                <div className="p-3 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7] text-center">
+                  <span className="text-[10px] uppercase tracking-wider font-semibold text-[#574B45] block">
+                    Catas / Cursos
+                  </span>
+                  <span className="text-xl font-bold font-serif text-[#26201D] mt-0.5 block">
+                    {history.cataAttendances} / {history.cursoAttendances}
+                  </span>
+                </div>
+                <div className="p-3 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7] text-center">
+                  <span className="text-[10px] uppercase tracking-wider font-semibold text-[#574B45] block">
+                    Viajes
+                  </span>
+                  <span className="text-xl font-bold font-serif text-[#26201D] mt-0.5 block">
+                    {history.viajeAttendances}
+                  </span>
+                </div>
+                <div className="p-3 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7] text-center">
+                  <span className="text-[10px] uppercase tracking-wider font-semibold text-[#574B45] block">
+                    Bajas / Faltas
+                  </span>
+                  <span className="text-xl font-bold font-serif text-rose-700 mt-0.5 block">
+                    {history.totalCancelled + history.totalNoShows}
+                    {history.totalJustified > 0 && (
+                      <span className="text-[10px] font-normal text-amber-700 ml-1">
+                        ({history.totalJustified} just.)
+                      </span>
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              {/* Reverse Chronological Activity List */}
+              <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 min-h-[220px]">
+                <div className="text-xs font-semibold text-[#574B45] px-1 pb-1">
+                  Actividades registradas ({history.sortedParticipations.length}) — Ordenadas por fecha más reciente
+                </div>
+
+                {history.sortedParticipations.length === 0 ? (
+                  <div className="p-8 text-center bg-[#FCFAF7] rounded-2xl border border-[#EDE4D7] text-[#8C7E77]">
+                    <Users className="w-8 h-8 mx-auto mb-2 text-[#EDE4D7]" />
+                    <p className="font-semibold text-sm text-[#574B45]">Sin actividades registradas</p>
+                    <p className="text-xs mt-1">Este socio aún no cuenta con inscripciones o asistencias en el sistema.</p>
+                  </div>
+                ) : (
+                  history.sortedParticipations.map((p) => {
+                    const act = activities.find(a => a.id === p.activityId);
+                    const isAttended = (p.status === 'asistio' || p.attended === true) && p.status !== 'cancelada' && p.status !== 'no_asistio';
+                    const isCancelled = p.status === 'cancelada';
+                    const isNoShow = p.status === 'no_asistio';
+                    const actType = p.activityType || act?.type || 'cata';
+
+                    return (
+                      <div
+                        key={p.id}
+                        className={`p-3 rounded-2xl border transition-colors flex items-start justify-between gap-3 ${
+                          isAttended
+                            ? 'bg-emerald-50/40 border-emerald-200/80'
+                            : isCancelled
+                            ? 'bg-rose-50/40 border-rose-200/80'
+                            : isNoShow
+                            ? 'bg-amber-50/40 border-amber-200/80'
+                            : 'bg-[#FCFAF7] border-[#EDE4D7]'
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="p-2 rounded-xl bg-white border border-[#EDE4D7] text-[#521849] shrink-0 mt-0.5">
+                            {actType === 'cata' && <Wine className="w-4 h-4" />}
+                            {actType === 'curso' && <ChefHat className="w-4 h-4" />}
+                            {actType === 'viaje' && <Compass className="w-4 h-4" />}
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-[#26201D] font-serif">
+                              {p.activityTitle || act?.title || 'Actividad'}
+                            </h4>
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#574B45] mt-1">
+                              <span className="capitalize">{actType}</span>
+                              <span>•</span>
+                              <span className="inline-flex items-center gap-1 font-medium">
+                                <Calendar className="w-3 h-3 text-[#521849]" />
+                                {act ? formatDisplayDate(act.date, act.time) : (p.createdAt ? formatDisplayDate(p.createdAt) : '-')}
+                              </span>
+                              <span>•</span>
+                              <span>{p.spots} {p.spots === 1 ? 'plaza' : 'plazas'} ({p.totalAmount} €)</span>
+                            </div>
+                            {p.justificationReason && (
+                              <p className="text-[11px] text-amber-800 italic mt-1">
+                                Justificación: {p.justificationReason}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Status Badge */}
+                        <div className="shrink-0 text-right">
+                          {isAttended && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-semibold">
+                              <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Asistió</span>
+                            </span>
+                          )}
+                          {isCancelled && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 text-[11px] font-semibold">
+                              <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Cancelada</span>
+                            </span>
+                          )}
+                          {isNoShow && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 text-[11px] font-semibold">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                              <span>No asistió</span>
+                            </span>
+                          )}
+                          {!isAttended && !isCancelled && !isNoShow && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-100 text-stone-700 text-[11px] font-semibold">
+                              <span>Reserva {p.status}</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="pt-4 flex justify-end border-t border-[#EDE4D7] mt-4 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setSelectedMemberForHistory(null)}
+                  className="px-5 py-2.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold cursor-pointer transition-colors shadow-2xs"
+                >
+                  Cerrar Historial
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* CONFIRM DELETE MODAL */}
       {memberToDelete && (

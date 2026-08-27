@@ -670,6 +670,8 @@ export const DEMO_NOTIFICATIONS: AdminNotification[] = [
   {
     id: 'notif-demo-1',
     type: 'socio_mismatch',
+    severity: 'attention',
+    dedupeKey: 'socio_mismatch_demo_1',
     title: 'Discrepancia de Socio detectada',
     message: 'El asistente "Diego Aguilar Bravo" solicitó tarifa de socio en "Cocina en Vivo: Producto de Cercanía", pero no figura en el censo oficial de socios activos.',
     activityId: 'demo-curso-1-lleno',

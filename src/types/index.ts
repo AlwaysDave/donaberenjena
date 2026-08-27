@@ -77,6 +77,11 @@ export interface CataActivity extends BaseActivity {
   pairingMenu?: PairingMenuItem[];
   wines?: WineDetail[]; // Legacy flat array if needed
   cataType?: 'bodega_unica' | 'varias_bodegas';
+  shifts?: {
+    id: string;
+    name: string;
+    time: string;
+  }[];
   tallerEspecial?: string;
   pastEventGallery?: string[];
   pastEventSummary?: string;
@@ -189,6 +194,10 @@ export interface Participant {
   justifiedAt?: string;
   cancellationReason?: string;
   cancelledAt?: string;
+  cancelledBy?: string;
+  refundAmount?: number;
+  attendedAt?: string;
+  attendedBy?: string;
   spotsCount?: number;
   totalAmount: number;
   paidAmount?: number;
@@ -225,15 +234,22 @@ export interface Member {
   updatedAt?: string;
 }
 
+export type NotificationSeverity = 'info' | 'attention' | 'important' | 'critical';
+export type NotificationType = 'socio_mismatch' | 'ocupacion_alta' | 'ocupacion_baja' | 'sin_gastos' | 'gasto_sin_comprobante' | 'patrocinio_pendiente' | 'balance_negativo' | 'plaza_liberada' | 'aforo_discrepancia' | 'info_incompleta' | 'sistema' | 'otro';
+
 export interface AdminNotification {
   id: string;
-  type: 'socio_mismatch' | 'sistema' | 'otro';
-  title?: string;
+  type: NotificationType;
+  severity: NotificationSeverity;
+  title: string;
   message: string;
   activityId?: string;
   participantId?: string;
+  dedupeKey: string;
   read: boolean;
+  archived?: boolean;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export type ExpenseCategory = 'bodega_proveedor' | 'catering' | 'transporte' | 'alojamiento' | 'material' | 'personal' | 'otros';

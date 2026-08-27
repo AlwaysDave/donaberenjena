@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import { Activity, ActivityType, CataActivity, CataCategory, CursoActivity, ViajeActivity, WineDetail, BodegaItem } from '../../types';
-import { sortActivitiesOldestFirst } from '../../utils/dateUtils';
+import { sortActivitiesAscending, formatDisplayDate } from '../../utils/dateUtils';
 import { extractTextFromPdf, parseCataText, DEFAULT_OFFICIAL_LOCATION, getDefaultStartTime } from '../../services/pdfCataParser';
 import { searchBodegaLogo } from '../../services/bodegaLogoService';
 import { BodegaLogoSearchModal } from '../../components/admin/BodegaLogoSearchModal';
@@ -13,6 +13,7 @@ import { MembersManager } from '../../components/admin/MembersManager';
 import { HistoryManager } from '../../components/admin/HistoryManager';
 import { AccountsManager } from '../../components/admin/AccountsManager';
 import { MessagesManager } from '../../components/admin/MessagesManager';
+import { Pagination } from '../../components/common/Pagination';
 import { getAdminAuthHeader } from '../../services/authHelper';
 import { 
   Plus, 
@@ -87,9 +88,37 @@ export const ModoAvanzadoView: React.FC = () => {
   const upcomingTotalSpots = upcomingActivities.reduce((sum, a) => sum + (a.totalSpots || 0), 0);
   const upcomingBookedSpots = upcomingActivities.reduce((sum, a) => sum + (a.bookedSpots || 0), 0);
 
-  const filteredActivities = sortActivitiesOldestFirst(
-    activities.filter(act => filterTypes[act.type] && act.status !== 'celebrada')
-  );
+  // Pagination state for upcoming activities tab
+  const [gestionPage, setGestionPage] = useState<number>(1);
+  const [gestionPageSize, setGestionPageSize] = useState<number>(10);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setGestionPage(1);
+  }, [filterTypes, gestionPageSize]);
+
+  const filteredActivities = useMemo(() => {
+    const matching = activities.filter(act => filterTypes[act.type] && act.status !== 'celebrada');
+    return sortActivitiesAscending(matching);
+  }, [activities, filterTypes]);
+
+  const paginatedFilteredActivities = useMemo(() => {
+    const totalItems = filteredActivities.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / gestionPageSize));
+    const safePage = Math.min(Math.max(1, gestionPage), totalPages);
+    const start = (safePage - 1) * gestionPageSize;
+    return filteredActivities.slice(start, start + gestionPageSize);
+  }, [filteredActivities, gestionPage, gestionPageSize]);
+
+  // Sync safePage to state if items change or page gets out of bounds
+  useEffect(() => {
+    const totalItems = filteredActivities.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / gestionPageSize));
+    const safePage = Math.min(Math.max(1, gestionPage), totalPages);
+    if (gestionPage !== safePage) {
+      setGestionPage(safePage);
+    }
+  }, [filteredActivities.length, gestionPageSize, gestionPage]);
 
   // Form State for Advanced Editor
   const [formData, setFormData] = useState<Partial<Activity>>({});
@@ -97,11 +126,9 @@ export const ModoAvanzadoView: React.FC = () => {
   const [syllabusText, setSyllabusText] = useState<string>(''); // For cursos
   const [servicesText, setServicesText] = useState<string>(''); // For viajes
 
-  // Point 1: Two dates
+  // Point 1: Activity date
   const [date1, setDate1] = useState<string>('');
-  const [date2, setDate2] = useState<string>('');
   const [time1, setTime1] = useState<string>('21:00');
-  const [time2, setTime2] = useState<string>('13:00');
 
   // Specific cata state
   const [cataBodegas, setCataBodegas] = useState<BodegaItem[]>([
@@ -138,11 +165,6 @@ export const ModoAvanzadoView: React.FC = () => {
   const handleDate1Change = (val: string) => {
     setDate1(val);
     setTime1(getDefaultStartTime(val));
-  };
-
-  const handleDate2Change = (val: string) => {
-    setDate2(val);
-    setTime2(getDefaultStartTime(val));
   };
 
   const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -213,13 +235,6 @@ export const ModoAvanzadoView: React.FC = () => {
       setDate1(parsed.date || '');
       setTime1(formatTime(parsed.time) || (parsed.date ? getDefaultStartTime(parsed.date) : '21:00'));
 
-      if (parsed.date2) {
-        setDate2(parsed.date2);
-        setTime2(formatTime(parsed.time2) || (parsed.date2 ? getDefaultStartTime(parsed.date2) : '13:00'));
-      } else {
-        setDate2('');
-      }
-
       // Handle extracted bodegas
       if (parsed.bodegas && Array.isArray(parsed.bodegas) && parsed.bodegas.length > 0) {
         setCataBodegas(parsed.bodegas);
@@ -281,9 +296,9 @@ export const ModoAvanzadoView: React.FC = () => {
 
     const defaultDate = new Date().toISOString().split('T')[0];
     setDate1(defaultDate);
-    setDate2('');
+    
     setTime1(getDefaultStartTime(defaultDate));
-    setTime2('13:00');
+    
 
     // Default bodegas structure
     setCataBodegas([
@@ -358,7 +373,7 @@ export const ModoAvanzadoView: React.FC = () => {
     setPdfErrorMessage(null);
     setFormData(act);
     setDate1(act.date);
-    setDate2('');
+    
     setTime1(act.time || '21:00');
     setImageUrlsText(act.images?.join('\n') || '');
 
@@ -483,28 +498,9 @@ export const ModoAvanzadoView: React.FC = () => {
 
     try {
       if (isCreatingNew) {
-        // Point 1: Create 2 records if Date 2 is provided
-        const recordsToSave: Activity[] = [
-          { ...finalActivity1, id: `${finalActivity1.type}-${Date.now()}-f1` }
-        ];
-
-        if (date2 && date2.trim().length > 0) {
-          recordsToSave.push({
-            ...finalActivity1,
-            id: `${finalActivity1.type}-${Date.now()}-f2`,
-            date: date2,
-            time: time2,
-            bookedSpots: 0
-          });
-        }
-
-        for (const rec of recordsToSave) {
-          await addActivity(rec);
-        }
-
-        showNotification(recordsToSave.length === 2 
-          ? '¡2 convocatorias generadas y sincronizadas con Firestore!' 
-          : 'Nueva actividad creada y sincronizada con Firestore.');
+        finalActivity1.id = `${finalActivity1.type}-${Date.now()}`;
+        await addActivity(finalActivity1);
+        showNotification('Nueva actividad creada y sincronizada con Firestore.');
       } else {
         await updateActivity(finalActivity1);
         showNotification('Actividad actualizada correctamente en Firestore.');
@@ -767,7 +763,7 @@ export const ModoAvanzadoView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#EDE4D7]">
-                  {filteredActivities.map((act) => (
+                  {paginatedFilteredActivities.map((act) => (
                     <tr key={act.id} className="hover:bg-[#FCFAF7] transition-colors">
                       <td className="p-4">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-semibold text-[11px] ${
@@ -795,8 +791,8 @@ export const ModoAvanzadoView: React.FC = () => {
                         </a>
                         <p className="text-[11px] text-[#574B45] truncate font-sans font-normal">{act.subtitle}</p>
                       </td>
-                      <td className="p-4 text-[#26201D] font-medium">
-                        {act.date} {act.time ? `(${act.time})` : ''}
+                      <td className="p-4 text-[#26201D] font-medium whitespace-nowrap">
+                        {new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })} {act.time ? `(${act.time})` : ''}
                       </td>
                       <td className="p-4 text-xs">
                         {act.priceMember !== act.priceNonMember ? (
@@ -826,7 +822,7 @@ export const ModoAvanzadoView: React.FC = () => {
                               {/* 1. Barra */}
                               <div className="w-16 bg-[#EDE4D7] h-2 rounded-full overflow-hidden shrink-0">
                                 <div 
-                                  className={`h-full ${act.bookedSpots >= act.totalSpots ? 'bg-rose-500' : 'bg-[#521849]'}`} 
+                                   className={`h-full ${act.bookedSpots >= act.totalSpots ? 'bg-rose-500' : 'bg-[#521849]'}`} 
                                   style={{ width: `${Math.min(100, (act.bookedSpots / act.totalSpots) * 100)}%` }}
                                 />
                               </div>
@@ -919,6 +915,16 @@ export const ModoAvanzadoView: React.FC = () => {
                 </tbody>
               </table>
             </div>
+
+            {/* Paginación */}
+            <Pagination
+              currentPage={Math.min(Math.max(1, gestionPage), Math.max(1, Math.ceil(filteredActivities.length / gestionPageSize)))}
+              totalItems={filteredActivities.length}
+              pageSize={gestionPageSize}
+              onPageChange={setGestionPage}
+              onPageSizeChange={setGestionPageSize}
+              itemLabel="próximas actividades"
+            />
           </div>
         </div>
       )}
@@ -1042,9 +1048,9 @@ export const ModoAvanzadoView: React.FC = () => {
                       <span>Autocompletar cartel con Inteligencia Artificial</span>
                     </div>
                     {isParsingPdf && (
-                      <div className="flex items-center gap-1.5 text-xs text-[#521849] font-medium">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Analizando con IA...</span>
+                      <div className="flex items-center gap-2 text-xs text-[#521849] font-bold bg-[#F6EDF4] px-3 py-1.5 rounded-xl border border-[#521849]/20 shadow-xs">
+                        <Wine className="w-4 h-4 text-[#C96043] animate-pulse" style={{ animationDuration: '0.8s' }} />
+                        <span className="animate-pulse" style={{ animationDuration: '1.5s' }}>El Sumiller IA de Doña Berenjena está analizando el cartel...</span>
                       </div>
                     )}
                   </div>
@@ -1110,7 +1116,7 @@ export const ModoAvanzadoView: React.FC = () => {
                 <div className="p-3.5 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7] space-y-2">
                   <span className="text-xs font-bold text-[#521849] flex items-center gap-1.5">
                     <Calendar className="w-3.5 h-3.5 text-[#C96043]" />
-                    Fecha 1 (Primer Turno) *
+                    Fecha de Actividad *
                   </span>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -1133,36 +1139,6 @@ export const ModoAvanzadoView: React.FC = () => {
                         required
                         value={time1}
                         onChange={(e) => setTime1(e.target.value)}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7] space-y-2">
-                  <span className="text-xs font-bold text-[#521849] flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-[#C96043]" />
-                    Fecha 2 (Segundo Turno - Opcional)
-                  </span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] text-[#574B45] mb-1">Fecha</label>
-                      <input
-                        type="date"
-                        value={date2}
-                        onChange={(e) => handleDate2Change(e.target.value)}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] text-[#574B45] mb-1 flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-[#521849]" />
-                        Hora Inicio
-                      </label>
-                      <input
-                        type="time"
-                        value={time2}
-                        onChange={(e) => setTime2(e.target.value)}
                         className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
                       />
                     </div>
@@ -1399,7 +1375,7 @@ export const ModoAvanzadoView: React.FC = () => {
                   className="px-6 py-2.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold tracking-wide transition-colors cursor-pointer flex items-center gap-2"
                 >
                   <Save className="w-4 h-4" />
-                  <span>{isCreatingNew && date2 ? 'Guardar Ficha (Generar 2 Convocatorias en Firestore)' : 'Guardar Ficha en Firestore'}</span>
+                  <span>{isCreatingNew ? 'Guardar Ficha en Firestore' : 'Actualizar Ficha en Firestore'}</span>
                 </button>
               </div>
                 </form>
