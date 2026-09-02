@@ -1,0 +1,222 @@
+<svg viewBox="0 0 980 500" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <!-- Badge Gradients -->
+    <linearGradient id="blue-tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#00BAF2" />
+      <stop offset="100%" stop-color="#006DB8" />
+    </linearGradient>
+    <linearGradient id="orange-tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFA400" />
+      <stop offset="100%" stop-color="#E85900" />
+    </linearGradient>
+    <linearGradient id="magenta-tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#EB1C85" />
+      <stop offset="100%" stop-color="#9C0056" />
+    </linearGradient>
+    <linearGradient id="green-tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#8DC63F" />
+      <stop offset="100%" stop-color="#3FA636" />
+    </linearGradient>
+
+    <!-- Glossy Highlight Overlay -->
+    <linearGradient id="tile-gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.45" />
+      <stop offset="42%" stop-color="#FFFFFF" stop-opacity="0.1" />
+      <stop offset="50%" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+
+    <!-- Ground Drop Shadows -->
+    <filter id="tile-shadow" x="-12%" y="-8%" width="124%" height="124%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="8" stdDeviation="6" flood-color="#000000" flood-opacity="0.22" />
+    </filter>
+    <radialGradient id="ground-shadow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Watercolor purple ribbon stroke gradient -->
+    <linearGradient id="purple-ribbon" x1="0" y1="0" x2="1" y2="0.6">
+      <stop offset="0%" stop-color="#B88CC4" stop-opacity="0.25" />
+      <stop offset="35%" stop-color="#9E6FB0" stop-opacity="0.45" />
+      <stop offset="70%" stop-color="#884C9C" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#A573B8" stop-opacity="0.2" />
+    </linearGradient>
+  </defs>
+
+  <!-- Ground Shadows under tiles -->
+  <ellipse cx="110" cy="365" rx="80" ry="12" fill="url(#ground-shadow)" />
+  <ellipse cx="325" cy="192" rx="70" ry="9" fill="url(#ground-shadow)" />
+  <ellipse cx="545" cy="192" rx="70" ry="9" fill="url(#ground-shadow)" />
+  <ellipse cx="765" cy="192" rx="70" ry="9" fill="url(#ground-shadow)" />
+
+  <!-- Purple Artistic Watercolor Ribbon in Background -->
+  <g opacity="0.85">
+    <!-- Main swoosh under and across -->
+    <path
+      d="M 195 330
+         C 280 320, 360 410, 480 370
+         C 600 330, 720 390, 840 370
+         C 910 360, 960 420, 975 460
+         C 960 485, 905 450, 850 435
+         C 750 410, 640 445, 520 420
+         C 400 395, 300 480, 200 400
+         C 180 380, 185 345, 195 330 Z"
+      fill="url(#purple-ribbon)"
+    />
+    <!-- Subtle upper branch -->
+    <path
+      d="M 330 255
+         C 410 275, 450 340, 560 330
+         C 640 320, 730 270, 760 280
+         C 780 290, 750 325, 680 345
+         C 580 370, 460 360, 390 320
+         C 350 300, 325 270, 330 255 Z"
+      fill="#A875BD"
+      opacity="0.3"
+    />
+    <!-- Delicate right curl -->
+    <path
+      d="M 880 380
+         C 930 360, 970 420, 960 450
+         C 940 490, 890 500, 870 480
+         C 860 470, 875 450, 895 440
+         C 920 425, 915 395, 880 380 Z"
+      fill="#8E48A5"
+      opacity="0.25"
+    />
+  </g>
+
+  <!-- ================= 1. BLUE TILE: Cuchara + dña. b ================= -->
+  <g filter="url(#tile-shadow)">
+    <rect x="15" y="15" width="190" height="340" rx="26" fill="url(#blue-tile)" />
+    <rect x="15" y="15" width="190" height="340" rx="26" fill="url(#tile-gloss)" />
+
+    <!-- Spoon Head -->
+    <ellipse cx="110" cy="85" rx="34" ry="48" fill="#FFFFFF" />
+    <!-- Spoon Handle -->
+    <path d="M104 125 L104 205 C104 210, 116 210, 116 205 L116 125 Z" fill="#FFFFFF" />
+
+    <!-- "dña." vertical text -->
+    <g transform="translate(76, 305) rotate(-90)">
+      <text
+        fill="#FFFFFF"
+        font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', system-ui, sans-serif"
+        font-size="44"
+        font-weight="700"
+        letter-spacing="1"
+      >
+        dña.
+      </text>
+    </g>
+
+    <!-- Lowercase "b" -->
+    <g transform="translate(104, 225)">
+      <!-- b vertical stem -->
+      <rect x="0" y="0" width="16" height="98" rx="5" fill="#FFFFFF" />
+      <!-- b round loop -->
+      <circle cx="42" cy="60" r="37" fill="none" stroke="#FFFFFF" stroke-width="16" />
+    </g>
+  </g>
+
+  <!-- ================= 2. ORANGE TILE: Tenedor ================= -->
+  <g filter="url(#tile-shadow)">
+    <rect x="230" y="15" width="190" height="170" rx="26" fill="url(#orange-tile)" />
+    <rect x="230" y="15" width="190" height="170" rx="26" fill="url(#tile-gloss)" />
+
+    <!-- Fork 4 tines & body -->
+    <g transform="translate(297, 40)">
+      <rect x="5" y="4" width="6.5" height="64" rx="3" fill="#FFFFFF" />
+      <rect x="21" y="4" width="6.5" height="64" rx="3" fill="#FFFFFF" />
+      <rect x="37" y="4" width="6.5" height="64" rx="3" fill="#FFFFFF" />
+      <rect x="53" y="4" width="6.5" height="64" rx="3" fill="#FFFFFF" />
+      <path d="M5 45 C5 72, 60 72, 60 45 L60 66 C60 88, 39 92, 33 92 L31 92 C25 92, 5 88, 5 66 Z" fill="#FFFFFF" />
+      <rect x="28" y="90" width="9" height="34" rx="4" fill="#FFFFFF" />
+    </g>
+  </g>
+
+  <!-- ================= 3. MAGENTA TILE: Cuchillo ================= -->
+  <g filter="url(#tile-shadow)">
+    <rect x="450" y="15" width="190" height="170" rx="26" fill="url(#magenta-tile)" />
+    <rect x="450" y="15" width="190" height="170" rx="26" fill="url(#tile-gloss)" />
+
+    <!-- Knife blade & handle -->
+    <g transform="translate(528, 35)">
+      <path d="M22 6 C22 6, 18 60, 2 100 L32 100 C34 100, 34 92, 34 82 L34 6 Z" fill="#FFFFFF" />
+      <rect x="20" y="100" width="13" height="30" rx="3" fill="#FFFFFF" />
+    </g>
+  </g>
+
+  <!-- ================= 4. GREEN TILE: Copa de vino ================= -->
+  <g filter="url(#tile-shadow)">
+    <rect x="670" y="15" width="190" height="170" rx="26" fill="url(#green-tile)" />
+    <rect x="670" y="15" width="190" height="170" rx="26" fill="url(#tile-gloss)" />
+
+    <!-- Wine Glass -->
+    <g transform="translate(712, 42)">
+      <!-- Cup Bowl -->
+      <path d="M9 8 L97 8 C99 44, 94 82, 57 86 L49 86 C12 82, 7 44, 9 8 Z" fill="#FFFFFF" />
+      <!-- Stem -->
+      <rect x="49" y="86" width="8" height="36" fill="#FFFFFF" />
+      <!-- Base -->
+      <ellipse cx="53" cy="124" rx="34" ry="4.5" fill="#FFFFFF" />
+    </g>
+  </g>
+
+  <!-- ================= TYPOGRAPHY ================= -->
+
+  <!-- Top Line: "Asociación Cultural Gastronómica" -->
+  <g transform="translate(230, 245)">
+    <!-- A sociación -->
+    <text x="0" y="0" font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', sans-serif" font-size="56" font-weight="900" fill="#FFA400">A</text>
+    <text x="44" y="0" font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', sans-serif" font-size="46" font-weight="400" fill="#231F20">sociación</text>
+
+    <!-- C ultural -->
+    <text x="252" y="0" font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', sans-serif" font-size="56" font-weight="900" fill="#EB1C85">C</text>
+    <text x="294" y="0" font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', sans-serif" font-size="46" font-weight="400" fill="#231F20">ultural</text>
+
+    <!-- G astronómica -->
+    <text x="450" y="0" font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', sans-serif" font-size="56" font-weight="900" fill="#5EAA2B">G</text>
+    <text x="498" y="0" font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', sans-serif" font-size="46" font-weight="400" fill="#231F20">astronómica</text>
+  </g>
+
+  <!-- Middle Line: "erenjena - BOLAÑOS" (joins "dña. b" from blue tile) -->
+  <g transform="translate(222, 335)">
+    <text
+      x="0"
+      y="0"
+      font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', sans-serif"
+      font-size="78"
+      font-weight="900"
+      fill="#009FE3"
+      letter-spacing="-1.5"
+    >
+      erenjena
+    </text>
+    <text
+      x="368"
+      y="0"
+      font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', sans-serif"
+      font-size="78"
+      font-weight="900"
+      fill="#008752"
+      letter-spacing="0.5"
+    >
+      - BOLAÑOS
+    </text>
+  </g>
+
+  <!-- Bottom Line: Email -->
+  <g transform="translate(225, 400)">
+    <text
+      x="0"
+      y="0"
+      font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', sans-serif"
+      font-size="34"
+      font-weight="300"
+      fill="#3A3836"
+      letter-spacing="1"
+    >
+      donaberenjena@gmail.com
+    </text>
+  </g>
+</svg>

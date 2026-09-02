@@ -36,9 +36,14 @@ export const HomePage: React.FC = () => {
         </div>
 
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-32 flex flex-col items-start justify-center">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#521849]/70 border border-[#842A76]/50 text-xs font-semibold text-[#EDE4D7] mb-6 backdrop-blur-xs">
-            <Sparkles className="w-3.5 h-3.5 text-[#C96043]" />
-            <span>Asociación Cultural y Gastronómica de Bolaños de Calatrava</span>
+          <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-[#521849]/70 border border-[#842A76]/50 text-xs font-semibold text-[#EDE4D7] mb-6 backdrop-blur-xs">
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-xs bg-[#00B5E8]" title="Cuchara" />
+              <span className="w-2 h-2 rounded-xs bg-[#FFA000]" title="Tenedor" />
+              <span className="w-2 h-2 rounded-xs bg-[#E91E83]" title="Cuchillo" />
+              <span className="w-2 h-2 rounded-xs bg-[#8BC34A]" title="Copa" />
+            </div>
+            <span>Asociación Cultural y Gastronómica • Bolaños de Calatrava</span>
           </div>
 
           <h1 className="text-3xl sm:text-5xl lg:text-6xl font-bold font-serif text-white tracking-tight leading-tight max-w-3xl">

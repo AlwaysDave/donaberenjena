@@ -209,8 +209,11 @@ export const ContactoPage: React.FC = () => {
               <div className="flex items-center gap-3">
                 <Mail className="w-5 h-5 text-[#521849] shrink-0" />
                 <div>
-                  <strong className="block text-[#26201D]">Correo de Secretaría:</strong>
-                  <a href="mailto:secretaria@donaberenjena.es" className="hover:text-[#521849]">secretaria@donaberenjena.es</a>
+                  <strong className="block text-[#26201D]">Correos Electrónicos:</strong>
+                  <div className="flex flex-col gap-0.5">
+                    <a href="mailto:donaberenjena@gmail.com" className="hover:text-[#521849] font-medium">donaberenjena@gmail.com</a>
+                    <a href="mailto:secretaria@donaberenjena.es" className="hover:text-[#521849] text-xs text-[#574B45]">secretaria@donaberenjena.es</a>
+                  </div>
                 </div>
               </div>
             </div>

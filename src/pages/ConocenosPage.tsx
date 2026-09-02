@@ -1,4 +1,5 @@
 import React from 'react';
+import { Logo } from '../components/common/Logo';
 import { Wine, Users, Heart, BookOpen, Sparkles, Landmark, ChefHat, Compass, History, MapPin, Newspaper, ExternalLink } from 'lucide-react';
 
 export const ConocenosPage: React.FC = () => {
@@ -54,7 +55,20 @@ export const ConocenosPage: React.FC = () => {
         </div>
 
         <div className="lg:col-span-5 space-y-4">
-          <div className="aspect-4/3 rounded-3xl overflow-hidden shadow-md border border-[#EDE4D7]">
+          {/* Official Logo Card */}
+          <div className="p-6 rounded-3xl bg-white border border-[#EDE4D7] shadow-xs flex flex-col items-center text-center space-y-3">
+            <Logo className="w-full max-w-[320px] justify-center" />
+            <div className="pt-3 border-t border-[#EDE4D7] w-full text-center">
+              <span className="text-[11px] font-bold text-[#521849] uppercase tracking-wider">
+                Logotipo e Identidad Institucional
+              </span>
+              <p className="text-[11px] text-[#73635B] mt-0.5">
+                Cuchara, tenedor, cuchillo y copa: los cuatro pilares de nuestra asociación gastronómica.
+              </p>
+            </div>
+          </div>
+
+          <div className="aspect-16/10 rounded-3xl overflow-hidden shadow-xs border border-[#EDE4D7]">
             <img
               src="https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80"
               alt="Mesa compartida y cata en Doña Berenjena"
@@ -80,46 +94,62 @@ export const ConocenosPage: React.FC = () => {
             Nuestros Cuatro Pilares
           </h2>
           <p className="text-xs sm:text-sm text-[#73635B]">
-            Los principios que han guiado a Doña Berenjena desde su fundación en 2013.
+            Los principios culinarios representados en las cuatro baldosas de nuestro logotipo oficial.
           </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="p-6 rounded-3xl bg-white border border-[#EDE4D7] space-y-3 shadow-2xs">
-            <div className="w-10 h-10 rounded-xl bg-[#521849]/10 text-[#521849] flex items-center justify-center">
+          {/* Pillar 1: Copa / Vino (Green) */}
+          <div className="p-6 rounded-3xl bg-white border border-[#EDE4D7] space-y-3 shadow-2xs hover:shadow-md transition-shadow">
+            <div className="w-11 h-11 rounded-2xl bg-[#43A047]/10 text-[#43A047] flex items-center justify-center">
               <Wine className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-[#26201D]">Catas y Divulgación</h3>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#43A047]" />
+              <h3 className="text-base font-bold text-[#26201D]">Catas y Divulgación</h3>
+            </div>
             <p className="text-xs text-[#574B45] leading-relaxed">
               Catas comentadas de vinos con D.O., aceites de oliva virgen extra, quesos artesanos y productos locales con fichas técnicas y rigor enológico.
             </p>
           </div>
 
-          <div className="p-6 rounded-3xl bg-white border border-[#EDE4D7] space-y-3 shadow-2xs">
-            <div className="w-10 h-10 rounded-xl bg-[#C96043]/10 text-[#C96043] flex items-center justify-center">
+          {/* Pillar 2: Tenedor / Cocina (Orange) */}
+          <div className="p-6 rounded-3xl bg-white border border-[#EDE4D7] space-y-3 shadow-2xs hover:shadow-md transition-shadow">
+            <div className="w-11 h-11 rounded-2xl bg-[#E65100]/10 text-[#E65100] flex items-center justify-center">
               <ChefHat className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-[#26201D]">Cursos de Cocina</h3>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#E65100]" />
+              <h3 className="text-base font-bold text-[#26201D]">Cursos de Cocina</h3>
+            </div>
             <p className="text-xs text-[#574B45] leading-relaxed">
               Talleres prácticos entre fogones, perfeccionamiento de técnicas, recuperación del recetario tradicional e intercambio culinario intergeneracional.
             </p>
           </div>
 
-          <div className="p-6 rounded-3xl bg-white border border-[#EDE4D7] space-y-3 shadow-2xs">
-            <div className="w-10 h-10 rounded-xl bg-[#4D6233]/10 text-[#4D6233] flex items-center justify-center">
+          {/* Pillar 3: Cuchillo / Gastronomía (Magenta) */}
+          <div className="p-6 rounded-3xl bg-white border border-[#EDE4D7] space-y-3 shadow-2xs hover:shadow-md transition-shadow">
+            <div className="w-11 h-11 rounded-2xl bg-[#E91E83]/10 text-[#E91E83] flex items-center justify-center">
               <Compass className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-[#26201D]">Viajes y Rutas</h3>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#E91E83]" />
+              <h3 className="text-base font-bold text-[#26201D]">Viajes y Rutas</h3>
+            </div>
             <p className="text-xs text-[#574B45] leading-relaxed">
               Experiencias enológicas y gastronómicas en origen: visitas a bodegas singulares, almazaras históricas y zonas de producción protegida.
             </p>
           </div>
 
-          <div className="p-6 rounded-3xl bg-white border border-[#EDE4D7] space-y-3 shadow-2xs">
-            <div className="w-10 h-10 rounded-xl bg-[#521849]/10 text-[#521849] flex items-center justify-center">
+          {/* Pillar 4: Cuchara / Producto Local (Cyan / dña. b) */}
+          <div className="p-6 rounded-3xl bg-white border border-[#EDE4D7] space-y-3 shadow-2xs hover:shadow-md transition-shadow">
+            <div className="w-11 h-11 rounded-2xl bg-[#0077C8]/10 text-[#0077C8] flex items-center justify-center">
               <Sparkles className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-[#26201D]">Producto Local</h3>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#0077C8]" />
+              <h3 className="text-base font-bold text-[#26201D]">Producto Local</h3>
+            </div>
             <p className="text-xs text-[#574B45] leading-relaxed">
               Puesta en valor de la IGP Berenjena de Almagro y los sellos de calidad del Campo de Calatrava, en colaboración con productores y ferias locales.
             </p>

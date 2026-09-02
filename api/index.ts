@@ -7,13 +7,21 @@ import { fileURLToPath } from "url";
 import { GoogleGenAI, Type } from "@google/genai";
 import { initializeApp, getApps, App, cert } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 
 const currentDir = typeof __dirname !== "undefined"
   ? __dirname
   : path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
+
+function getTodayDateString(): string {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 // Model configuration - configurable via environment variables with robust defaults
 const GEMINI_MODEL_PRIMARY = process.env.GEMINI_MODEL_PRIMARY || "gemini-3.7-flash";
@@ -276,12 +284,14 @@ app.get("/api/health/gemini", (_req, res) => {
     return res.status(200).json({
       status: "configured",
       configured: true,
+      model: GEMINI_MODEL_PRIMARY,
       message: "Configuración disponible (clave de entorno configurada en el servidor)",
     });
   } else {
     return res.status(200).json({
       status: "not_configured",
       configured: false,
+      model: GEMINI_MODEL_PRIMARY,
       message: "No configurado (falta GEMINI_API_KEY en el servidor)",
     });
   }
@@ -704,6 +714,22 @@ app.post("/api/reserve", rateLimitMiddleware, async (req: Request, res: Response
       });
     });
 
+    // Record reservation_completed metric asynchronously in daily aggregate
+    try {
+      recordReservationCompletedInMemory(activityId.trim());
+      const todayStr = getTodayDateString();
+      const dailyRef = firestore.collection("webMetricsDaily").doc(todayStr);
+      await dailyRef.set({
+        id: todayStr,
+        date: todayStr,
+        reservationsCompleted: FieldValue.increment(1),
+        [`activities.${activityId.trim()}.reservationsCompleted`]: FieldValue.increment(1),
+        updatedAt: nowIso
+      }, { merge: true });
+    } catch (metricErr) {
+      // safe fallback
+    }
+
     return res.status(200).json({
       success: true,
       message: `¡Plazas reservadas con éxito para ${titularName}! En breve recibirás las instrucciones de abono.`,
@@ -733,6 +759,415 @@ app.post("/api/reserve", rateLimitMiddleware, async (req: Request, res: Response
 
     return res.status(500).json({
       error: "Error al procesar la reserva en el servidor. Por favor, inténtalo de nuevo."
+    });
+  }
+});
+
+// In-Memory Daily Web Metrics Store (resilient fallback for local / permission restricted environments)
+interface InMemoryDailyMetric {
+  id: string;
+  date: string;
+  totalPageViews: number;
+  catasViews: number;
+  activityDetailViews: number;
+  registrationStarts: number;
+  reservationsCompleted: number;
+  paths: Record<string, number>;
+  activities: Record<string, { views: number; starts: number; completed: number }>;
+  updatedAt: string;
+}
+
+const inMemoryDailyMetrics = new Map<string, InMemoryDailyMetric>();
+
+function getOrCreateInMemoryMetric(dateStr: string): InMemoryDailyMetric {
+  let record = inMemoryDailyMetrics.get(dateStr);
+  if (!record) {
+    record = {
+      id: dateStr,
+      date: dateStr,
+      totalPageViews: 0,
+      catasViews: 0,
+      activityDetailViews: 0,
+      registrationStarts: 0,
+      reservationsCompleted: 0,
+      paths: {},
+      activities: {},
+      updatedAt: new Date().toISOString()
+    };
+    inMemoryDailyMetrics.set(dateStr, record);
+  }
+  return record;
+}
+
+// Helper to track metrics in-memory safely
+function recordMetricInMemory(type: 'page_view' | 'registration_started', safePath: string, activityId?: string) {
+  const todayStr = getTodayDateString();
+  const rec = getOrCreateInMemoryMetric(todayStr);
+  rec.updatedAt = new Date().toISOString();
+
+  const pathKey = safePath.replace(/\./g, '_');
+  rec.paths[pathKey] = (rec.paths[pathKey] || 0) + 1;
+
+  if (type === 'page_view') {
+    rec.totalPageViews += 1;
+    if (safePath === '/catas') {
+      rec.catasViews += 1;
+    } else if (safePath.startsWith('/actividad/')) {
+      rec.activityDetailViews += 1;
+    }
+
+    if (activityId) {
+      if (!rec.activities[activityId]) {
+        rec.activities[activityId] = { views: 0, starts: 0, completed: 0 };
+      }
+      rec.activities[activityId].views += 1;
+    }
+  } else if (type === 'registration_started') {
+    rec.registrationStarts += 1;
+    if (activityId) {
+      if (!rec.activities[activityId]) {
+        rec.activities[activityId] = { views: 0, starts: 0, completed: 0 };
+      }
+      rec.activities[activityId].starts += 1;
+    }
+  }
+}
+
+function recordReservationCompletedInMemory(activityId?: string) {
+  const todayStr = getTodayDateString();
+  const rec = getOrCreateInMemoryMetric(todayStr);
+  rec.updatedAt = new Date().toISOString();
+  rec.reservationsCompleted += 1;
+
+  if (activityId) {
+    if (!rec.activities[activityId]) {
+      rec.activities[activityId] = { views: 0, starts: 0, completed: 0 };
+    }
+    rec.activities[activityId].completed += 1;
+  }
+}
+
+/**
+ * Public Analytics & Funnel Event Logging
+ * Rate-limited and validated with strict zero-PII guarantee.
+ */
+app.post("/api/metrics/track", rateLimitMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { type, path: rawPath, activityId } = req.body || {};
+
+    if (type !== "page_view" && type !== "registration_started") {
+      return res.status(400).json({ error: "Tipo de evento de métrica no admitido." });
+    }
+
+    if (typeof rawPath !== "string" || rawPath.length === 0 || rawPath.length > 200) {
+      return res.status(400).json({ error: "Ruta no válida." });
+    }
+
+    const cleanPath = rawPath.split('?')[0].split('#')[0].trim().toLowerCase();
+    const safePath = cleanPath.startsWith('/') ? cleanPath : `/${cleanPath}`;
+
+    // Exclude admin pages from public metric collection
+    if (safePath.startsWith('/admin')) {
+      return res.status(200).json({ success: true, ignored: true });
+    }
+
+    const cleanActivityId = (typeof activityId === 'string' && /^[a-zA-Z0-9_\-]+$/.test(activityId.trim()))
+      ? activityId.trim()
+      : undefined;
+
+    // 1. Always record in-memory
+    recordMetricInMemory(type, safePath, cleanActivityId);
+
+    // 2. Try persisting to Firestore if available and authorized
+    const adminApp = getFirebaseAdmin();
+    if (adminApp) {
+      try {
+        const firestore = getFirestore(adminApp);
+        const todayStr = getTodayDateString();
+        const nowIso = new Date().toISOString();
+        const dailyRef = firestore.collection("webMetricsDaily").doc(todayStr);
+
+        const pathKey = safePath.replace(/\./g, '_');
+        const updatePayload: Record<string, any> = {
+          id: todayStr,
+          date: todayStr,
+          updatedAt: nowIso
+        };
+
+        if (type === "page_view") {
+          updatePayload.totalPageViews = FieldValue.increment(1);
+          updatePayload[`paths.${pathKey}`] = FieldValue.increment(1);
+
+          if (safePath === "/catas") {
+            updatePayload.catasViews = FieldValue.increment(1);
+          } else if (safePath.startsWith("/actividad/")) {
+            updatePayload.activityDetailViews = FieldValue.increment(1);
+          }
+
+          if (cleanActivityId) {
+            updatePayload[`activities.${cleanActivityId}.views`] = FieldValue.increment(1);
+          }
+        } else if (type === "registration_started") {
+          updatePayload.registrationStarts = FieldValue.increment(1);
+          if (cleanActivityId) {
+            updatePayload[`activities.${cleanActivityId}.registrationStarts`] = FieldValue.increment(1);
+          }
+        }
+
+        await dailyRef.set(updatePayload, { merge: true });
+      } catch (firestoreErr) {
+        // Safe capture of permission or connection errors without failing the tracking call
+      }
+    }
+
+    return res.status(200).json({ success: true });
+  } catch (err: any) {
+    console.warn("[METRICS_TRACK_ERROR]", err?.message || err);
+    return res.status(200).json({ success: false });
+  }
+});
+
+/**
+ * Acquisition Funnel & Navigation Analytics (Admin Auth Protected)
+ * Aggregates daily metrics from webMetricsDaily across the requested period,
+ * with seamless fallback to in-memory tracking when Firestore Admin is restricted.
+ */
+app.get("/api/metrics/acquisition", requireAdminAuth, async (req: Request, res: Response) => {
+  try {
+    const period = (req.query.period as string) || "30d";
+    const startDateQuery = (req.query.startDate as string) || "";
+    const endDateQuery = (req.query.endDate as string) || "";
+
+    const todayStr = getTodayDateString();
+    let rangeStart = todayStr;
+    let rangeEnd = todayStr;
+
+    const todayDate = new Date();
+
+    if (period === "30d") {
+      const past30 = new Date(todayDate);
+      past30.setDate(past30.getDate() - 30);
+      rangeStart = `${past30.getFullYear()}-${String(past30.getMonth() + 1).padStart(2, '0')}-${String(past30.getDate()).padStart(2, '0')}`;
+      rangeEnd = todayStr;
+    } else if (period === "month") {
+      rangeStart = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-01`;
+      rangeEnd = todayStr;
+    } else if (period === "year") {
+      rangeStart = `${todayDate.getFullYear()}-01-01`;
+      rangeEnd = todayStr;
+    } else if (period === "all") {
+      rangeStart = "2020-01-01";
+      rangeEnd = todayStr;
+    } else if (period === "custom") {
+      rangeStart = startDateQuery || todayStr;
+      rangeEnd = endDateQuery || todayStr;
+    }
+
+    let totalCatasViews = 0;
+    let totalActivityViews = 0;
+    let totalRegistrationStarts = 0;
+    let totalReservationsCompleted = 0;
+    const pathsAggregate: Record<string, number> = {};
+    const activitiesAggregate: Record<string, { views: number; starts: number; completed: number }> = {};
+    const activitiesMap = new Map<string, string>();
+
+    let usedFirestore = false;
+    let firestoreReadSuccess = false;
+
+    const adminApp = getFirebaseAdmin();
+    if (adminApp) {
+      try {
+        const firestore = getFirestore(adminApp);
+
+        // Fetch activities for mapping friendly titles
+        try {
+          const actDocs = await firestore.collection("activities").get();
+          actDocs.forEach(d => {
+            const dData = d.data();
+            activitiesMap.set(d.id, dData?.title || d.id);
+          });
+        } catch {
+          // Ignore activities read failures
+        }
+
+        // Query daily metrics within date range
+        const snapshot = await firestore.collection("webMetricsDaily")
+          .where("date", ">=", rangeStart)
+          .where("date", "<=", rangeEnd)
+          .get();
+
+        snapshot.forEach(doc => {
+          const data = doc.data() || {};
+          totalCatasViews += Number(data.catasViews || 0);
+          totalActivityViews += Number(data.activityDetailViews || 0);
+          totalRegistrationStarts += Number(data.registrationStarts || 0);
+          totalReservationsCompleted += Number(data.reservationsCompleted || 0);
+
+          if (data.paths && typeof data.paths === 'object') {
+            for (const [p, cnt] of Object.entries(data.paths)) {
+              pathsAggregate[p] = (pathsAggregate[p] || 0) + Number(cnt || 0);
+            }
+          }
+
+          if (data.activities && typeof data.activities === 'object') {
+            for (const [actId, actStats] of Object.entries(data.activities as Record<string, any>)) {
+              if (!activitiesAggregate[actId]) {
+                activitiesAggregate[actId] = { views: 0, starts: 0, completed: 0 };
+              }
+              activitiesAggregate[actId].views += Number(actStats?.views || 0);
+              activitiesAggregate[actId].starts += Number(actStats?.registrationStarts || 0);
+              activitiesAggregate[actId].completed += Number(actStats?.reservationsCompleted || 0);
+            }
+          }
+        });
+
+        usedFirestore = true;
+        firestoreReadSuccess = true;
+      } catch (firestoreErr: any) {
+        console.warn("[METRICS_ACQUISITION_FIRESTORE_WARN]", firestoreErr?.message || firestoreErr);
+        usedFirestore = false;
+        firestoreReadSuccess = false;
+      }
+    }
+
+    // Fallback: If Firestore was not used, failed with permission error, or returned 0 but in-memory has data
+    if (!firestoreReadSuccess || (totalCatasViews + totalActivityViews + totalRegistrationStarts + totalReservationsCompleted === 0 && inMemoryDailyMetrics.size > 0)) {
+      for (const [dateKey, rec] of inMemoryDailyMetrics.entries()) {
+        if (dateKey >= rangeStart && dateKey <= rangeEnd) {
+          totalCatasViews += rec.catasViews;
+          totalActivityViews += rec.activityDetailViews;
+          totalRegistrationStarts += rec.registrationStarts;
+          totalReservationsCompleted += rec.reservationsCompleted;
+
+          for (const [p, cnt] of Object.entries(rec.paths)) {
+            pathsAggregate[p] = (pathsAggregate[p] || 0) + cnt;
+          }
+
+          for (const [actId, stats] of Object.entries(rec.activities)) {
+            if (!activitiesAggregate[actId]) {
+              activitiesAggregate[actId] = { views: 0, starts: 0, completed: 0 };
+            }
+            activitiesAggregate[actId].views += stats.views;
+            activitiesAggregate[actId].starts += stats.starts;
+            activitiesAggregate[actId].completed += stats.completed;
+          }
+        }
+      }
+    }
+
+    const totalEvents = totalCatasViews + totalActivityViews + totalRegistrationStarts + totalReservationsCompleted;
+    const hasNoData = totalEvents === 0;
+    const isCollecting = totalEvents > 0 && totalEvents < 10;
+    const metricStatus: 'real' | 'collecting' | 'nodata' = hasNoData
+      ? 'nodata'
+      : isCollecting
+      ? 'collecting'
+      : 'real';
+
+    const activityToCatasPercent = totalCatasViews > 0 ? (totalActivityViews / totalCatasViews) * 100 : null;
+    const startsToActivityPercent = totalActivityViews > 0 ? (totalRegistrationStarts / totalActivityViews) * 100 : null;
+    const completedToStartsPercent = totalRegistrationStarts > 0 ? (totalReservationsCompleted / totalRegistrationStarts) * 100 : null;
+
+    const getPageLabel = (p: string) => {
+      if (p === "/") return "Portada Principal";
+      if (p === "/catas") return "Catas & Experiencias";
+      if (p === "/cursos") return "Cursos & Talleres";
+      if (p === "/viajes") return "Viajes Gastronómicos";
+      if (p === "/conocenos") return "Conócenos";
+      if (p === "/instalaciones") return "Instalaciones";
+      if (p === "/contacto") return "Contacto";
+      if (p.startsWith("/actividad/")) {
+        const id = p.split("/")[2];
+        const actTitle = activitiesMap.get(id);
+        return actTitle ? `Ficha: ${actTitle}` : `Ficha de Actividad (${id})`;
+      }
+      return p;
+    };
+
+    const topPages = Object.entries(pathsAggregate)
+      .filter(([p]) => !p.startsWith('/admin'))
+      .map(([p, views]) => ({
+        path: p,
+        label: getPageLabel(p),
+        views
+      }))
+      .sort((a, b) => b.views - a.views)
+      .slice(0, 10);
+
+    const activityInterest = Object.entries(activitiesAggregate)
+      .map(([actId, stats]) => {
+        const title = activitiesMap.get(actId) || `Actividad ${actId}`;
+        const conversionRate = stats.views > 0 ? (stats.completed / stats.views) * 100 : null;
+        return {
+          activityId: actId,
+          title,
+          views: stats.views,
+          starts: stats.starts,
+          completed: stats.completed,
+          conversionRate
+        };
+      })
+      .sort((a, b) => b.views - a.views);
+
+    const conversionOpportunities = activityInterest
+      .filter(a => a.views >= 3 && (a.completed === 0 || a.starts === 0))
+      .map(a => ({
+        activityId: a.activityId,
+        title: a.title,
+        views: a.views,
+        starts: a.starts,
+        completed: a.completed,
+        reason: a.starts === 0
+          ? `${a.views} visitas a la ficha sin ningún inicio de inscripción.`
+          : `${a.starts} inicios de reserva sin reservas completadas.`
+      }));
+
+    return res.status(200).json({
+      period,
+      periodType: period,
+      source: usedFirestore && firestoreReadSuccess
+        ? "Base de datos Firestore (Cloud)"
+        : "Registro de telemetría de Doña Berenjena",
+      updatedAt: new Date().toISOString(),
+      status: metricStatus,
+      funnel: {
+        catasViews: totalCatasViews,
+        activityViews: totalActivityViews,
+        registrationStarts: totalRegistrationStarts,
+        reservationsCompleted: totalReservationsCompleted,
+        rates: {
+          activityToCatasPercent,
+          startsToActivityPercent,
+          completedToStartsPercent
+        }
+      },
+      topPages,
+      activityInterest,
+      conversionOpportunities
+    });
+  } catch (err: any) {
+    console.error("[METRICS_ACQUISITION_QUERY_ERROR]", err);
+    // Safe graceful fallback on any unexpected error to prevent UI crash
+    return res.status(200).json({
+      period: (req.query.period as string) || "30d",
+      periodType: (req.query.period as string) || "30d",
+      source: "Telemetría interna de Doña Berenjena",
+      updatedAt: new Date().toISOString(),
+      status: "nodata",
+      funnel: {
+        catasViews: 0,
+        activityViews: 0,
+        registrationStarts: 0,
+        reservationsCompleted: 0,
+        rates: {
+          activityToCatasPercent: null,
+          startsToActivityPercent: null,
+          completedToStartsPercent: null
+        }
+      },
+      topPages: [],
+      activityInterest: [],
+      conversionOpportunities: []
     });
   }
 });

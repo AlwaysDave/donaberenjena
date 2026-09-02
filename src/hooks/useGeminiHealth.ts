@@ -1,65 +1,85 @@
 import { useState, useEffect, useRef } from 'react';
 
-export function useGeminiHealth() {
-  const [status, setStatus] = useState<'checking' | 'ok' | 'error'>('checking');
+export type GeminiHealthStatus = 'checking' | 'configured' | 'not_configured' | 'error';
+
+export interface GeminiHealthInfo {
+  status: GeminiHealthStatus;
+  latency: number | null;
+  lastChecked: Date | null;
+  errorMsg: string | null;
+  message: string | null;
+  recheck: () => Promise<void>;
+}
+
+export function useGeminiHealth(): GeminiHealthInfo {
+  const [status, setStatus] = useState<GeminiHealthStatus>('checking');
   const [latency, setLatency] = useState<number | null>(null);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   const isCheckingRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    let mounted = true;
-    let intervalId: NodeJS.Timeout | null = null;
+  const checkHealth = async () => {
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+      return;
+    }
+    if (isCheckingRef.current) {
+      return;
+    }
 
-    const checkHealth = async () => {
-      // Don't run if tab is hidden, if component is unmounted, or if a check is already in-flight
-      if (!mounted || document.visibilityState !== 'visible' || isCheckingRef.current) {
-        return;
-      }
+    isCheckingRef.current = true;
+    setStatus('checking');
 
-      isCheckingRef.current = true;
-      setStatus('checking');
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
-      // Abort previous pending request if any
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
+    const start = performance.now();
+    try {
+      const res = await fetch('/api/health/gemini', {
+        signal: controller.signal
+      });
 
-      const start = performance.now();
-      try {
-        const res = await fetch('/api/health/gemini', {
-          signal: controller.signal
-        });
+      const end = performance.now();
+      setLatency(Math.round(end - start));
+      setLastChecked(new Date());
 
-        if (!mounted) return;
-        const end = performance.now();
-        setLatency(Math.round(end - start));
-        setLastChecked(new Date());
-
-        if (res.ok) {
-          setStatus('ok');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.configured || data.status === 'configured') {
+          setStatus('configured');
+          setMessage(data.message || 'Configuración disponible (clave de entorno configurada en el servidor)');
           setErrorMsg(null);
         } else {
-          setStatus('error');
-          setErrorMsg(`Error HTTP ${res.status}`);
+          setStatus('not_configured');
+          setMessage(data.message || 'No configurado (falta GEMINI_API_KEY en el servidor)');
+          setErrorMsg(null);
         }
-      } catch (err: any) {
-        if (!mounted) return;
-        if (err.name === 'AbortError') {
-          return;
-        }
+      } else {
         setStatus('error');
-        setErrorMsg(err.message || 'Error de red');
-      } finally {
-        if (mounted) {
-          isCheckingRef.current = false;
-        }
+        setErrorMsg(`Error HTTP ${res.status}`);
+        setMessage(null);
       }
-    };
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        return;
+      }
+      setStatus('error');
+      setErrorMsg(err.message || 'Error de conexión');
+      setMessage(null);
+    } finally {
+      isCheckingRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+
+    checkHealth();
 
     const startInterval = () => {
       if (intervalId) clearInterval(intervalId);
@@ -71,11 +91,6 @@ export function useGeminiHealth() {
         clearInterval(intervalId);
         intervalId = null;
       }
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
-      }
-      isCheckingRef.current = false;
     };
 
     const handleVisibilityChange = () => {
@@ -87,21 +102,24 @@ export function useGeminiHealth() {
       }
     };
 
-    // Initial check and interval startup if visible
-    if (document.visibilityState === 'visible') {
-      checkHealth();
-      startInterval();
-    }
-
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    startInterval();
 
     return () => {
-      mounted = false;
-      stopInterval();
+      if (intervalId) clearInterval(intervalId);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
     };
   }, []);
 
-  return { status, latency, lastChecked, errorMsg };
+  return {
+    status,
+    latency,
+    lastChecked,
+    errorMsg,
+    message,
+    recheck: checkHealth
+  };
 }
-

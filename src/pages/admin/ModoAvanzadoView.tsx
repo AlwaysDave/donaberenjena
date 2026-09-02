@@ -651,7 +651,7 @@ export const ModoAvanzadoView: React.FC = () => {
           }`}
         >
           <BarChart3 className="w-4 h-4" />
-          <span>Métricas de Visitas y Reservas</span>
+          <span>Panel Admin IT</span>
         </button>
 
         <button
@@ -962,7 +962,7 @@ export const ModoAvanzadoView: React.FC = () => {
       
       {/* Tab: Metricas */}
       {activeTab === 'metricas' && (
-        <ITMetricsDashboard />
+        <ITMetricsDashboard onNavigateTab={(tab) => setActiveTab(tab as any)} />
       )}
 
       {/* Tab 7: Cuentas */}

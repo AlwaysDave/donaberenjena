@@ -8,6 +8,7 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_MESSAGING_SENDER_ID: string;
   readonly VITE_FIREBASE_APP_ID: string;
   readonly VITE_FIREBASE_MEASUREMENT_ID?: string;
+  readonly VITE_GA_MEASUREMENT_ID?: string;
 }
 
 interface ImportMeta {
@@ -17,4 +18,5 @@ interface ImportMeta {
 declare const __APP_VERSION__: string;
 declare const __BUILD_INFO__: {
   environment: string;
+  buildDate?: string;
 };

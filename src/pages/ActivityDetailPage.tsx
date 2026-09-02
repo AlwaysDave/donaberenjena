@@ -27,11 +27,12 @@ import {
 } from 'lucide-react';
 
 import { formatDisplayDate } from '../utils/dateUtils';
+import { trackGAViewItem } from '../utils/googleAnalytics';
 
 export const ActivityDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { getActivityById, incrementViews } = useData();
+  const { getActivityById } = useData();
   
   const [copied, setCopied] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -39,11 +40,21 @@ export const ActivityDetailPage: React.FC = () => {
   const activity = id ? getActivityById(id) : undefined;
 
   useEffect(() => {
-    if (id) {
-      incrementViews(id);
-    }
     window.scrollTo(0, 0);
   }, [id]);
+
+  // Track GA4 view_item event when viewing activity details
+  useEffect(() => {
+    if (activity) {
+      trackGAViewItem({
+        id: activity.id,
+        title: activity.title,
+        type: activity.type,
+        priceNonMember: activity.priceNonMember,
+        priceMember: activity.priceMember
+      });
+    }
+  }, [activity?.id]);
 
   if (!activity) {
     return (

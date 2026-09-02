@@ -146,6 +146,62 @@ export interface WebMetric {
   }>;
 }
 
+export type MetricDataState = 'real' | 'collecting' | 'nodata' | 'error' | 'demo';
+export type MetricPeriodType = '30d' | 'month' | 'year' | 'all' | 'custom';
+
+export interface AcquisitionMetrics {
+  period: string;
+  periodType: MetricPeriodType;
+  source: string;
+  updatedAt: string;
+  status: MetricDataState;
+  funnel: {
+    catasViews: number;
+    activityViews: number;
+    registrationStarts: number;
+    reservationsCompleted: number;
+    rates: {
+      activityToCatasPercent: number | null;     // (activityViews / catasViews) * 100
+      startsToActivityPercent: number | null;     // (registrationStarts / activityViews) * 100
+      completedToStartsPercent: number | null;    // (reservationsCompleted / registrationStarts) * 100
+    };
+  };
+  topPages: Array<{ path: string; label: string; views: number }>;
+  activityInterest: Array<{
+    activityId: string;
+    title: string;
+    views: number;
+    starts: number;
+    completed: number;
+    conversionRate: number | null;                // (completed / views) * 100
+  }>;
+  conversionOpportunities: Array<{
+    activityId: string;
+    title: string;
+    views: number;
+    starts: number;
+    completed: number;
+    reason: string;
+  }>;
+}
+
+export interface WebMetricDailyDoc {
+  id: string; // "YYYY-MM-DD"
+  date: string; // "YYYY-MM-DD"
+  totalPageViews: number;
+  catasViews: number;
+  activityDetailViews: number;
+  registrationStarts: number;
+  reservationsCompleted: number;
+  paths?: Record<string, number>;
+  activities?: Record<string, {
+    views?: number;
+    registrationStarts?: number;
+    reservationsCompleted?: number;
+  }>;
+  updatedAt: string;
+}
+
 export interface ReservationAttendee {
   fullName: string;
   isMember: boolean;

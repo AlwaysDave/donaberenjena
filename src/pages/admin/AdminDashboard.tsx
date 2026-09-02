@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
+import { Logo } from '../../components/common/Logo';
 import { ModoSencilloView } from './ModoSencilloView';
 import { ModoAvanzadoView } from './ModoAvanzadoView';
 import { AdminNotificationsCenter } from '../../components/admin/AdminNotificationsCenter';
@@ -53,9 +54,9 @@ export const AdminDashboard: React.FC = () => {
       <div className="bg-[#290824] text-white border-b border-[#3E1037] px-4 sm:px-6 lg:px-8 py-4">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#521849] flex items-center justify-center text-white shadow-xs">
-              <Shield className="w-5 h-5" />
-            </div>
+            <Link to="/" title="Ir a la web pública" className="shrink-0 hover:opacity-90 transition-opacity">
+              <Logo variant="boxed" className="h-9 w-auto" />
+            </Link>
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-bold text-sm tracking-tight">Doña Berenjena</span>
@@ -64,7 +65,7 @@ export const AdminDashboard: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs text-[#DFD3C2]">
-                Inición sesiada como: <strong className="text-white">{user.name}</strong> ({user.email})
+                Sesión iniciada como: <strong className="text-white">{user.name}</strong> ({user.email})
               </p>
             </div>
           </div>

@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Activity, ReservationAttendee, ReservationFormData } from '../../types';
 import { useData } from '../../context/DataContext';
 import { Users, CreditCard, ShieldCheck, CheckCircle2, ChevronRight, HelpCircle, X, Sparkles, UserCheck, UserPlus } from 'lucide-react';
+import { trackRegistrationStarted } from '../../utils/analyticsTracker';
+import { trackGASignUp, trackGAPurchase } from '../../utils/googleAnalytics';
 
 interface ReservationBlockProps {
   activity: Activity;
@@ -129,6 +131,16 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
     setIsSubmitting(false);
 
     if (result.success) {
+      // Dispatches GA4 purchase event strictly AFTER server confirmation with zero PII
+      trackGAPurchase({
+        transactionId: (result as any).reservationId || `res_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        activityId: activity.id,
+        activityTitle: activity.title,
+        activityType: activity.type,
+        spots: numSpots,
+        totalPrice: calculatedTotalPrice
+      });
+
       setStatusMessage({ type: 'success', text: result.message });
       setTimeout(() => {
         setIsModalOpen(false);
@@ -254,7 +266,11 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
           <button
             id="btn-waiting-list"
             type="button"
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+              trackRegistrationStarted(activity.id);
+              trackGASignUp({ id: activity.id, title: activity.title, type: activity.type });
+              setIsModalOpen(true);
+            }}
             className="w-full py-3.5 px-4 rounded-xl bg-[#EDE4D7] text-[#26201D] font-medium text-sm hover:bg-[#DFD3C2] transition-colors cursor-pointer text-center"
           >
             Apuntarse a lista de espera
@@ -263,7 +279,11 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
           <button
             id="btn-open-reservation-modal"
             type="button"
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+              trackRegistrationStarted(activity.id);
+              trackGASignUp({ id: activity.id, title: activity.title, type: activity.type });
+              setIsModalOpen(true);
+            }}
             className="w-full py-3.5 px-4 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white font-semibold text-sm tracking-wide transition-all duration-200 shadow-xs hover:shadow-md cursor-pointer flex items-center justify-center gap-2"
           >
             <span>Reservar plaza</span>

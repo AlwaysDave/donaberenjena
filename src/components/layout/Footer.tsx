@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { Logo } from '../common/Logo';
 import { Wine, MapPin, Mail, Phone, Clock, Heart, Shield, ArrowUpRight } from 'lucide-react';
 
 export const Footer: React.FC = () => {
@@ -9,19 +10,14 @@ export const Footer: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 pb-12 border-b border-[#3D3430]/80">
           {/* Column 1: Association Identity */}
           <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-[#521849] flex items-center justify-center text-white">
-                <Wine className="w-5 h-5" />
-              </div>
-              <span className="text-xl font-bold font-serif text-white">
-                Doña Berenjena
-              </span>
-            </div>
-            <p className="text-xs text-[#DFD3C2] leading-relaxed">
-              Asociación Gastronómica sin ánimo de lucro dedicada a la difusión del patrimonio culinario, la cultura vitivinícola y los viajes de terruño en España.
+            <Link to="/" className="inline-block hover:opacity-95 transition-opacity" title="Asociación Cultural Gastronómica Doña Berenjena">
+              <Logo variant="boxed" />
+            </Link>
+            <p className="text-xs text-[#DFD3C2] leading-relaxed pt-1">
+              Asociación Cultural y Gastronómica sin ánimo de lucro fundada en Bolaños de Calatrava (2013). Dedicada a la difusión del patrimonio culinario, la cultura vitivinícola y los productos autóctonos.
             </p>
             <div className="pt-2 text-xs text-[#DFD3C2]">
-              <p>Inscrita en el Registro Nacional de Asociaciones.</p>
+              <p>Inscrita en el Registro de Asociaciones.</p>
             </div>
           </div>
 
@@ -95,7 +91,7 @@ export const Footer: React.FC = () => {
               </li>
               <li className="flex items-center gap-2.5">
                 <Mail className="w-4 h-4 text-[#C96043] shrink-0" />
-                <a href="mailto:secretaria@donaberenjena.es" className="hover:text-white">secretaria@donaberenjena.es</a>
+                <a href="mailto:donaberenjena@gmail.com" className="hover:text-white">donaberenjena@gmail.com</a>
               </li>
             </ul>
           </div>
@@ -106,9 +102,20 @@ export const Footer: React.FC = () => {
           <p>
             © {new Date().getFullYear()} Asociación Gastronómica Doña Berenjena. Todos los derechos reservados.
           </p>
-          <div className="flex items-center gap-6">
+          <div className="flex flex-wrap items-center gap-6">
             <span>Aviso Legal</span>
             <span>Política de Privacidad</span>
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('dnb_open_cookie_settings'));
+                }
+              }}
+              className="text-[#DFD3C2] hover:text-[#C96043] transition-colors cursor-pointer underline underline-offset-2"
+            >
+              Preferencias de Cookies
+            </button>
             <Link to="/admin/login" className="text-[#C96043] hover:underline flex items-center gap-1">
               <span>Gestión Interna</span>
               <ArrowUpRight className="w-3 h-3" />

@@ -22,6 +22,7 @@ export default defineConfig(({mode}) => {
       __APP_VERSION__: JSON.stringify(`v${appVersion}`),
       __BUILD_INFO__: JSON.stringify({
         environment: process.env.VERCEL_ENV || 'local',
+        buildDate: new Date().toISOString(),
       })
     },
     resolve: {

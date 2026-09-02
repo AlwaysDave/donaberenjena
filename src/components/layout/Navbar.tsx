@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
+import { Logo } from '../common/Logo';
 import { 
   Menu, 
   X, 
@@ -85,15 +86,8 @@ export const Navbar: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             {/* Logo area */}
-            <Link to="/" className="flex items-center gap-3 group">
-              <div className="w-12 h-12 bg-[#290824] rounded-full flex items-center justify-center transition-transform group-hover:scale-105 shadow-xs shrink-0 relative overflow-hidden">
-                <span className="text-white text-xl font-serif italic relative z-10">dB</span>
-                <div className="absolute inset-0 bg-[#521849] opacity-0 group-hover:opacity-100 transition-opacity" />
-              </div>
-              <div className="hidden sm:flex flex-col">
-                <span className="font-serif font-bold text-xl sm:text-2xl text-[#26201D] leading-none tracking-tight">Doña Berenjena</span>
-                <span className="text-[10px] sm:text-xs text-[#521849] font-medium tracking-wide">ASOCIACIÓN GASTRONÓMICA</span>
-              </div>
+            <Link to="/" className="flex items-center group shrink-0 my-auto" aria-label="Inicio - Asociación Cultural Gastronómica Doña Berenjena">
+              <Logo variant="default" theme="light" />
             </Link>
 
             {/* Desktop Navigation */}

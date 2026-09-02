@@ -113,5 +113,13 @@ service cloud.firestore {
       allow create: if isValidContactMessage(request.resource.data);
       allow read, update, delete: if isAdmin();
     }
+
+    // =========================================================================
+    // 10. WEB METRICS DAILY (PRIVATE AGGREGATES - BACKEND ONLY)
+    // Direct client access is denied; aggregated reading is routed via /api/metrics/acquisition.
+    // =========================================================================
+    match /webMetricsDaily/{dailyDocId} {
+      allow read, write: if false;
+    }
   }
 }

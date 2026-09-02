@@ -1,9 +1,12 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
+import { trackPageView } from './utils/analyticsTracker';
+import { initGA4, trackGAPageView } from './utils/googleAnalytics';
+import { CookieConsentBanner } from './components/common/CookieConsentBanner';
 
 // Pages
 import { HomePage } from './pages/HomePage';
@@ -20,6 +23,27 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 const AppLayout: React.FC = () => {
   const location = useLocation();
   const isAdminDashboard = location.pathname.startsWith('/admin') && location.pathname !== '/admin/login';
+
+  // Initialize GA4 if consent was previously granted
+  useEffect(() => {
+    initGA4();
+  }, []);
+
+  // Automatically track public page views on route transitions in internal telemetry and GA4
+  useEffect(() => {
+    const path = location.pathname;
+    if (!path.startsWith('/admin')) {
+      let activityId: string | undefined;
+      if (path.startsWith('/actividad/')) {
+        activityId = path.split('/')[2];
+      }
+      // Internal telemetry (zero-PII)
+      trackPageView(path, activityId);
+
+      // GA4 page_view (zero-PII, fired ONLY if consent is granted)
+      trackGAPageView(location.pathname + location.search);
+    }
+  }, [location.pathname, location.search]);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FBF9F5] text-[#26201D]">
@@ -46,6 +70,9 @@ const AppLayout: React.FC = () => {
       </main>
 
       {!isAdminDashboard && <Footer />}
+
+      {/* Cookie Consent & Privacy Preference Management */}
+      <CookieConsentBanner />
     </div>
   );
 };

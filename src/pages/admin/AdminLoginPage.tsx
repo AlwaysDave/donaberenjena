@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { Shield, Lock, Mail, ArrowRight, AlertCircle } from 'lucide-react';
+import { Logo } from '../../components/common/Logo';
+import { Shield, Lock, Mail, ArrowRight, AlertCircle, ArrowLeft } from 'lucide-react';
 
 export const AdminLoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -29,19 +30,21 @@ export const AdminLoginPage: React.FC = () => {
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md bg-white rounded-3xl border border-[#EDE4D7] shadow-xl p-8 sm:p-10 space-y-8">
-        <div className="text-center space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-[#521849] text-white flex items-center justify-center mx-auto shadow-md">
-            <Shield className="w-6 h-6" />
+        <div className="text-center space-y-3">
+          <Link to="/" className="inline-block transition-transform hover:scale-105" title="Volver al inicio">
+            <Logo className="w-48 h-auto mx-auto justify-center" />
+          </Link>
+          <div>
+            <span className="text-[11px] uppercase tracking-widest font-bold text-[#521849]">
+              Gestión Interna
+            </span>
+            <h1 className="text-2xl font-bold font-serif text-[#26201D] mt-1">
+              Panel de Administración
+            </h1>
+            <p className="text-xs text-[#574B45] mt-1">
+              Acceso exclusivo para la Junta Directiva y Coordinadores de Doña Berenjena.
+            </p>
           </div>
-          <span className="text-xs uppercase tracking-widest font-bold text-[#521849]">
-            Gestión Interna
-          </span>
-          <h1 className="text-2xl font-bold font-serif text-[#26201D]">
-            Panel de Administración
-          </h1>
-          <p className="text-xs text-[#574B45]">
-            Acceso exclusivo para la Junta Directiva y Coordinadores de Doña Berenjena.
-          </p>
         </div>
 
         {/* Display Error Message */}
