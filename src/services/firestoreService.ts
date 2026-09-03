@@ -7,11 +7,14 @@ import {
   deleteDoc, 
   getDoc,
   increment,
+  runTransaction,
+  writeBatch,
   Unsubscribe 
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { Activity, AdminRole, WebMetric, Participant, Member, AdminNotification, Expense, Sponsorship, ContactMessage } from '../types';
+import { Activity, AdminRole, WebMetric, Participant, Member, AdminNotification, Expense, Sponsorship, ContactMessage, ParticipantStatus } from '../types';
 import { sortActivitiesAscending } from '../utils/dateUtils';
+import { validateAndPrepareTransition, prepareAttendanceClose } from './participantTransitions';
 
 const ACTIVITIES_COLLECTION = 'activities';
 const METRICS_COLLECTION = 'metrics';
@@ -617,6 +620,104 @@ export async function deleteContactMessageFirestore(id: string): Promise<void> {
   if (!db) throw new Error('Firestore is not initialized');
   const docRef = doc(db, CONTACT_MESSAGES_COLLECTION, id);
   await deleteDoc(docRef);
+}
+
+/**
+ * Execute canonical participant state transition transactionally in Firestore.
+ * Automatically synchronizes activity bookedSpots atomically within the same transaction.
+ */
+export async function executeParticipantTransitionFirestore({
+  participantId,
+  activityId,
+  targetStatus,
+  actor = 'Administración',
+  cancellationData
+}: {
+  participantId: string;
+  activityId: string;
+  targetStatus: ParticipantStatus;
+  actor?: string;
+  cancellationData?: {
+    reason: string;
+    justified: boolean;
+    kind: 'cancelacion_usuario' | 'no_presentado';
+  };
+}): Promise<{ success: boolean; error?: string; updatedParticipant?: Partial<Participant>; spotsDelta?: number }> {
+  if (!db) throw new Error('Firestore is not initialized');
+
+  const partRef = doc(db, PARTICIPANTS_COLLECTION, participantId);
+  const actRef = doc(db, ACTIVITIES_COLLECTION, activityId);
+
+  return await runTransaction(db, async (transaction) => {
+    const partSnap = await transaction.get(partRef);
+    if (!partSnap.exists()) {
+      return { success: false, error: 'Participante no encontrado.' };
+    }
+    const actSnap = await transaction.get(actRef);
+    if (!actSnap.exists()) {
+      return { success: false, error: 'Actividad no encontrada.' };
+    }
+
+    const participant = { ...partSnap.data(), id: partSnap.id } as Participant;
+    const activity = { ...actSnap.data(), id: actSnap.id } as Activity;
+
+    const transition = validateAndPrepareTransition({
+      participant,
+      targetStatus,
+      activity,
+      actor,
+      cancellationData
+    });
+
+    if (!transition.allowed) {
+      return { success: false, error: transition.error };
+    }
+
+    const cleanUpdates = sanitizeForFirestore(transition.updatedParticipant || {});
+    transaction.update(partRef, cleanUpdates);
+
+    if (transition.spotsDelta && transition.spotsDelta !== 0) {
+      const newBooked = Math.max(0, (activity.bookedSpots || 0) + transition.spotsDelta);
+      transaction.update(actRef, {
+        bookedSpots: newBooked,
+        updatedAt: new Date().toISOString()
+      });
+    }
+
+    return {
+      success: true,
+      updatedParticipant: transition.updatedParticipant,
+      spotsDelta: transition.spotsDelta
+    };
+  });
+}
+
+/**
+ * Executes closing attendance for an entire activity transactionally in Firestore.
+ * Converts all unattended participants to 'cancelada' ('no_presentado').
+ * Does not alter bookedSpots since the activity has already taken place.
+ */
+export async function executeBulkAttendanceCloseFirestore(
+  participants: Participant[],
+  activity: Activity,
+  actor: string = 'Administración'
+): Promise<{ success: boolean; affectedCount: number; error?: string }> {
+  if (!db) throw new Error('Firestore is not initialized');
+
+  const { affectedCount, updatedParticipants } = prepareAttendanceClose(participants, activity, actor);
+  if (affectedCount === 0) {
+    return { success: true, affectedCount: 0 };
+  }
+
+  const batch = writeBatch(db);
+  for (const item of updatedParticipants) {
+    const pRef = doc(db, PARTICIPANTS_COLLECTION, item.id);
+    const cleanData = sanitizeForFirestore(item.updates);
+    batch.update(pRef, cleanData);
+  }
+
+  await batch.commit();
+  return { success: true, affectedCount };
 }
 
 

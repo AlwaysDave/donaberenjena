@@ -183,6 +183,24 @@ export const ContactoPage: React.FC = () => {
 
         {/* Contact Info Sidebar */}
         <div className="lg:col-span-5 space-y-6">
+          {/* Logo Oficial Grande sin modificar */}
+          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-[#EDE4D7] shadow-xs flex flex-col items-center justify-center text-center overflow-hidden">
+            <img
+              src="/logo.jpg"
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (target.src.endsWith('/logo.jpg')) {
+                  target.src = '/logo.png';
+                } else if (target.src.endsWith('/logo.png')) {
+                  target.src = '/logo.svg';
+                }
+              }}
+              alt="Asociación Cultural Gastronómica Doña Berenjena - Bolaños"
+              className="w-full max-w-[440px] h-auto object-contain mx-auto transition-transform duration-300 hover:scale-[1.02]"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+
           <div className="bg-[#FCFAF7] p-6 sm:p-8 rounded-3xl border border-[#EDE4D7] space-y-6">
             <h3 className="text-xl font-bold font-serif text-[#26201D]">
               Datos de la Sede

@@ -82,6 +82,8 @@ export interface CataActivity extends BaseActivity {
     name: string;
     time: string;
   }[];
+  tastingGroupId?: string; // Grouping identifier exclusively for two-shift tastings
+  shiftName?: string; // Explicit shift title (e.g., "Turno 1", "Turno 2", "Primer Turno")
   tallerEspecial?: string;
   pastEventGallery?: string[];
   pastEventSummary?: string;
@@ -224,7 +226,8 @@ export interface ReservationFormData {
   attendees?: ReservationAttendee[];
 }
 
-export type ParticipantStatus = 'confirmada' | 'pendiente_pago' | 'cancelada' | 'asistio' | 'no_asistio' | 'lista_de_espera';
+export type CanonicalParticipantStatus = 'lista_de_espera' | 'pendiente_pago' | 'pagada' | 'asistio' | 'cancelada';
+export type ParticipantStatus = CanonicalParticipantStatus | 'confirmada' | 'no_asistio';
 
 export type PaymentMethod = 'bizum' | 'transferencia' | 'efectivo' | 'tarjeta' | 'pendiente' | 'otro';
 
@@ -243,14 +246,17 @@ export interface Participant {
   membershipNumber?: string;
   notes?: string;
   status: ParticipantStatus;
-  attended?: boolean;
-  justified?: boolean; // Justificación para cancelación o no asistencia
+  attended?: boolean; // Lectura temporal para compatibilidad y migración
+  cancellationReason?: string;
+  cancellationJustified?: boolean;
+  cancellationKind?: 'cancelacion_usuario' | 'no_presentado';
+  cancelledAt?: string;
+  cancelledBy?: string;
+  // Campos antiguos para migración
+  justified?: boolean;
   justificationReason?: string;
   justifiedBy?: string;
   justifiedAt?: string;
-  cancellationReason?: string;
-  cancelledAt?: string;
-  cancelledBy?: string;
   refundAmount?: number;
   attendedAt?: string;
   attendedBy?: string;

@@ -310,12 +310,12 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
             Procedimiento de Reserva de Doña Berenjena:
           </p>
           <ol className="list-decimal pl-4 space-y-1">
-            <li>Solicita tus plazas mediante el formulario o por teléfono.</li>
-            <li>Recibirás un email de confirmación con el código de reserva.</li>
+            <li>Solicita tus plazas mediante el formulario online o por teléfono.</li>
+            <li>Tu solicitud quedará registrada de forma inmediata en el sistema de la asociación.</li>
             <li>
-              El abono se realiza mediante transferencia o Bizum a la cuenta oficial de la asociación.
+              El abono se coordina mediante Bizum, transferencia o presencialmente con la directiva.
             </li>
-            <li>Cancelación gratuita hasta 48 horas antes del evento.</li>
+            <li>Cancelación previa disponible con antelación suficiente al evento.</li>
           </ol>
           {activity.howToReserveInfo && (
             <p className="pt-1 italic border-t border-[#EDE4D7]/60 text-[#3D3430]">

@@ -3,7 +3,6 @@ import { useData } from '../../context/DataContext';
 import { Participant } from '../../types';
 import { 
   CheckCircle2, 
-  XCircle, 
   UserCheck, 
   Calendar, 
   Search, 
@@ -14,16 +13,21 @@ import {
   Phone, 
   Mail, 
   ShieldCheck,
-  AlertCircle
+  AlertCircle,
+  Clock,
+  CheckCheck,
+  X,
+  ArrowLeft
 } from 'lucide-react';
 import { sortActivitiesAscending } from '../../utils/dateUtils';
 
 interface QuickCheckInProps {
   initialActivityId?: string;
+  onClose?: () => void;
 }
 
-export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId }) => {
-  const { activities, participants, updateParticipant, addParticipant } = useData();
+export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId, onClose }) => {
+  const { activities, participants, updateParticipant, addManualParticipant, executeParticipantTransition, closeActivityAttendance } = useData();
 
   const sortedActivities = useMemo(() => {
     return sortActivitiesAscending(activities);
@@ -37,6 +41,8 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId })
   const [editingParticipantId, setEditingParticipantId] = useState<string | null>(null);
   const [inlineName, setInlineName] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [isClosingAttendance, setIsClosingAttendance] = useState(false);
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
   // Quick Walk-in form state
   const [walkInName, setWalkInName] = useState('');
@@ -62,16 +68,72 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId })
     );
   }, [activityParticipants, searchQuery]);
 
-  const checkedInCount = activityParticipants.filter(p => p.attended === true || p.status === 'asistio').length;
-  const totalBooked = activityParticipants.reduce((acc, p) => acc + (p.spotsCount || 1), 0);
+  const checkedInCount = activityParticipants.filter(p => p.status === 'asistio').length;
+  const pendingCheckInCount = activityParticipants.filter(p => p.status === 'pendiente_pago' || p.status === 'pagada' || (p.status as string) === 'confirmada').length;
 
-  // Toggle Check-in status
-  const handleToggleCheckIn = async (p: Participant) => {
-    const isAttended = p.attended === true || p.status === 'asistio';
-    await updateParticipant(p.id, {
-      attended: !isAttended,
-      status: !isAttended ? 'asistio' : 'confirmada'
-    });
+  // Handle Check-in / Toggle status between Asistió and No asistió (Cancelado injustificado)
+  const handleToggleAttendance = async (p: Participant) => {
+    if (p.status === 'asistio') {
+      // Toggle from Asistió -> No asistió
+      const res = await executeParticipantTransition({
+        participantId: p.id,
+        activityId: p.activityId,
+        targetStatus: 'cancelada',
+        actor: 'Control de Puerta',
+        cancellationData: {
+          reason: 'No ha asistido a la actividad',
+          justified: false,
+          kind: 'no_presentado'
+        }
+      });
+
+      if (!res.success) {
+        alert(res.error || 'No se pudo actualizar el estado.');
+      } else {
+        setActionFeedback(`${p.fullName} marcado como "No asistió".`);
+        setTimeout(() => setActionFeedback(null), 2500);
+      }
+    } else {
+      // Toggle from Initial / Cancelada -> Asistió
+      const res = await executeParticipantTransition({
+        participantId: p.id,
+        activityId: p.activityId,
+        targetStatus: 'asistio',
+        actor: 'Control de Puerta'
+      });
+
+      if (!res.success) {
+        alert(res.error || 'No se pudo registrar la asistencia.');
+      } else {
+        setActionFeedback(`¡${p.fullName} marcado como "Asistió"!`);
+        setTimeout(() => setActionFeedback(null), 2500);
+      }
+    }
+  };
+
+  // Close attendance for all remaining pending attendees
+  const handleCloseAttendance = async () => {
+    if (!currentActivity) return;
+    if (pendingCheckInCount === 0) {
+      alert('No hay participantes pendientes de check-in.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `¿Deseas cerrar el control de asistencia para "${currentActivity.title}"?\n\nLos ${pendingCheckInCount} participante(s) pendientes pasarán a "Cancelada (No presentado)". Esta acción no altera el aforo ocupado.`
+    );
+    if (!confirmed) return;
+
+    setIsClosingAttendance(true);
+    const res = await closeActivityAttendance(currentActivity.id, 'Control de Puerta');
+    setIsClosingAttendance(false);
+
+    if (res.success) {
+      setActionFeedback(`Control cerrado: ${res.affectedCount} participante(s) marcados como no presentados.`);
+      setTimeout(() => setActionFeedback(null), 3500);
+    } else {
+      alert(res.error || 'Error al cerrar el control de asistencia.');
+    }
   };
 
   // Start Inline Name Edit
@@ -93,23 +155,28 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId })
     e.preventDefault();
     if (!walkInName.trim() || !currentActivity) return;
 
-    const basePrice = currentActivity.priceNonMember || 25;
-    const memberPrice = currentActivity.memberPrice ?? (basePrice > 5 ? basePrice - 5 : basePrice);
-    const unitPrice = walkInIsMember ? memberPrice : basePrice;
+    const priceMember = currentActivity.priceMember ?? 20;
+    const priceNonMember = currentActivity.priceNonMember ?? 25;
+    const unitPrice = walkInIsMember ? priceMember : priceNonMember;
     const totalAmount = unitPrice * walkInSpots;
 
-    await addParticipant({
+    await addManualParticipant({
       activityId: currentActivity.id,
       activityTitle: currentActivity.title,
+      activityDate: currentActivity.date,
       activityType: currentActivity.type,
       fullName: walkInName.trim(),
-      email: walkInEmail.trim() || undefined,
-      phone: walkInPhone.trim() || undefined,
+      email: walkInEmail.trim() || '',
+      phone: walkInPhone.trim() || '',
       spotsCount: walkInSpots,
       isMember: walkInIsMember,
       status: 'asistio',
-      attended: true,
-      totalAmount
+      attendedAt: new Date().toISOString(),
+      attendedBy: 'Control de Puerta (In Situ)',
+      totalAmount,
+      paidAmount: totalAmount,
+      paymentMethod: 'efectivo',
+      groupId: `grp-walkin-${Date.now()}`
     });
 
     setWalkInName('');
@@ -118,10 +185,29 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId })
     setWalkInIsMember(false);
     setWalkInSpots(1);
     setShowAddModal(false);
+    setActionFeedback('Asistente registrado en puerta.');
+    setTimeout(() => setActionFeedback(null), 2500);
   };
 
   return (
     <div className="space-y-4">
+      {/* Optional top return bar when rendered inside modal/subview */}
+      {onClose && (
+        <div className="flex items-center justify-between p-3.5 bg-white rounded-2xl border border-[#EDE4D7] shadow-2xs">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#FCFAF7] hover:bg-[#F6F1EA] text-[#521849] border border-[#EDE4D7] text-xs font-bold transition-all cursor-pointer min-h-[44px]"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Volver a Actividades</span>
+          </button>
+          <span className="text-xs font-bold text-[#574B45] truncate max-w-[200px] sm:max-w-xs">
+            {currentActivity?.title || 'Check-in en Puerta'}
+          </span>
+        </div>
+      )}
+
       {/* Activity Selector & Check-in KPI bar */}
       <div className="bg-white rounded-2xl border border-[#EDE4D7] p-4 shadow-2xs space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -142,15 +228,28 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId })
             </select>
           </div>
 
-          {/* Quick Stats Pill */}
-          <div className="flex items-center gap-2 self-start sm:self-end">
+          {/* Quick Stats Pill & Actions */}
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-end">
             <div className="px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-950 flex items-center gap-2">
               <UserCheck className="w-4 h-4 text-emerald-700" />
               <div className="text-xs">
                 <span className="font-bold text-sm font-mono text-emerald-800">{checkedInCount}</span>
-                <span className="text-emerald-700"> / {activityParticipants.length} asistentes en sala</span>
+                <span className="text-emerald-700"> / {activityParticipants.length} en sala</span>
               </div>
             </div>
+
+            {pendingCheckInCount > 0 && (
+              <button
+                type="button"
+                onClick={handleCloseAttendance}
+                disabled={isClosingAttendance}
+                className="px-3 py-2 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                title="Cierra el control marcando a los no presentados como cancelados"
+              >
+                <CheckCheck className="w-3.5 h-3.5 text-amber-800" />
+                <span>Cerrar control ({pendingCheckInCount})</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -163,6 +262,14 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId })
             </button>
           </div>
         </div>
+
+        {/* Action feedback toast/banner */}
+        {actionFeedback && (
+          <div className="p-2.5 rounded-xl bg-emerald-100/80 border border-emerald-300 text-emerald-900 text-xs font-semibold flex items-center gap-2 animate-fadeIn">
+            <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+            <span>{actionFeedback}</span>
+          </div>
+        )}
 
         {/* Search filter for participant list */}
         <div className="relative">
@@ -187,7 +294,8 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId })
           </div>
         ) : (
           filteredParticipants.map((p) => {
-            const isAttended = p.attended === true || p.status === 'asistio';
+            const isAttended = p.status === 'asistio';
+            const isCancelled = p.status === 'cancelada';
             const isEditing = editingParticipantId === p.id;
 
             return (
@@ -196,6 +304,8 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId })
                 className={`bg-white rounded-2xl border transition-all p-3.5 sm:p-4 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
                   isAttended 
                     ? 'border-emerald-200 bg-emerald-50/30' 
+                    : isCancelled
+                    ? 'border-stone-200 bg-stone-50/60 opacity-60'
                     : 'border-[#EDE4D7]'
                 }`}
               >
@@ -223,7 +333,7 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId })
                       </button>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 group">
+                    <div className="flex items-center gap-2 group flex-wrap">
                       <h4 
                         onClick={() => handleStartEditName(p)}
                         className="font-bold text-sm sm:text-base font-serif text-[#26201D] cursor-pointer hover:text-[#521849] flex items-center gap-1.5"
@@ -239,6 +349,22 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId })
                       ) : (
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 font-medium">
                           General
+                        </span>
+                      )}
+
+                      {p.status === 'asistio' && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold">
+                          Asistió
+                        </span>
+                      )}
+                      {p.status === 'cancelada' && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 font-semibold">
+                          No Asistió
+                        </span>
+                      )}
+                      {p.status === 'pendiente_pago' && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold">
+                          Pendiente Pago
                         </span>
                       )}
                     </div>
@@ -267,29 +393,60 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId })
                   </div>
                 </div>
 
-                {/* Big One-Tap Check-In Button (Thumb-friendly ~48px) */}
+                {/* Attendance Single / Toggle Button (Harmonized with Doña Berenjena visual style) */}
                 <div className="shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#EDE4D7]/60 flex items-center justify-end">
-                  <button
-                    type="button"
-                    onClick={() => handleToggleCheckIn(p)}
-                    className={`w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs ${
-                      isAttended
-                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
-                        : 'bg-[#FCFAF7] hover:bg-[#F6F1EA] text-[#574B45] border border-[#EDE4D7]'
-                    }`}
-                  >
-                    {isAttended ? (
-                      <>
-                        <CheckCircle2 className="w-5 h-5 text-white" />
-                        <span>¡Asistió!</span>
-                      </>
-                    ) : (
-                      <>
-                        <div className="w-4 h-4 rounded-full border-2 border-[#8C7E77]" />
-                        <span>Marcar Asistencia</span>
-                      </>
-                    )}
-                  </button>
+                  {isAttended ? (
+                    /* State: Asistió (predominantly deep olive-green with a warm wine-red switch strip on the right) */
+                    <button
+                      type="button"
+                      onClick={() => handleToggleAttendance(p)}
+                      className="group h-[44px] w-full sm:w-[172px] rounded-xl overflow-hidden shadow-xs border border-[#2E5A36] flex items-stretch cursor-pointer active:scale-[0.98] transition-all select-none"
+                      title="Asistió — Pulsa para cambiar a No Asistió"
+                    >
+                      <div className="flex-1 bg-[#2E5A36] group-hover:bg-[#254B2D] text-white font-bold text-xs flex items-center justify-center gap-1.5 px-3 transition-colors">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-300 shrink-0" />
+                        <span className="tracking-wide">Asistió</span>
+                      </div>
+                      <div 
+                        className="w-5.5 bg-[#681C26] group-hover:bg-[#54141E] border-l border-white/20 flex items-center justify-center transition-colors shrink-0" 
+                        title="Cambiar a No Asistió"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-200/90" />
+                      </div>
+                    </button>
+                  ) : isCancelled ? (
+                    /* State: No Asistió (predominantly warm wine-red with a deep olive-green switch strip on the left) */
+                    <button
+                      type="button"
+                      onClick={() => handleToggleAttendance(p)}
+                      className="group h-[44px] w-full sm:w-[172px] rounded-xl overflow-hidden shadow-xs border border-[#681C26] flex items-stretch cursor-pointer active:scale-[0.98] transition-all select-none"
+                      title="No Asistió — Pulsa para cambiar a Asistió"
+                    >
+                      <div 
+                        className="w-5.5 bg-[#2E5A36] group-hover:bg-[#254B2D] border-r border-white/20 flex items-center justify-center transition-colors shrink-0" 
+                        title="Cambiar a Asistió"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-200/90" />
+                      </div>
+                      <div className="flex-1 bg-[#681C26] group-hover:bg-[#54141E] text-white font-bold text-xs flex items-center justify-center gap-1.5 px-3 transition-colors">
+                        <X className="w-4 h-4 text-rose-300 shrink-0" />
+                        <span className="tracking-wide">No Asistió</span>
+                      </div>
+                    </button>
+                  ) : (
+                    /* Initial State: Marcar asistencia */
+                    <button
+                      type="button"
+                      onClick={() => handleToggleAttendance(p)}
+                      className="group h-[44px] w-full sm:w-[172px] px-3.5 rounded-xl font-semibold text-xs bg-[#FCFAF7] hover:bg-[#F6F1EA] text-[#3D3430] hover:text-[#521849] border border-[#EDE4D7] hover:border-[#521849]/40 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs active:scale-[0.98] select-none"
+                      title="Marcar asistencia"
+                    >
+                      <div className="w-4 h-4 rounded-full border border-[#8C7E77] group-hover:border-[#521849] flex items-center justify-center transition-colors">
+                        <div className="w-1.5 h-1.5 rounded-full bg-transparent group-hover:bg-[#521849] transition-colors" />
+                      </div>
+                      <span className="tracking-wide">Marcar asistencia</span>
+                    </button>
+                  )}
                 </div>
               </div>
             );

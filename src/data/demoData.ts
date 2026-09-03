@@ -403,6 +403,105 @@ export const DEMO_ACTIVITIES: Activity[] = [
     status: 'celebrada',
     createdAt: new Date('2025-09-01').toISOString(),
     updatedAt: new Date('2025-11-16').toISOString()
+  },
+
+  // CATA CELEBRADA 2: Llena al 100% con lista de espera y 250 € de gasto
+  {
+    id: 'demo-cata-5-celebrada-llena',
+    title: 'Cata Magistral: Grandes Reservas y Quesos de Autor',
+    subtitle: 'Selección de añadas históricas y quesos artesanos afinados',
+    type: 'cata',
+    category: 'vino',
+    date: '2026-02-20',
+    time: '20:30 h',
+    priceMember: 20,
+    priceNonMember: 25,
+    totalSpots: 14,
+    bookedSpots: 14,
+    location: 'Polígono Industrial "El Salobral" - Centro de Formación – Bolaños de Calatrava',
+    images: ['https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'],
+    description: 'Degustación exclusiva de 5 vinos de guarda maridados con quesos de leche cruda de oveja y cabra.',
+    cataType: 'bodega_unica',
+    sumiller: 'Ana García',
+    bodegas: [
+      {
+        name: 'Bodegas Naranjo',
+        region: 'Carrión de Calatrava – Ciudad Real',
+        wines: [
+          { type: 'Tinto', name: 'Viña Cuerva Reserva', grape: '100% Cencibel', pairing: 'Queso curado de oveja en manteca' },
+          { type: 'Tinto', name: 'Lahuerda Gran Selección', grape: 'Tempranillo y Syrah', pairing: 'Queso afinado con flor de romero' }
+        ]
+      }
+    ],
+    status: 'celebrada',
+    pastEventSummary: 'Sesión celebrada con aforo completo (14 asistentes) y 3 personas en lista de espera. Extraordinaria acogida y valoración excelente de los maridajes.',
+    createdAt: new Date('2025-12-15').toISOString(),
+    updatedAt: new Date('2026-02-21').toISOString()
+  } as CataActivity,
+
+  // VIAJE CELEBRADO 2: Celebrado con 600 € de pérdidas
+  {
+    id: 'demo-viaje-4-celebrado-perdidas',
+    title: 'Ruta Enológica y Cultural a los Montes de Toledo',
+    subtitle: 'Bodegas de altura, arquitectura mudéjar y gastronomía de caza',
+    type: 'viaje',
+    date: '2026-01-24',
+    time: '08:00 h',
+    priceMember: 40,
+    priceNonMember: 50,
+    totalSpots: 20,
+    bookedSpots: 10,
+    location: 'Salida: Plaza de España (Bolaños de Calatrava)',
+    images: ['https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'],
+    description: 'Excursión de 1 día visitando bodegas de Pago en los Montes de Toledo, almuerzo tradicional de caza y paseo guiado.',
+    destination: 'Montes de Toledo y Consuegra, Toledo',
+    durationDays: 1,
+    itinerary: [
+      {
+        day: 1,
+        title: 'Visita a bodega de Pago, molinos de viento y comida campera',
+        description: 'Salida desde Bolaños, recorrido por viñedos de altura, cata comentada de 4 vinos y almuerzo tradicional toledano.',
+        highlights: ['Bodega de Pago', 'Cata comentada', 'Almuerzo tradicional de caza']
+      }
+    ],
+    includedServices: ['Autobús discrecional ida y vuelta', 'Almuerzo gastronómico', 'Visita y cata guiada en bodega', 'Seguro de viaje'],
+    status: 'celebrada',
+    pastEventSummary: 'Viaje celebrado con 10 asistentes. La experiencia fue muy enriquecedora para el grupo, si bien generó un saldo deficitario de 600 € al mantener el autocar contratado sin cubrir el aforo previsto.',
+    createdAt: new Date('2025-11-20').toISOString(),
+    updatedAt: new Date('2026-01-25').toISOString()
+  },
+
+  // CURSO CELEBRADO 2: Celebrado a mitad del aforo (8 de 16 plazas)
+  {
+    id: 'demo-curso-4-celebrado-mitad-aforo',
+    title: 'Taller Práctico de Corte y Conservación de Jamón',
+    subtitle: 'Técnicas de cuchillo, rendimiento de la pieza y protocolo de servicio',
+    type: 'curso',
+    theme: 'Corte tradicional y cata',
+    date: '2026-02-07',
+    time: '11:00 h',
+    priceMember: 30,
+    priceNonMember: 40,
+    totalSpots: 16,
+    bookedSpots: 8,
+    location: 'Centro de Formación – Bolaños de Calatrava',
+    images: ['https://images.unsplash.com/photo-1544025162-d76694265947?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'],
+    description: 'Taller monográfico práctico donde cada alumno dispuso de soporte y cuchillo jamonero para practicar el loncheado fino y presentación de platos.',
+    chef: {
+      name: 'Julián Bravo',
+      bio: 'Maestro cortador profesional con titulación nacional y formador gastronómico'
+    },
+    syllabus: [
+      'Partes del jamón y herramientas de corte',
+      'Postura, seguridad y técnicas de loncheado fino',
+      'Aprovechamiento máximo de la pieza y conservación',
+      'Emplatado profesional y maridaje con vinos de la comarca'
+    ],
+    includesTasting: true,
+    status: 'celebrada',
+    pastEventSummary: 'Taller celebrado con 8 alumnos (exactamente la mitad del aforo previsto de 16 plazas), lo que permitió una dinámica muy personalizada y práctica para cada asistente.',
+    createdAt: new Date('2025-12-05').toISOString(),
+    updatedAt: new Date('2026-02-08').toISOString()
   }
 ];
 
@@ -419,8 +518,9 @@ function buildParticipant(
   options: {
     status?: ParticipantStatus;
     attended?: boolean;
-    justified?: boolean;
-    justificationReason?: string;
+    cancellationJustified?: boolean;
+    cancellationKind?: 'cancelacion_usuario' | 'no_presentado';
+    cancellationReason?: string;
     groupId?: string;
     spotsCount?: number;
     notes?: string;
@@ -430,8 +530,7 @@ function buildParticipant(
   const isMember = person.isMember;
   const unitPrice = (isMember && activity.priceMember) ? activity.priceMember : activity.priceNonMember;
   const isPast = activity.status === 'celebrada';
-  const attended = options.attended ?? (options.status === 'cancelada' || options.status === 'no_asistio' ? false : isPast);
-  const status = options.status ?? (isPast ? 'asistio' : (index % 4 === 0 ? 'pendiente_pago' : 'confirmada'));
+  const status = options.status ?? (isPast ? 'asistio' : (index % 4 === 0 ? 'pendiente_pago' : 'pagada'));
   const daysAgo = options.registeredDaysAgo ?? (index + 2);
   const regDateIso = new Date(Date.now() - (1000 * 60 * 60 * 24 * daysAgo)).toISOString();
 
@@ -451,9 +550,13 @@ function buildParticipant(
     turn: 'Turno único',
     notes: options.notes,
     status,
-    attended,
-    justified: options.justified,
-    justificationReason: options.justificationReason,
+    cancellationReason: options.cancellationReason,
+    cancellationJustified: options.cancellationJustified,
+    cancellationKind: options.cancellationKind,
+    cancelledAt: status === 'cancelada' ? regDateIso : undefined,
+    cancelledBy: status === 'cancelada' ? 'Administración' : undefined,
+    attendedAt: status === 'asistio' ? activity.date : undefined,
+    attendedBy: status === 'asistio' ? 'Puerta / Check-in' : undefined,
     totalAmount: unitPrice * (options.spotsCount || 1),
     paidAmount: (status === 'pendiente_pago' || status === 'lista_de_espera' || status === 'cancelada') ? 0 : unitPrice * (options.spotsCount || 1),
     paymentMethod: status === 'lista_de_espera' ? 'pendiente' : (index % 2 === 0 ? 'bizum' : 'transferencia'),
@@ -464,43 +567,48 @@ function buildParticipant(
 }
 
 export const DEMO_PARTICIPANTS: Participant[] = [
-  // --- CATA 1 (Celebrada - Vermut: Asistentes reales, 2 cancelaciones y 1 no asistencia) ---
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[0], 0, { status: 'asistio', attended: true }),  // María José (Socia)
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[1], 1, { status: 'asistio', attended: true, groupId: 'grp-antonio-vermut' }), // Antonio (Socio) - Titular grupo
-  buildParticipant(DEMO_ACTIVITIES[0], { fullName: 'Elena Gómez (Acompañante)', isMember: true }, 2, { status: 'asistio', attended: true, groupId: 'grp-antonio-vermut' }), // Acompañante
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[2], 3, { status: 'asistio', attended: true }),  // Laura Martínez
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[4], 4, { status: 'asistio', attended: true }),  // Carmen Jiménez (Socia)
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[5], 5, { status: 'asistio', attended: true }),  // Francisco Torres (Socio)
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[6], 6, { status: 'asistio', attended: true }),  // Isabel Romero (Socia)
-  // 1. Cancelación justificada con preaviso:
+  // --- CATA 1 (Celebrada - Vermut: Asistentes reales, cancelada justificada, cancelada injustificada, no presentado y lista de espera en celebrada) ---
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[0], 0, { status: 'asistio' }),  // María José (Socia)
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[1], 1, { status: 'asistio', groupId: 'grp-antonio-vermut' }), // Antonio (Socio) - Titular grupo
+  buildParticipant(DEMO_ACTIVITIES[0], { fullName: 'Elena Gómez (Acompañante)', isMember: true }, 2, { status: 'asistio', groupId: 'grp-antonio-vermut' }), // Acompañante
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[2], 3, { status: 'asistio' }),  // Laura Martínez
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[4], 4, { status: 'asistio' }),  // Carmen Jiménez (Socia)
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[5], 5, { status: 'asistio' }),  // Francisco Torres (Socio)
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[6], 6, { status: 'asistio' }),  // Isabel Romero (Socia)
+  // 1. Cancelación voluntaria justificada con preaviso:
   buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[7], 7, { 
     status: 'cancelada', 
-    attended: false, 
-    justified: true, 
-    justificationReason: 'Avisó con 48h de antelación por motivos médicos justificados.',
+    cancellationJustified: true, 
+    cancellationKind: 'cancelacion_usuario',
+    cancellationReason: 'Avisó con 48h de antelación por motivos médicos justificados.',
     notes: 'Cancelación con preaviso' 
   }), // Manuel Ortega
-  // 2. Cancelación no justificada (mismo día):
+  // 2. Cancelación voluntaria no justificada (mismo día):
   buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[8], 8, { 
     status: 'cancelada', 
-    attended: false, 
-    justified: false, 
-    justificationReason: 'Canceló 2 horas antes del inicio sin causa de fuerza mayor.',
+    cancellationJustified: false, 
+    cancellationKind: 'cancelacion_usuario',
+    cancellationReason: 'Canceló 2 horas antes del inicio sin causa de fuerza mayor.',
     notes: 'Baja de última hora' 
   }), // Pilar Gutiérrez
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[9], 9, { status: 'asistio', attended: true }),  // David Muñoz (Socio)
-  // 3. No asistencia (se apuntó pero no acudió ni avisó):
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[9], 9, { status: 'asistio' }),  // David Muñoz (Socio)
+  // 3. No presentado (cierre de asistencia):
   buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[10], 10, { 
-    status: 'no_asistio', 
-    attended: false, 
-    justified: false, 
-    justificationReason: 'No acudió a la sala de catas ni notificó su ausencia.',
-    notes: 'No presentado en sala' 
+    status: 'cancelada', 
+    cancellationJustified: false, 
+    cancellationKind: 'no_presentado',
+    cancellationReason: 'No presentado',
+    notes: 'No presentado en sala al cierre de asistencia' 
   }), // Rocío Delgado
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[11], 11, { status: 'asistio', attended: true }), // Alberto Ramírez (Socio)
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[12], 12, { status: 'asistio', attended: true }), // Cristina Herrera (Socia)
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[11], 11, { status: 'asistio' }), // Alberto Ramírez (Socio)
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[12], 12, { status: 'asistio' }), // Cristina Herrera (Socia)
   // Asistente adicional para aforo completo de los que estuvieron:
-  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[20], 13, { status: 'asistio', attended: true }), // José Antonio García López
+  buildParticipant(DEMO_ACTIVITIES[0], BASE_PEOPLE[20], 13, { status: 'asistio' }), // José Antonio García López
+  // 4. Lista de espera que no llegó a entrar en actividad celebrada:
+  buildParticipant(DEMO_ACTIVITIES[0], { fullName: 'Raúl Medina Castro', email: 'raul.medina@example.com', phone: '611 222 333', isMember: false }, 14, { 
+    status: 'lista_de_espera', 
+    notes: 'Quedó en lista de espera al celebrarse la actividad' 
+  }),
 
   // --- CATA 2 (Próxima - Terruño: 14 asistentes confirmados + 4 en lista de espera) ---
   buildParticipant(DEMO_ACTIVITIES[1], BASE_PEOPLE[0], 0),  // María José (Socia)
@@ -628,7 +736,49 @@ export const DEMO_PARTICIPANTS: Participant[] = [
   buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[16], 16, { attended: true }),
   buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[17], 17, { attended: true }),
   buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[18], 18, { attended: true }),
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[20], 19, { attended: true })
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[20], 19, { attended: true }),
+
+  // --- CATA CELEBRADA 2 (Grandes Reservas y Quesos: 14 asistentes que llenaron el aforo + 3 en lista de espera) ---
+  buildParticipant(DEMO_ACTIVITIES[10], BASE_PEOPLE[0], 0, { status: 'asistio' }),  // María José (Socia)
+  buildParticipant(DEMO_ACTIVITIES[10], BASE_PEOPLE[1], 1, { status: 'asistio' }),  // Antonio Sánchez (Socio)
+  buildParticipant(DEMO_ACTIVITIES[10], BASE_PEOPLE[2], 2, { status: 'asistio' }),  // Laura Martínez
+  buildParticipant(DEMO_ACTIVITIES[10], BASE_PEOPLE[3], 3, { status: 'asistio' }),  // Javier Rodríguez
+  buildParticipant(DEMO_ACTIVITIES[10], BASE_PEOPLE[4], 4, { status: 'asistio' }),  // Carmen Jiménez (Socia)
+  buildParticipant(DEMO_ACTIVITIES[10], BASE_PEOPLE[5], 5, { status: 'asistio' }),  // Francisco Torres (Socio)
+  buildParticipant(DEMO_ACTIVITIES[10], BASE_PEOPLE[6], 6, { status: 'asistio' }),  // Isabel Romero (Socia)
+  buildParticipant(DEMO_ACTIVITIES[10], BASE_PEOPLE[7], 7, { status: 'asistio' }),  // Manuel Ortega
+  buildParticipant(DEMO_ACTIVITIES[10], BASE_PEOPLE[8], 8, { status: 'asistio' }),  // Pilar Gutiérrez
+  buildParticipant(DEMO_ACTIVITIES[10], BASE_PEOPLE[9], 9, { status: 'asistio' }),  // David Muñoz (Socio)
+  buildParticipant(DEMO_ACTIVITIES[10], BASE_PEOPLE[10], 10, { status: 'asistio' }), // Rocío Delgado
+  buildParticipant(DEMO_ACTIVITIES[10], BASE_PEOPLE[11], 11, { status: 'asistio' }), // Alberto Ramírez (Socio)
+  buildParticipant(DEMO_ACTIVITIES[10], BASE_PEOPLE[12], 12, { status: 'asistio' }), // Cristina Herrera (Socia)
+  buildParticipant(DEMO_ACTIVITIES[10], BASE_PEOPLE[13], 13, { status: 'asistio' }), // Sergio Guerrero (Socio)
+  // 3 personas de la lista fija en lista de espera:
+  buildParticipant(DEMO_ACTIVITIES[10], BASE_PEOPLE[14], 14, { status: 'lista_de_espera', notes: 'Lista de espera nº 1 - Aforo completo' }), // Elena Cortés
+  buildParticipant(DEMO_ACTIVITIES[10], BASE_PEOPLE[15], 15, { status: 'lista_de_espera', notes: 'Lista de espera nº 2' }), // Pablo Vázquez
+  buildParticipant(DEMO_ACTIVITIES[10], BASE_PEOPLE[16], 16, { status: 'lista_de_espera', notes: 'Lista de espera nº 3' }), // Marta Cano
+
+  // --- VIAJE CELEBRADO 2 (Montes de Toledo: 10 asistentes = 5 socios @40€ + 5 no socios @50€ = 450€ recaudados vs 1050€ gastos = 600€ pérdidas) ---
+  buildParticipant(DEMO_ACTIVITIES[11], BASE_PEOPLE[0], 0, { status: 'asistio' }),  // María José (Socia, 40€)
+  buildParticipant(DEMO_ACTIVITIES[11], BASE_PEOPLE[1], 1, { status: 'asistio' }),  // Antonio Sánchez (Socio, 40€)
+  buildParticipant(DEMO_ACTIVITIES[11], BASE_PEOPLE[4], 2, { status: 'asistio' }),  // Carmen Jiménez (Socia, 40€)
+  buildParticipant(DEMO_ACTIVITIES[11], BASE_PEOPLE[5], 3, { status: 'asistio' }),  // Francisco Torres (Socio, 40€)
+  buildParticipant(DEMO_ACTIVITIES[11], BASE_PEOPLE[6], 4, { status: 'asistio' }),  // Isabel Romero (Socia, 40€)
+  buildParticipant(DEMO_ACTIVITIES[11], BASE_PEOPLE[2], 5, { status: 'asistio' }),  // Laura Martínez (No socia, 50€)
+  buildParticipant(DEMO_ACTIVITIES[11], BASE_PEOPLE[3], 6, { status: 'asistio' }),  // Javier Rodríguez (No socio, 50€)
+  buildParticipant(DEMO_ACTIVITIES[11], BASE_PEOPLE[7], 7, { status: 'asistio' }),  // Manuel Ortega (No socio, 50€)
+  buildParticipant(DEMO_ACTIVITIES[11], BASE_PEOPLE[8], 8, { status: 'asistio' }),  // Pilar Gutiérrez (No socia, 50€)
+  buildParticipant(DEMO_ACTIVITIES[11], BASE_PEOPLE[10], 9, { status: 'asistio' }), // Rocío Delgado (No socia, 50€)
+
+  // --- CURSO CELEBRADO 2 (Corte de Jamón: 8 asistentes = exactamente la mitad del aforo de 16) ---
+  buildParticipant(DEMO_ACTIVITIES[12], BASE_PEOPLE[0], 0, { status: 'asistio' }),  // María José (Socia)
+  buildParticipant(DEMO_ACTIVITIES[12], BASE_PEOPLE[1], 1, { status: 'asistio' }),  // Antonio Sánchez (Socio)
+  buildParticipant(DEMO_ACTIVITIES[12], BASE_PEOPLE[9], 2, { status: 'asistio' }),  // David Muñoz (Socio)
+  buildParticipant(DEMO_ACTIVITIES[12], BASE_PEOPLE[11], 3, { status: 'asistio' }), // Alberto Ramírez (Socio)
+  buildParticipant(DEMO_ACTIVITIES[12], BASE_PEOPLE[2], 4, { status: 'asistio' }),  // Laura Martínez
+  buildParticipant(DEMO_ACTIVITIES[12], BASE_PEOPLE[14], 5, { status: 'asistio' }), // Elena Cortés
+  buildParticipant(DEMO_ACTIVITIES[12], BASE_PEOPLE[15], 6, { status: 'asistio' }), // Pablo Vázquez
+  buildParticipant(DEMO_ACTIVITIES[12], BASE_PEOPLE[17], 7, { status: 'asistio' })  // Rubén Domínguez
 ];
 
 // ==========================================
@@ -883,6 +1033,72 @@ export const DEMO_EXPENSES: import('../types').Expense[] = [
     date: '2025-11-15',
     notes: 'Coste final del grupo en almazara y restaurante.',
     createdAt: '2025-11-15T18:30:00.000Z'
+  },
+
+  // CATA CELEBRADA 2 · Grandes Reservas y Quesos (250 € de gasto total)
+  {
+    id: 'exp-demo-cata-5-vinos',
+    activityId: 'demo-cata-5-celebrada-llena',
+    concept: 'Lote de vinos de guarda Bodegas Naranjo',
+    amount: 150.00,
+    category: 'bodega_proveedor',
+    date: '2026-02-18',
+    notes: 'Vinos de reserva para la cata guiada.',
+    createdAt: '2026-02-18T10:00:00.000Z'
+  },
+  {
+    id: 'exp-demo-cata-5-quesos',
+    activityId: 'demo-cata-5-celebrada-llena',
+    concept: 'Tabla de quesos artesanos afinados de leche cruda',
+    amount: 100.00,
+    category: 'catering',
+    date: '2026-02-19',
+    notes: 'Maridajes y aperitivos para la cata.',
+    createdAt: '2026-02-19T11:30:00.000Z'
+  },
+
+  // VIAJE CELEBRADO 2 · Montes de Toledo (1050 € de gastos vs 450 € de ingresos = 600 € de pérdidas)
+  {
+    id: 'exp-demo-viaje-toledo-autobus',
+    activityId: 'demo-viaje-4-celebrado-perdidas',
+    concept: 'Autocar privado ida y vuelta a Montes de Toledo',
+    amount: 720.00,
+    category: 'transporte',
+    date: '2026-01-20',
+    notes: 'Servicio discrecional para el grupo.',
+    createdAt: '2026-01-20T09:00:00.000Z'
+  },
+  {
+    id: 'exp-demo-viaje-toledo-visitas',
+    activityId: 'demo-viaje-4-celebrado-perdidas',
+    concept: 'Visitas a bodegas de Pago y almuerzo toledano',
+    amount: 330.00,
+    category: 'catering',
+    date: '2026-01-24',
+    notes: 'Almuerzo de 10 comensales y visitas guiadas.',
+    createdAt: '2026-01-24T18:00:00.000Z'
+  },
+
+  // CURSO CELEBRADO 2 · Corte de Jamón (Celebrado a mitad de aforo)
+  {
+    id: 'exp-demo-curso-jamon-honorarios',
+    activityId: 'demo-curso-4-celebrado-mitad-aforo',
+    concept: 'Honorarios maestro cortador Julián Bravo',
+    amount: 150.00,
+    category: 'personal',
+    date: '2026-02-07',
+    notes: 'Impartición del taller práctico.',
+    createdAt: '2026-02-07T14:30:00.000Z'
+  },
+  {
+    id: 'exp-demo-curso-jamon-genero',
+    activityId: 'demo-curso-4-celebrado-mitad-aforo',
+    concept: 'Piezas de jamón y material de corte',
+    amount: 100.00,
+    category: 'material',
+    date: '2026-02-05',
+    notes: 'Soportes, cuchillos y género para los alumnos.',
+    createdAt: '2026-02-05T10:00:00.000Z'
   }
 ];
 

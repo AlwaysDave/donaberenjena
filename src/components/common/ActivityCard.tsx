@@ -20,10 +20,17 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity }) => {
       case 'cata': {
         const cata = activity as CataActivity;
         return (
-          <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#521849] uppercase tracking-wider">
-            <Wine className="w-3.5 h-3.5" />
-            <span>Cata de {cata.category}</span>
-          </span>
+          <div className="inline-flex items-center gap-1.5 flex-wrap">
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#521849] uppercase tracking-wider">
+              <Wine className="w-3.5 h-3.5" />
+              <span>Cata de {cata.category}</span>
+            </span>
+            {cata.shiftName && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#C96043]/10 text-[#C96043] border border-[#C96043]/20">
+                {cata.shiftName}
+              </span>
+            )}
+          </div>
         );
       }
       case 'curso': {

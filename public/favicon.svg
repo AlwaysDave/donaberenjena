@@ -1,59 +1,118 @@
-<svg viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="fav-blue" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#00B5E8" />
-      <stop offset="100%" stop-color="#0077C8" />
+    <!-- 1. Cyan Blue -->
+    <linearGradient id="btn-blue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#00BAF2" />
+      <stop offset="50%" stop-color="#00A0E8" />
+      <stop offset="100%" stop-color="#0076B6" />
     </linearGradient>
-    <linearGradient id="fav-orange" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#FFA000" />
-      <stop offset="100%" stop-color="#E65100" />
+
+    <!-- 2. Vivid Orange -->
+    <linearGradient id="btn-orange" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFA800" />
+      <stop offset="50%" stop-color="#FF8A00" />
+      <stop offset="100%" stop-color="#E64E00" />
     </linearGradient>
-    <linearGradient id="fav-magenta" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#E91E83" />
-      <stop offset="100%" stop-color="#9B0058" />
+
+    <!-- 3. Vibrant Magenta -->
+    <linearGradient id="btn-magenta" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#EB1488" />
+      <stop offset="50%" stop-color="#C70068" />
+      <stop offset="100%" stop-color="#9C0052" />
     </linearGradient>
-    <linearGradient id="fav-green" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#8BC34A" />
-      <stop offset="100%" stop-color="#43A047" />
+
+    <!-- 4. Fresh Lime Green -->
+    <linearGradient id="btn-green" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#8DC63F" />
+      <stop offset="50%" stop-color="#6FBA25" />
+      <stop offset="100%" stop-color="#4B9614" />
     </linearGradient>
-    <linearGradient id="fav-gloss" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.4" />
-      <stop offset="50%" stop-color="#FFFFFF" stop-opacity="0" />
+
+    <!-- 3D Gloss Convex Reflection -->
+    <linearGradient id="gloss-shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.75" />
+      <stop offset="40%" stop-color="#FFFFFF" stop-opacity="0.18" />
+      <stop offset="55%" stop-color="#FFFFFF" stop-opacity="0" />
+      <stop offset="90%" stop-color="#000000" stop-opacity="0" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.2" />
     </linearGradient>
+
+    <!-- Bottom Contact Shadow -->
+    <radialGradient id="btn-shadow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0.6" />
+      <stop offset="60%" stop-color="#000000" stop-opacity="0.18" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
   </defs>
 
-  <!-- Background rounded canvas -->
-  <rect width="128" height="128" rx="28" fill="#FBF9F5" />
-  
-  <!-- 1. Blue Tile (left vertical) -->
-  <rect x="10" y="10" width="30" height="108" rx="8" fill="url(#fav-blue)" />
-  <rect x="10" y="10" width="30" height="108" rx="8" fill="url(#fav-gloss)" />
-  <!-- Spoon -->
-  <ellipse cx="25" cy="30" rx="6" ry="9" fill="#FFFFFF" />
-  <rect x="23.5" y="38" width="3" height="18" fill="#FFFFFF" />
-  <!-- 'b' -->
-  <rect x="16" y="80" width="4" height="26" rx="1.5" fill="#FFFFFF" />
-  <circle cx="25" cy="94" r="8" fill="none" stroke="#FFFFFF" stroke-width="4" />
+  <!-- Ground Shadows -->
+  <ellipse cx="32" cy="58" rx="26" ry="4" fill="url(#btn-shadow)" />
+  <ellipse cx="88" cy="58" rx="26" ry="4" fill="url(#btn-shadow)" />
+  <ellipse cx="32" cy="114" rx="26" ry="4" fill="url(#btn-shadow)" />
+  <ellipse cx="88" cy="114" rx="26" ry="4" fill="url(#btn-shadow)" />
 
-  <!-- 2. Orange Tile (Fork) -->
-  <rect x="46" y="10" width="34" height="34" rx="8" fill="url(#fav-orange)" />
-  <rect x="46" y="10" width="34" height="34" rx="8" fill="url(#fav-gloss)" />
-  <rect x="53" y="15" width="2" height="12" rx="1" fill="#FFFFFF" />
-  <rect x="58" y="15" width="2" height="12" rx="1" fill="#FFFFFF" />
-  <rect x="63" y="15" width="2" height="12" rx="1" fill="#FFFFFF" />
-  <rect x="68" y="15" width="2" height="12" rx="1" fill="#FFFFFF" />
-  <path d="M53 24 C53 30, 68 30, 68 24 L68 28 C68 33, 62 33, 61 33 L61 40 L59 40 L59 33 C58 33, 53 33, 53 28 Z" fill="#FFFFFF" />
+  <!-- ================= 1. Top-Left: Blue Button (Spoon + dña. + b) ================= -->
+  <g id="btn-1">
+    <rect x="6" y="6" width="52" height="52" rx="14" fill="url(#btn-blue)" />
+    <rect x="6" y="6" width="52" height="52" rx="14" fill="url(#gloss-shine)" />
 
-  <!-- 3. Magenta Tile (Knife) -->
-  <rect x="86" y="10" width="34" height="34" rx="8" fill="url(#fav-magenta)" />
-  <rect x="86" y="10" width="34" height="34" rx="8" fill="url(#fav-gloss)" />
-  <path d="M100 15 C100 15, 96 28, 93 34 L103 34 L103 15 Z" fill="#FFFFFF" />
-  <rect x="99" y="34" width="4" height="6" fill="#FFFFFF" />
+    <!-- Spoon Icon -->
+    <ellipse cx="32" cy="23" rx="8.5" ry="11.5" fill="#FFFFFF" />
+    <rect x="30.5" y="33" width="3" height="12" rx="1.5" fill="#FFFFFF" />
+    
+    <!-- Small "dña. b" signature mark -->
+    <text x="12" y="50" font-family="sans-serif" font-size="7.5" font-weight="900" fill="#FFFFFF" opacity="0.95">dña.b</text>
+  </g>
 
-  <!-- 4. Green Tile (Wine Glass) -->
-  <rect x="46" y="50" width="74" height="68" rx="12" fill="url(#fav-green)" />
-  <rect x="46" y="50" width="74" height="68" rx="12" fill="url(#fav-gloss)" />
-  <path d="M68 60 L98 60 C99 76, 97 88, 85 90 L81 90 C69 88, 67 76, 68 60 Z" fill="#FFFFFF" />
-  <rect x="81" y="90" width="4" height="16" fill="#FFFFFF" />
-  <ellipse cx="83" cy="107" rx="14" ry="2" fill="#FFFFFF" />
+  <!-- ================= 2. Top-Right: Orange Button (Fork) ================= -->
+  <g id="btn-2">
+    <rect x="62" y="6" width="52" height="52" rx="14" fill="url(#btn-orange)" />
+    <rect x="62" y="6" width="52" height="52" rx="14" fill="url(#gloss-shine)" />
+
+    <!-- 4-Tine Fork Silhouette -->
+    <g transform="translate(79.5, 12)" fill="#FFFFFF">
+      <rect x="0" y="0" width="2.4" height="20" rx="1.2" />
+      <rect x="5.2" y="0" width="2.4" height="20" rx="1.2" />
+      <rect x="10.4" y="0" width="2.4" height="20" rx="1.2" />
+      <rect x="15.6" y="0" width="2.4" height="20" rx="1.2" />
+      <!-- Fork neck curve -->
+      <path d="M 0 14 C 0 26, 18 26, 18 14 L 18 19 C 18 27, 12 28, 10.5 28 L 7.5 28 C 6 28, 0 27, 0 19 Z" />
+      <!-- Fork handle -->
+      <rect x="7.5" y="27" width="3" height="11" rx="1.5" />
+    </g>
+  </g>
+
+  <!-- ================= 3. Bottom-Left: Magenta Button (Knife) ================= -->
+  <g id="btn-3">
+    <rect x="6" y="62" width="52" height="52" rx="14" fill="url(#btn-magenta)" />
+    <rect x="6" y="62" width="52" height="52" rx="14" fill="url(#gloss-shine)" />
+
+    <!-- Chef Knife Silhouette -->
+    <g transform="translate(25.5, 69)" fill="#FFFFFF">
+      <!-- Curved Blade -->
+      <path d="M 6.5 0 C 6.5 0, 5.5 19, 0 31 L 10.5 31 C 11 31, 11 27, 11 23 L 11 0 Z" />
+      <!-- Knife Handle -->
+      <path d="M 5.5 31 L 10.5 31 L 10.5 39 C 10.5 40, 9.8 40.5, 9 40.5 L 6.5 40.5 C 6 40.5, 5.5 40, 5.5 39 Z" />
+    </g>
+  </g>
+
+  <!-- ================= 4. Bottom-Right: Green Button (Wine Glass) ================= -->
+  <g id="btn-4">
+    <rect x="62" y="62" width="52" height="52" rx="14" fill="url(#btn-green)" />
+    <rect x="62" y="62" width="52" height="52" rx="14" fill="url(#gloss-shine)" />
+
+    <!-- Wine Glass Silhouette with Green Wine in Bowl -->
+    <g transform="translate(74.5, 73)">
+      <!-- Outer White Goblet -->
+      <path
+        d="M 3.5 0 L 23.5 0 C 24.2 10, 22.5 19, 15 20.5 L 15 28.5 L 20.5 28.5 C 21.5 28.5, 22 29, 22 29.8 C 22 30.6, 21.5 31, 20.5 31 L 6.5 31 C 5.5 31, 5 30.6, 5 29.8 C 5 29, 5.5 28.5, 6.5 28.5 L 12 28.5 L 12 20.5 C 4.5 19, 2.8 10, 3.5 0 Z"
+        fill="#FFFFFF"
+      />
+      <!-- Filled Green Wine Liquid in Bowl -->
+      <path
+        d="M 5 10.5 L 22 10.5 C 22.2 16.5, 20.8 19.2, 13.5 19.2 C 6.2 19.2, 4.8 16.5, 5 10.5 Z"
+        fill="url(#btn-green)"
+      />
+    </g>
+  </g>
 </svg>

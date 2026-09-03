@@ -32,12 +32,19 @@ import { trackGAViewItem } from '../utils/googleAnalytics';
 export const ActivityDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { getActivityById } = useData();
+  const { getActivityById, activities } = useData();
   
   const [copied, setCopied] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
 
   const activity = id ? getActivityById(id) : undefined;
+  const cata = activity?.type === 'cata' ? (activity as CataActivity) : null;
+  const curso = activity?.type === 'curso' ? (activity as CursoActivity) : null;
+  const viaje = activity?.type === 'viaje' ? (activity as ViajeActivity) : null;
+
+  const siblingShift = cata?.tastingGroupId
+    ? (activities.find(a => a.id !== activity?.id && (a as CataActivity).tastingGroupId === cata.tastingGroupId) as CataActivity | undefined)
+    : undefined;
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -84,10 +91,6 @@ export const ActivityDetailPage: React.FC = () => {
       setTimeout(() => setCopied(false), 2500);
     }
   };
-
-  const cata = activity.type === 'cata' ? (activity as CataActivity) : null;
-  const curso = activity.type === 'curso' ? (activity as CursoActivity) : null;
-  const viaje = activity.type === 'viaje' ? (activity as ViajeActivity) : null;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8">
@@ -153,7 +156,31 @@ export const ActivityDetailPage: React.FC = () => {
                 {activity.type === 'curso' && 'Curso de Cocina'}
                 {activity.type === 'viaje' && `Viaje • ${viaje?.durationDays} días`}
               </span>
+              {cata?.shiftName && (
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#C96043]/15 text-[#C96043] border border-[#C96043]/30">
+                  {cata.shiftName}
+                </span>
+              )}
             </div>
+
+            {/* Sibling Shift Banner if part of a 2-turn tasting */}
+            {siblingShift && (
+              <div className="p-3 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 text-[#574B45]">
+                  <Wine className="w-4 h-4 text-[#521849]" />
+                  <span>
+                    Esta cata cuenta con 2 turnos independientes. Estás viendo: <strong className="text-[#521849] font-bold">{cata?.shiftName || 'Turno 1'}</strong>.
+                  </span>
+                </div>
+                <Link
+                  to={`/actividad/${siblingShift.id}`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white font-bold text-[11px] transition-colors shrink-0 shadow-2xs"
+                >
+                  <span>Ver {siblingShift.shiftName || 'Turno 2'} ({siblingShift.time})</span>
+                  <ArrowLeft className="w-3.5 h-3.5 rotate-180" />
+                </Link>
+              </div>
+            )}
 
             <h1 className="text-2xl sm:text-4xl font-bold font-serif text-[#26201D] leading-tight">
               {activity.title}

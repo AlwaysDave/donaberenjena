@@ -7,7 +7,7 @@ import { searchBodegaLogo } from '../../services/bodegaLogoService';
 import { BodegaLogoSearchModal } from '../../components/admin/BodegaLogoSearchModal';
 import { BodegaWebsiteSearchModal } from '../../components/admin/BodegaWebsiteSearchModal';
 import { BodegaManager } from '../../components/admin/BodegaManager';
-import { MembersManager } from '../../components/admin/MembersManager';
+import { SimpleMembersManager } from '../../components/admin/SimpleMembersManager';
 import { QuickCheckIn } from '../../components/admin/QuickCheckIn';
 import { getAdminAuthHeader } from '../../services/authHelper';
 import { getActivityRegistrationState } from '../../utils/activityStatus';
@@ -24,6 +24,7 @@ import {
   FileUp, 
   Loader2, 
   AlertTriangle,
+  AlertCircle,
   Wine,
   Clock,
   MapPin,
@@ -32,14 +33,18 @@ import {
   Bell,
   X,
   ListChecks,
-  Layers
+  Layers,
+  Users,
+  RefreshCw,
+  ArrowLeft,
+  DollarSign
 } from 'lucide-react';
 
 export const ModoSencilloView: React.FC = () => {
   const { activities, participants, members, unreadNotificationsCount, addActivity, quickUpdateActivity, deleteActivity } = useData();
-  const [activeSubTab, setActiveSubTab] = useState<'actividades' | 'checkin'>('actividades');
+  const [activeTab, setActiveTab] = useState<'proximas' | 'celebradas' | 'socios'>('proximas');
+  const [checkInActivityId, setCheckInActivityId] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [showMembersModal, setShowMembersModal] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState<string | null>(null);
   const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
   const [activityToToggleRegistration, setActivityToToggleRegistration] = useState<Activity | null>(null);
@@ -50,11 +55,23 @@ export const ModoSencilloView: React.FC = () => {
   const [newTitle, setNewTitle] = useState('');
   const [newSubtitle, setNewSubtitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
+  
+  // Turnos & Sesiones (exclusivo de catas)
+  const [sessionMode, setSessionMode] = useState<'una_sesion' | 'dos_turnos'>('una_sesion');
+  const [shift1Name, setShift1Name] = useState('Turno 1');
+  const [shift2Name, setShift2Name] = useState('Turno 2');
   const [newDate1, setNewDate1] = useState('');
   const [newTime1, setNewTime1] = useState('21:00');
+  const [newDate2, setNewDate2] = useState('');
+  const [newTime2, setNewTime2] = useState('22:30');
+  const [newSpots1, setNewSpots1] = useState(14);
+  const [newSpots2, setNewSpots2] = useState(14);
+  const [formValidationError, setFormValidationError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [newPriceMember, setNewPriceMember] = useState(20.0); // Default 20.00€
   const [newPriceNonMember, setNewPriceNonMember] = useState(25.0); // Default 25.00€
-  const [newSpots, setNewSpots] = useState(14); // Default 14
+  const [newSpots, setNewSpots] = useState(14); // Default 14 for simple/courses/trips
   const [newLocation, setNewLocation] = useState(DEFAULT_OFFICIAL_LOCATION);
   
   // Specific cata state
@@ -90,12 +107,19 @@ export const ModoSencilloView: React.FC = () => {
   const [editDate, setEditDate] = useState<string>('');
   const [editSpots, setEditSpots] = useState<number>(0);
 
-  const upcoming = sortActivitiesNewestFirst(activities.filter(a => a.status === 'proxima'));
+  const upcoming = sortActivitiesOldestFirst(activities.filter(a => a.status === 'proxima'));
   const held = sortActivitiesNewestFirst(activities.filter(a => a.status === 'celebrada'));
 
   const handleDate1Change = (dateVal: string) => {
     setNewDate1(dateVal);
-    setNewTime1(getDefaultStartTime(dateVal));
+    if (!newDate2 || newDate2 === newDate1) {
+      setNewDate2(dateVal);
+    }
+    const defaultT = getDefaultStartTime(dateVal);
+    setNewTime1(defaultT);
+    if (sessionMode === 'dos_turnos' && newTime2 === defaultT) {
+      setNewTime2(defaultT === '21:00' ? '22:45' : defaultT === '13:00' ? '15:00' : '22:30');
+    }
   };
 
   const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -104,6 +128,7 @@ export const ModoSencilloView: React.FC = () => {
 
     setIsParsingPdf(true);
     setPdfSuccess(null);
+    setFormValidationError(null);
 
     try {
       const formData = new FormData();
@@ -153,12 +178,32 @@ export const ModoSencilloView: React.FC = () => {
         const m = t.match(/(\d{1,2}):(\d{2})/);
         return m ? `${m[1].padStart(2, '0')}:${m[2]}` : '';
       };
-      setNewTime1(formatTime(parsed.time) || (parsed.date ? getDefaultStartTime(parsed.date) : '21:00'));
+      const formattedTime1 = formatTime(parsed.time) || (parsed.date ? getDefaultStartTime(parsed.date) : '21:00');
+      setNewTime1(formattedTime1);
 
       setNewPriceNonMember(Number(Number(parsed.price || 25.0).toFixed(2)));
       setNewPriceMember(Number(Number(parsed.price || 20.0).toFixed(2)));
       setNewSpots(parsed.spots || 14);
+      setNewSpots1(parsed.spots || 14);
       setNewLocation(parsed.location || DEFAULT_OFFICIAL_LOCATION);
+
+      // Handle multi-shift detection from AI response
+      if (parsed.hasMultipleShifts) {
+        setSessionMode('dos_turnos');
+        setShift1Name(parsed.shift1Name || 'Turno 1');
+        setShift2Name(parsed.shift2Name || 'Turno 2');
+        setNewDate2(parsed.date2 || parsed.date || '');
+        const formattedTime2 = formatTime(parsed.time2) || '22:30';
+        setNewTime2(formattedTime2);
+        setNewSpots2(parsed.spots2 || parsed.spots || 14);
+      } else {
+        setSessionMode('una_sesion');
+        setShift1Name('Turno 1');
+        setShift2Name('Turno 2');
+        setNewDate2(parsed.date || '');
+        setNewTime2('22:30');
+        setNewSpots2(14);
+      }
       
       if (parsed.bodegas && Array.isArray(parsed.bodegas) && parsed.bodegas.length > 0) {
         setBodegas(parsed.bodegas);
@@ -192,7 +237,13 @@ export const ModoSencilloView: React.FC = () => {
       }
 
       const totalWinesCount = (parsed.bodegas || []).reduce((acc: number, b: any) => acc + (b.wines?.length || 0), 0) || parsed.wines?.length || 0;
-      setPdfSuccess(`¡Archivo "${file.name}" analizado con IA con éxito! Detectadas ${parsed.bodegas?.length || 1} bodegas, ${totalWinesCount} vinos y sumiller ${parsed.sumiller || 'Ana García'}.`);
+      if (parsed.hasMultipleShifts) {
+        setPdfSuccess(`¡Cartel analizado con IA! Detectados 2 turnos independientes (${parsed.shift1Name || 'Turno 1'} y ${parsed.shift2Name || 'Turno 2'}), ${parsed.bodegas?.length || 1} bodegas y ${totalWinesCount} vinos.`);
+      } else if (parsed.isShiftAmbiguous) {
+        setPdfSuccess(`¡Cartel analizado! Se detectó posible ambigüedad en los turnos; se ha cargado como una única sesión para revisión y confirmación administrativa.`);
+      } else {
+        setPdfSuccess(`¡Archivo "${file.name}" analizado con IA con éxito! Detectadas ${parsed.bodegas?.length || 1} bodegas, ${totalWinesCount} vinos y sumiller ${parsed.sumiller || 'Ana García'}.`);
+      }
     } catch (err) {
       console.error('Error procesando PDF/Imagen:', err);
       alert('Error: ' + (err as Error).message);
@@ -214,96 +265,215 @@ export const ModoSencilloView: React.FC = () => {
 
   const handleCreateSimple = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle || !newDate1) return;
+    setFormValidationError(null);
 
-    // Clean bodegas data
-    const cleanedBodegas: BodegaItem[] = bodegas.map(b => ({
-      name: b.name.trim() || 'Bodega Invitada',
-      region: b.region.trim() || 'Castilla-La Mancha',
-      website: b.website?.trim() || undefined,
-      wines: b.wines
-        .filter(w => w.name.trim() || w.pairing?.trim() || w.grape?.trim())
-        .map(w => ({
-          type: w.type.trim() || 'Vino',
-          name: w.name.trim(),
-          grape: w.grape?.trim() || undefined,
-          pairing: w.pairing?.trim() || undefined,
-          notes: w.notes?.trim() || undefined
-        }))
-    }));
+    if (!newTitle.trim()) {
+      setFormValidationError('El título de la actividad es obligatorio.');
+      return;
+    }
+    if (!newDate1) {
+      setFormValidationError('La fecha de la actividad es obligatoria.');
+      return;
+    }
 
-    // Collect all wines for legacy compatibility
-    const allWines: WineDetail[] = [];
-    cleanedBodegas.forEach(b => {
-      b.wines.forEach(w => {
-        allWines.push({
-          ...w,
-          bodega: b.name,
-          region: b.region
+    if (newType === 'cata' && sessionMode === 'dos_turnos') {
+      if (!newDate2) {
+        setFormValidationError('Debes indicar la fecha para ambos turnos.');
+        return;
+      }
+      if (!newTime1 || !newTime2) {
+        setFormValidationError('Debes indicar la hora de inicio para ambos turnos.');
+        return;
+      }
+      if (newDate1 === newDate2 && newTime1 === newTime2) {
+        setFormValidationError('Los turnos para el mismo día deben tener horas de inicio diferentes.');
+        return;
+      }
+      if (newSpots1 <= 0 || newSpots2 <= 0) {
+        setFormValidationError('El aforo de cada turno debe ser superior a 0.');
+        return;
+      }
+    } else {
+      if (!newTime1) {
+        setFormValidationError('Debes indicar la hora de inicio.');
+        return;
+      }
+      if (newSpots <= 0) {
+        setFormValidationError('El aforo debe ser superior a 0.');
+        return;
+      }
+    }
+
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
+    try {
+      // Clean bodegas data
+      const cleanedBodegas: BodegaItem[] = bodegas.map(b => ({
+        name: b.name.trim() || 'Bodega Invitada',
+        region: b.region.trim() || 'Castilla-La Mancha',
+        website: b.website?.trim() || undefined,
+        wines: b.wines
+          .filter(w => w.name.trim() || w.pairing?.trim() || w.grape?.trim())
+          .map(w => ({
+            type: w.type.trim() || 'Vino',
+            name: w.name.trim(),
+            grape: w.grape?.trim() || undefined,
+            pairing: w.pairing?.trim() || undefined,
+            notes: w.notes?.trim() || undefined
+          }))
+      }));
+
+      // Collect all wines for legacy compatibility
+      const allWines: WineDetail[] = [];
+      cleanedBodegas.forEach(b => {
+        b.wines.forEach(w => {
+          allWines.push({
+            ...w,
+            bodega: b.name,
+            region: b.region
+          });
         });
       });
-    });
 
-    const pairingMenu = allWines.map(w => ({
-      dish: w.pairing || 'Degustación',
-      pairing: `${w.type} ${w.name}`.trim(),
-      notes: w.grape || undefined
-    }));
+      const pairingMenu = allWines.map(w => ({
+        dish: w.pairing || 'Degustación',
+        pairing: `${w.type} ${w.name}`.trim(),
+        notes: w.grape || undefined
+      }));
 
-    // Point 1: Create 2 records if Date 2 is provided, or 1 record for Date 1
-    const recordsToCreate: Activity[] = [];
+      if (newType === 'cata' && sessionMode === 'dos_turnos') {
+        const tastingGroupId = `tg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
-    // Record 1 (Fecha 1)
-    const baseRecord1: Activity = {
-      id: `${newType}-${Date.now()}-f1`,
-      type: newType,
-      title: newTitle,
-      subtitle: newSubtitle || (cleanedBodegas[0]?.name ? `Con ${cleanedBodegas[0]?.name}` : `Convocatoria de ${newType}`),
-      description: newDescription || '',
-      date: newDate1,
-      time: newTime1,
-      priceMember: Number(newPriceMember),
-      priceNonMember: Number(newPriceNonMember),
-      totalSpots: Number(newSpots),
-      bookedSpots: 0,
-      status: 'proxima',
-      registrationStatus: 'abierta',
-      location: newLocation,
-      images: [imageUrl],
-      createdAt: new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0],
-      ...(newType === 'cata' ? {
-        category: 'vino',
-        bodegas: cleanedBodegas,
-        bodegaProductor: { 
-          name: cleanedBodegas[0]?.name || 'Bodega Invitada', 
-          region: cleanedBodegas[0]?.region || 'Castilla-La Mancha',
-          website: cleanedBodegas[0]?.website || undefined
-        },
-        sumiller: newSumiller || 'Ana García',
-        aove: newAove || undefined,
-        wines: allWines,
-        pairingMenu: pairingMenu
-      } : newType === 'curso' ? {
-        theme: 'Taller Gastronómico',
-        chef: { name: 'Chef Invitado', bio: 'Especialista culinario' },
-        syllabus: ['Técnicas fundamentales', 'Elaboración práctica', 'Degustación'],
-        includesTasting: true
-      } : {
-        destination: 'Ruta Gastronómica',
-        durationDays: 2,
-        includedServices: ['Transporte y alojamiento', 'Visitas guiadas', 'Degustaciones'],
-        itinerary: [{ day: 1, title: 'Llegada y bienvenida', description: 'Presentación', highlights: ['Cata inicial'] }]
-      })
-    } as Activity;
+        // Actividad Turno 1
+        const recordShift1: CataActivity = {
+          id: `cata-${Date.now()}-t1`,
+          type: 'cata',
+          category: 'vino',
+          title: newTitle.trim(),
+          subtitle: newSubtitle || (cleanedBodegas[0]?.name ? `Con ${cleanedBodegas[0]?.name}` : `Cata de Bodega`),
+          description: newDescription || '',
+          date: newDate1,
+          time: newTime1,
+          priceMember: Number(newPriceMember),
+          priceNonMember: Number(newPriceNonMember),
+          totalSpots: Number(newSpots1),
+          bookedSpots: 0,
+          status: 'proxima',
+          registrationStatus: 'abierta',
+          location: newLocation,
+          images: [imageUrl],
+          tastingGroupId,
+          shiftName: shift1Name.trim() || 'Turno 1',
+          bodegas: cleanedBodegas,
+          bodegaProductor: { 
+            name: cleanedBodegas[0]?.name || 'Bodega Invitada', 
+            region: cleanedBodegas[0]?.region || 'Castilla-La Mancha',
+            website: cleanedBodegas[0]?.website || undefined
+          },
+          sumiller: newSumiller || 'Ana García',
+          aove: newAove || undefined,
+          wines: allWines,
+          pairingMenu: pairingMenu,
+          createdAt: new Date().toISOString().split('T')[0],
+          updatedAt: new Date().toISOString().split('T')[0],
+        };
 
-    recordsToCreate.push(baseRecord1);
+        // Actividad Turno 2 (independiente con su propio ID, aforo, reservas y asistencia)
+        const recordShift2: CataActivity = {
+          id: `cata-${Date.now() + 1}-t2`,
+          type: 'cata',
+          category: 'vino',
+          title: newTitle.trim(),
+          subtitle: newSubtitle || (cleanedBodegas[0]?.name ? `Con ${cleanedBodegas[0]?.name}` : `Cata de Bodega`),
+          description: newDescription || '',
+          date: newDate2 || newDate1,
+          time: newTime2,
+          priceMember: Number(newPriceMember),
+          priceNonMember: Number(newPriceNonMember),
+          totalSpots: Number(newSpots2),
+          bookedSpots: 0,
+          status: 'proxima',
+          registrationStatus: 'abierta',
+          location: newLocation,
+          images: [imageUrl],
+          tastingGroupId,
+          shiftName: shift2Name.trim() || 'Turno 2',
+          bodegas: cleanedBodegas,
+          bodegaProductor: { 
+            name: cleanedBodegas[0]?.name || 'Bodega Invitada', 
+            region: cleanedBodegas[0]?.region || 'Castilla-La Mancha',
+            website: cleanedBodegas[0]?.website || undefined
+          },
+          sumiller: newSumiller || 'Ana García',
+          aove: newAove || undefined,
+          wines: allWines,
+          pairingMenu: pairingMenu,
+          createdAt: new Date().toISOString().split('T')[0],
+          updatedAt: new Date().toISOString().split('T')[0],
+        };
 
-    await addActivity(baseRecord1);
+        await addActivity(recordShift1);
+        await addActivity(recordShift2);
 
-    setSavedSuccess(`¡Convocatoria generada con éxito en Firestore!`);
-    setShowCreateForm(false);
-    setTimeout(() => setSavedSuccess(null), 4000);
+        setSavedSuccess(`¡Se han creado con éxito los 2 turnos independientes de la cata en Firestore!`);
+      } else {
+        // Single session or Curso or Viaje
+        const baseRecord1: Activity = {
+          id: `${newType}-${Date.now()}`,
+          type: newType,
+          title: newTitle.trim(),
+          subtitle: newSubtitle || (cleanedBodegas[0]?.name ? `Con ${cleanedBodegas[0]?.name}` : `Convocatoria de ${newType}`),
+          description: newDescription || '',
+          date: newDate1,
+          time: newTime1,
+          priceMember: Number(newPriceMember),
+          priceNonMember: Number(newPriceNonMember),
+          totalSpots: Number(newSpots),
+          bookedSpots: 0,
+          status: 'proxima',
+          registrationStatus: 'abierta',
+          location: newLocation,
+          images: [imageUrl],
+          createdAt: new Date().toISOString().split('T')[0],
+          updatedAt: new Date().toISOString().split('T')[0],
+          ...(newType === 'cata' ? {
+            category: 'vino',
+            bodegas: cleanedBodegas,
+            bodegaProductor: { 
+              name: cleanedBodegas[0]?.name || 'Bodega Invitada', 
+              region: cleanedBodegas[0]?.region || 'Castilla-La Mancha',
+              website: cleanedBodegas[0]?.website || undefined
+            },
+            sumiller: newSumiller || 'Ana García',
+            aove: newAove || undefined,
+            wines: allWines,
+            pairingMenu: pairingMenu
+          } : newType === 'curso' ? {
+            theme: 'Taller Gastronómico',
+            chef: { name: 'Chef Invitado', bio: 'Especialista culinario' },
+            syllabus: ['Técnicas fundamentales', 'Elaboración práctica', 'Degustación'],
+            includesTasting: true
+          } : {
+            destination: 'Ruta Gastronómica',
+            durationDays: 2,
+            includedServices: ['Transporte y alojamiento', 'Visitas guiadas', 'Degustaciones'],
+            itinerary: [{ day: 1, title: 'Llegada y bienvenida', description: 'Presentación', highlights: ['Cata inicial'] }]
+          })
+        } as Activity;
+
+        await addActivity(baseRecord1);
+        setSavedSuccess(`¡Convocatoria generada con éxito en Firestore!`);
+      }
+
+      setShowCreateForm(false);
+      setTimeout(() => setSavedSuccess(null), 4000);
+    } catch (err: any) {
+      console.error('Error al guardar convocatoria:', err);
+      setFormValidationError(`Error al guardar: ${err.message || err}`);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const startEdit = (act: Activity) => {
@@ -325,10 +495,21 @@ export const ModoSencilloView: React.FC = () => {
   };
 
   const toggleStatus = async (act: Activity) => {
-    const nextStatus = act.status === 'proxima' ? 'celebrada' : 'proxima';
-    await quickUpdateActivity(act.id, {
-      status: nextStatus
-    });
+    try {
+      const nextStatus = act.status === 'proxima' ? 'celebrada' : 'proxima';
+      await quickUpdateActivity(act.id, {
+        status: nextStatus
+      });
+      if (nextStatus === 'celebrada') {
+        setSavedSuccess(`La actividad «${act.title}» se ha archivado como CELEBRADA y se ha movido a la pestaña de Celebradas.`);
+      } else {
+        setSavedSuccess(`La actividad «${act.title}» se ha movido a Próximas actividades.`);
+      }
+      setTimeout(() => setSavedSuccess(null), 4000);
+    } catch (err: any) {
+      console.error('Error al cambiar estado de la actividad:', err);
+      alert('Error al cambiar estado: ' + (err.message || err));
+    }
   };
 
   const handleToggleRegistration = async (act: Activity) => {
@@ -350,52 +531,33 @@ export const ModoSencilloView: React.FC = () => {
     setActivityToToggleRegistration(null);
   };
 
-  const totalUpcomingSpots = upcoming.reduce((acc, a) => acc + a.totalSpots, 0);
-  const totalBookedSpots = upcoming.reduce((acc, a) => acc + a.bookedSpots, 0);
+  const handleMarkAsNotHeld = async (act: Activity) => {
+    try {
+      await quickUpdateActivity(act.id, { 
+        status: 'proxima',
+        registrationStatus: 'abierta'
+      });
+      setSavedSuccess(`La actividad «${act.title}» se ha marcado como NO CELEBRADA y se ha movido a Próximas actividades.`);
+      setTimeout(() => setSavedSuccess(null), 4000);
+    } catch (err: any) {
+      console.error('Error al actualizar estado:', err);
+      alert('Error al actualizar estado: ' + (err.message || err));
+    }
+  };
 
   return (
-    <div className="space-y-8">
-      {/* Header and Quick Stats */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <span className="text-xs uppercase tracking-widest font-bold text-[#C96043]">
-            Operación Rápida
-          </span>
-          <h2 className="text-2xl sm:text-3xl font-bold font-serif text-[#26201D]">
-            Modo Sencillo
-          </h2>
-          <p className="text-xs text-[#574B45] mt-1">
-            Gestión simplificada del día a día, control de aforo y altas con PDF (2 convocatorias automáticas, 25€ / 14 plazas).
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-          <button
-            id="btn-simple-members-modal"
-            type="button"
-            onClick={() => setShowMembersModal(true)}
-            className="px-4 py-2.5 rounded-xl border border-[#EDE4D7] bg-white hover:bg-[#F6F1EA] text-[#26201D] text-xs font-semibold flex items-center gap-2 transition-all shadow-2xs cursor-pointer relative"
-          >
-            <UserCheck className="w-4 h-4 text-[#521849]" />
-            <span>Censo de Socios ({members.length})</span>
-            {unreadNotificationsCount > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full bg-amber-400 text-amber-950 font-extrabold text-[10px] flex items-center gap-0.5">
-                <Bell className="w-2.5 h-2.5" />
-                {unreadNotificationsCount}
-              </span>
-            )}
-          </button>
-
-          <button
-            id="btn-simple-create-toggle"
-            type="button"
-            onClick={() => setShowCreateForm(!showCreateForm)}
-            className="px-4 py-2.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold flex items-center gap-2 transition-all shadow-xs cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>{showCreateForm ? 'Cerrar Formulario' : 'Crear Nueva Actividad'}</span>
-          </button>
-        </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <span className="text-xs uppercase tracking-widest font-bold text-[#C96043]">
+          Operación Rápida Móvil
+        </span>
+        <h2 className="text-2xl sm:text-3xl font-bold font-serif text-[#26201D]">
+          Modo Sencillo
+        </h2>
+        <p className="text-xs text-[#574B45] mt-1">
+          Gestión simplificada: Próximas actividades con hoja de asistencia, historial de celebradas y censo de socios.
+        </p>
       </div>
 
       {savedSuccess && (
@@ -405,42 +567,101 @@ export const ModoSencilloView: React.FC = () => {
         </div>
       )}
 
-      {/* Sub-tab Switcher: Aforos / Check-in in situ */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-[#EDE4D7] pb-3">
+      {/* 4 Main Navigation Buttons - No horizontal scroll, responsive grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        {/* Button 1: Nueva Actividad */}
         <button
+          id="btn-nav-nueva-actividad"
           type="button"
-          onClick={() => setActiveSubTab('actividades')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
-            activeSubTab === 'actividades'
+          onClick={() => {
+            if (activeTab === 'proximas') {
+              setShowCreateForm(!showCreateForm);
+            } else {
+              setActiveTab('proximas');
+              setShowCreateForm(true);
+              setCheckInActivityId(null);
+            }
+          }}
+          className={`min-h-[44px] px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-2xs ${
+            showCreateForm && activeTab === 'proximas'
               ? 'bg-[#521849] text-white shadow-xs'
-              : 'bg-white text-[#574B45] hover:bg-[#F6F1EA] border border-[#EDE4D7]'
+              : 'bg-white hover:bg-[#F6F1EA] text-[#26201D] border border-[#EDE4D7]'
           }`}
         >
-          <Layers className="w-4 h-4" />
-          <span>Control de Aforo y Fichas</span>
+          <Plus className={`w-4 h-4 ${showCreateForm && activeTab === 'proximas' ? 'text-amber-300' : 'text-[#521849]'}`} />
+          <span>{showCreateForm && activeTab === 'proximas' ? 'Cerrar Formulario' : '+ Nueva actividad'}</span>
         </button>
 
+        {/* Button 2: Próximas Actividades */}
         <button
-          id="btn-subtab-checkin-movil"
+          id="btn-tab-proximas"
           type="button"
-          onClick={() => setActiveSubTab('checkin')}
-          className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
-            activeSubTab === 'checkin'
+          onClick={() => {
+            setActiveTab('proximas');
+            setShowCreateForm(false);
+            setCheckInActivityId(null);
+          }}
+          className={`min-h-[44px] px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-2xs ${
+            activeTab === 'proximas' && !showCreateForm && !checkInActivityId
               ? 'bg-[#521849] text-white shadow-xs'
               : 'bg-white text-[#574B45] hover:bg-[#F6F1EA] border border-[#EDE4D7]'
           }`}
         >
-          <ListChecks className="w-4 h-4 text-emerald-600" />
-          <span>Check-in In Situ Móvil</span>
+          <Calendar className={`w-4 h-4 ${activeTab === 'proximas' && !showCreateForm && !checkInActivityId ? 'text-white' : 'text-[#521849]'}`} />
+          <span className="truncate">Próximas ({upcoming.length})</span>
+        </button>
+
+        {/* Button 3: Actividades Celebradas */}
+        <button
+          id="btn-tab-celebradas"
+          type="button"
+          onClick={() => {
+            setActiveTab('celebradas');
+            setShowCreateForm(false);
+            setCheckInActivityId(null);
+          }}
+          className={`min-h-[44px] px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-2xs ${
+            activeTab === 'celebradas' && !checkInActivityId
+              ? 'bg-[#521849] text-white shadow-xs'
+              : 'bg-white text-[#574B45] hover:bg-[#F6F1EA] border border-[#EDE4D7]'
+          }`}
+        >
+          <CheckCircle className={`w-4 h-4 ${activeTab === 'celebradas' && !checkInActivityId ? 'text-emerald-300' : 'text-emerald-600'}`} />
+          <span className="truncate">Celebradas ({held.length})</span>
+        </button>
+
+        {/* Button 4: Socios */}
+        <button
+          id="btn-tab-socios"
+          type="button"
+          onClick={() => {
+            setActiveTab('socios');
+            setShowCreateForm(false);
+            setCheckInActivityId(null);
+          }}
+          className={`min-h-[44px] px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-2xs ${
+            activeTab === 'socios' && !checkInActivityId
+              ? 'bg-[#521849] text-white shadow-xs'
+              : 'bg-white text-[#574B45] hover:bg-[#F6F1EA] border border-[#EDE4D7]'
+          }`}
+        >
+          <Users className={`w-4 h-4 ${activeTab === 'socios' && !checkInActivityId ? 'text-amber-300' : 'text-[#521849]'}`} />
+          <span className="truncate">Socios ({members.length})</span>
         </button>
       </div>
 
-      {activeSubTab === 'checkin' ? (
-        <QuickCheckIn />
+      {/* Check-in In Situ View (if active) */}
+      {checkInActivityId ? (
+        <QuickCheckIn
+          initialActivityId={checkInActivityId}
+          onClose={() => setCheckInActivityId(null)}
+        />
       ) : (
         <>
-          {/* Quick Create Form with PDF Autocomplete */}
-      {showCreateForm && (
+          {activeTab === 'proximas' && (
+            <div className="space-y-6">
+              {/* Quick Create Form with PDF Autocomplete */}
+              {showCreateForm && (
         <div className="p-6 sm:p-8 rounded-3xl bg-white border border-[#EDE4D7] shadow-xl space-y-6 animate-fadeIn">
           <div className="flex items-center justify-between">
             <h3 className="font-serif font-bold text-lg text-[#26201D]">
@@ -509,82 +730,232 @@ export const ModoSencilloView: React.FC = () => {
                 />
               </div>
 
-              {/* Point 1: Fechas 1 y 2 */}
-              <div className="p-3.5 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7] sm:col-span-2 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-[#521849] flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-[#C96043]" />
-                    Fecha 1 (Primer Turno / Registro 1) *
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
+              {/* Selector de Modo de Sesión (Exclusivo para Catas) */}
+              {newType === 'cata' && (
+                <div className="sm:col-span-2 lg:col-span-4 p-4 rounded-2xl bg-[#F6EDF4]/60 border border-[#521849]/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
-                    <label className="block text-[11px] text-[#574B45] mb-1">Fecha</label>
-                    <input
-                      type="date"
-                      required
-                      value={newDate1}
-                      onChange={(e) => handleDate1Change(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-[#574B45] mb-1 flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-[#521849]" />
-                      Hora Inicio
+                    <label className="block text-xs font-bold text-[#521849] mb-0.5">
+                      Modalidad de Turnos para la Cata
                     </label>
-                    <input
-                      type="time"
-                      required
-                      value={newTime1}
-                      onChange={(e) => setNewTime1(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
-                    />
+                    <p className="text-[11px] text-[#574B45]">
+                      Configura si la cata tendrá una única sesión o se celebrará en dos turnos independientes con sus propios aforos y reservas.
+                    </p>
+                  </div>
+                  <div className="inline-flex rounded-xl bg-white p-1 border border-[#EDE4D7] shadow-2xs shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setSessionMode('una_sesion')}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        sessionMode === 'una_sesion'
+                          ? 'bg-[#521849] text-white shadow-xs'
+                          : 'text-[#574B45] hover:bg-[#F6F1EA]'
+                      }`}
+                    >
+                      Una sesión
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSessionMode('dos_turnos');
+                        if (!newDate2) setNewDate2(newDate1);
+                      }}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        sessionMode === 'dos_turnos'
+                          ? 'bg-[#521849] text-white shadow-xs'
+                          : 'text-[#574B45] hover:bg-[#F6F1EA]'
+                      }`}
+                    >
+                      Dos turnos
+                    </button>
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* Point 3: Default 20€/25€ & 14 spots */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-semibold text-[#26201D] mb-1">Socio (€)</label>
-                  <div className="relative">
+              {/* Si es cata y modo dos_turnos: Renderizar campos de Turno 1 y Turno 2 */}
+              {newType === 'cata' && sessionMode === 'dos_turnos' ? (
+                <div className="sm:col-span-2 lg:col-span-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Turno 1 */}
+                  <div className="p-4 rounded-2xl bg-[#FCFAF7] border border-[#521849]/20 space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b border-[#EDE4D7]">
+                      <span className="text-xs font-bold text-[#521849] flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-[#C96043]" />
+                        Primer Turno (Turno 1) *
+                      </span>
+                      <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-[#521849]/10 text-[#521849]">
+                        Turno 1
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[#26201D] mb-1">Nombre del Turno</label>
+                      <input
+                        type="text"
+                        value={shift1Name}
+                        onChange={(e) => setShift1Name(e.target.value)}
+                        placeholder="Turno 1"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] text-[#574B45] mb-1">Fecha Turno 1 *</label>
+                        <input
+                          type="date"
+                          required
+                          value={newDate1}
+                          onChange={(e) => handleDate1Change(e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-[#574B45] mb-1 flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-[#521849]" />
+                          Hora Inicio 1 *
+                        </label>
+                        <input
+                          type="time"
+                          required
+                          value={newTime1}
+                          onChange={(e) => setNewTime1(e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[#26201D] mb-1">Aforo Turno 1 (Plazas) *</label>
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={newSpots1}
+                        onChange={(e) => setNewSpots1(Math.max(1, parseInt(e.target.value) || 0))}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-bold text-[#26201D]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Turno 2 */}
+                  <div className="p-4 rounded-2xl bg-[#FCFAF7] border border-[#521849]/20 space-y-3">
+                    <div className="flex items-center justify-between pb-2 border-b border-[#EDE4D7]">
+                      <span className="text-xs font-bold text-[#521849] flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-[#C96043]" />
+                        Segundo Turno (Turno 2) *
+                      </span>
+                      <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-[#C96043]/10 text-[#C96043]">
+                        Turno 2
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[#26201D] mb-1">Nombre del Turno</label>
+                      <input
+                        type="text"
+                        value={shift2Name}
+                        onChange={(e) => setShift2Name(e.target.value)}
+                        placeholder="Turno 2"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] text-[#574B45] mb-1">Fecha Turno 2 *</label>
+                        <input
+                          type="date"
+                          required
+                          value={newDate2}
+                          onChange={(e) => setNewDate2(e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-[#574B45] mb-1 flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-[#521849]" />
+                          Hora Inicio 2 *
+                        </label>
+                        <input
+                          type="time"
+                          required
+                          value={newTime2}
+                          onChange={(e) => setNewTime2(e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[11px] font-semibold text-[#26201D]">Aforo Turno 2 (Plazas) *</label>
+                        <button
+                          type="button"
+                          onClick={() => setNewSpots2(newSpots1)}
+                          className="text-[10px] text-[#521849] hover:text-[#C96043] font-semibold underline cursor-pointer"
+                        >
+                          Copiar aforo de Turno 1 ({newSpots1})
+                        </button>
+                      </div>
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={newSpots2}
+                        onChange={(e) => setNewSpots2(Math.max(1, parseInt(e.target.value) || 0))}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-bold text-[#26201D]"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Modo Una Sesión (O Cursos / Viajes) */
+                <>
+                  <div className="p-3.5 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7] sm:col-span-2 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#521849] flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-[#C96043]" />
+                        Fecha y Hora de la Actividad *
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] text-[#574B45] mb-1">Fecha</label>
+                        <input
+                          type="date"
+                          required
+                          value={newDate1}
+                          onChange={(e) => handleDate1Change(e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-[#574B45] mb-1 flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-[#521849]" />
+                          Hora Inicio
+                        </label>
+                        <input
+                          type="time"
+                          required
+                          value={newTime1}
+                          onChange={(e) => setNewTime1(e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[#26201D] mb-1">Aforo Máximo (Plazas)</label>
                     <input
                       type="number"
-                      step="0.01"
-                      min="0"
-                      required
-                      value={isNaN(newPriceMember) ? '' : newPriceMember}
-                      onChange={(e) => setNewPriceMember(parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-bold text-emerald-700"
+                      min="1"
+                      value={newSpots}
+                      onChange={(e) => setNewSpots(Number(e.target.value))}
+                      className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-bold text-[#26201D]"
                     />
                   </div>
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-[#26201D] mb-1">No Socio (€)</label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      required
-                      value={isNaN(newPriceNonMember) ? '' : newPriceNonMember}
-                      onChange={(e) => setNewPriceNonMember(parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-bold text-[#521849]"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#26201D] mb-1">Aforo Máximo (Plazas)</label>
-                <input
-                  type="number"
-                  value={newSpots}
-                  onChange={(e) => setNewSpots(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-bold text-[#26201D]"
-                />
-              </div>
+                </>
+              )}
 
               {/* Point 2: Sede oficial location */}
               <div className="sm:col-span-2">
@@ -672,54 +1043,46 @@ export const ModoSencilloView: React.FC = () => {
               </div>
             </div>
 
+            {formValidationError && (
+              <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{formValidationError}</span>
+              </div>
+            )}
+
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => setShowCreateForm(false)}
+                onClick={() => {
+                  setShowCreateForm(false);
+                  setFormValidationError(null);
+                }}
                 className="px-4 py-2.5 rounded-xl border border-[#EDE4D7] text-xs font-semibold text-[#574B45] hover:bg-[#F6F1EA] cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className="px-6 py-2.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                disabled={isSubmitting}
+                className="px-6 py-2.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
-                'Guardar Ficha en BD'
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Guardando...</span>
+                  </>
+                ) : (
+                  <span>
+                    {newType === 'cata' && sessionMode === 'dos_turnos' 
+                      ? 'Guardar los 2 Turnos en BD' 
+                      : 'Guardar Ficha en BD'}
+                  </span>
+                )}
               </button>
             </div>
           </form>
         </div>
       )}
-
-      {/* Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-5 rounded-2xl bg-white border border-[#EDE4D7] space-y-1">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#574B45]">
-            Próximas Actividades
-          </span>
-          <p className="text-2xl font-bold font-serif text-[#521849]">
-            {upcoming.length}
-          </p>
-        </div>
-
-        <div className="p-5 rounded-2xl bg-white border border-[#EDE4D7] space-y-1">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#574B45]">
-            Plazas Ocupadas / Totales
-          </span>
-          <p className="text-2xl font-bold font-serif text-[#26201D]">
-            {totalBookedSpots} / {totalUpcomingSpots}
-          </p>
-        </div>
-
-        <div className="p-5 rounded-2xl bg-white border border-[#EDE4D7] space-y-1">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#574B45]">
-            Actividades Pasadas
-          </span>
-          <p className="text-2xl font-bold font-serif text-[#4D6233]">
-            {held.length}
-          </p>
-        </div>
-      </div>
 
       {/* List of Upcoming Activities */}
       <div className="space-y-4">
@@ -906,12 +1269,158 @@ export const ModoSencilloView: React.FC = () => {
                     })()}
                   </div>
                 </div>
+
+                {/* Direct Action for Mobile Check-in */}
+                <div className="pt-3 border-t border-[#EDE4D7]/70 flex items-center justify-between flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCheckInActivityId(act.id)}
+                    className="min-h-[44px] w-full sm:w-auto px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer active:scale-[0.98]"
+                    title="Abrir hoja de asistencia para esta actividad"
+                  >
+                    <ListChecks className="w-4 h-4 text-emerald-200 shrink-0" />
+                    <span>Revisar hoja de asistencia</span>
+                  </button>
+
+                  <span className="text-[11px] text-[#574B45]">
+                    {act.bookedSpots} inscritos confirmados
+                  </span>
+                </div>
               </div>
             );
           })}
         </div>
       </div>
-      </>
+    </div>
+  )}
+
+          {/* TAB 2: ACTIVIDADES CELEBRADAS */}
+          {activeTab === 'celebradas' && (
+            <div className="space-y-4">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-[#26201D]">
+                Historial de Actividades Celebradas ({held.length})
+              </h3>
+
+              {held.length === 0 ? (
+                <div className="p-8 rounded-2xl bg-white border border-[#EDE4D7] text-center text-xs text-[#574B45]">
+                  No hay actividades archivadas como celebradas todavía.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3">
+                  {held.map((act) => {
+                    const actParticipants = participants.filter(p => p.activityId === act.id);
+                    const attendedCount = actParticipants.filter(p => p.status === 'asistio' || p.attended === true).length;
+                    const cancelledCount = actParticipants.filter(p => p.status === 'cancelada' || p.status === 'no_asistio').length;
+                    const totalRevenue = actParticipants.reduce((sum, p) => (p.status === 'asistio' || p.status === 'pagada' || p.attended) ? sum + (p.totalAmount || (p.isMember ? act.priceMember : act.priceNonMember) || 0) : sum, 0);
+
+                    return (
+                      <div
+                        key={act.id}
+                        className="p-5 rounded-2xl bg-white border border-[#EDE4D7] hover:border-[#DFD3C2] transition-all space-y-4 shadow-xs"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div className="flex items-start gap-2.5">
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-[10px] px-2 py-0.5 rounded font-bold uppercase bg-[#521849]/10 text-[#521849]">
+                                  {act.type}
+                                </span>
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border border-emerald-300 bg-emerald-50 text-emerald-800">
+                                  <CheckCircle className="w-3 h-3 text-emerald-600" />
+                                  <span>Celebrada</span>
+                                </span>
+                              </div>
+                              <h4 className="text-base font-bold font-serif text-[#26201D] mt-1">
+                                {act.title}
+                              </h4>
+                              {act.subtitle && (
+                                <p className="text-xs text-[#574B45]">{act.subtitle}</p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => handleMarkAsNotHeld(act)}
+                              className="min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 flex items-center gap-1.5 transition-colors cursor-pointer"
+                              title="Devuelve la actividad a la pestaña de Próximas actividades"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5 text-amber-800" />
+                              <span>Marcar como NO CELEBRADA</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setActivityToDelete(act)}
+                              className="min-h-[44px] min-w-[44px] p-2 rounded-xl border border-[#EDE4D7] text-[#9B3E26] hover:bg-rose-50 cursor-pointer flex items-center justify-center"
+                              title="Eliminar actividad"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs pt-3 border-t border-[#EDE4D7]">
+                          <div>
+                            <span className="text-[#574B45] block">Fecha y Hora:</span>
+                            <span className="font-bold text-[#26201D] flex items-center gap-1 mt-0.5">
+                              <Calendar className="w-3.5 h-3.5 text-[#521849]" />
+                              {new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })} {act.time ? `(${act.time})` : ''}
+                            </span>
+                          </div>
+
+                          <div>
+                            <span className="text-[#574B45] block">Asistencia Real:</span>
+                            <span className="font-bold text-emerald-800 mt-0.5 block">
+                              {attendedCount} asistieron {cancelledCount > 0 ? `(${cancelledCount} no pres.)` : ''}
+                            </span>
+                          </div>
+
+                          <div>
+                            <span className="text-[#574B45] block">Aforo / Plazas:</span>
+                            <span className="font-bold text-[#26201D] mt-0.5 block">
+                              {act.bookedSpots} / {act.totalSpots} plazas
+                            </span>
+                          </div>
+
+                          <div>
+                            <span className="text-[#574B45] block">Recaudación Estimada:</span>
+                            <span className="font-bold text-[#521849] mt-0.5 block">
+                              {totalRevenue.toFixed(2)}€
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="pt-3 border-t border-[#EDE4D7]/70 flex items-center justify-between flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setCheckInActivityId(act.id)}
+                            className="min-h-[44px] w-full sm:w-auto px-4 py-2 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer active:scale-[0.98]"
+                          >
+                            <ListChecks className="w-4 h-4 text-emerald-300" />
+                            <span>Revisar hoja de asistencia</span>
+                          </button>
+
+                          <span className="text-[11px] text-[#574B45]">
+                            {actParticipants.length} asistentes registrados en total
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 3: SOCIOS */}
+          {activeTab === 'socios' && (
+            <div className="space-y-4">
+              <SimpleMembersManager />
+            </div>
+          )}
+        </>
       )}
 
       {/* Close Registration Confirmation Modal */}
@@ -1031,37 +1540,6 @@ export const ModoSencilloView: React.FC = () => {
             }
           }}
         />
-      )}
-      {/* Members Census Modal */}
-      {showMembersModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-fadeIn">
-          <div className="bg-[#FCFAF7] rounded-3xl max-w-5xl w-full p-6 sm:p-8 shadow-2xl border border-[#EDE4D7] my-8 animate-scaleUp max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 border-b border-[#EDE4D7] mb-6">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2.5 rounded-2xl bg-[#521849] text-white">
-                  <UserCheck className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold font-serif text-[#26201D]">
-                    Censo Oficial de Socios
-                  </h3>
-                  <p className="text-xs text-[#574B45]">
-                    Gestión del listado de socios, importación masiva y resolución de avisos
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowMembersModal(false)}
-                className="p-2 rounded-xl hover:bg-[#EDE4D7] text-[#574B45] cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <MembersManager />
-          </div>
-        </div>
       )}
     </div>
   );

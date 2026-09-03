@@ -51,6 +51,44 @@ export function useNotificationEngine({
       }
     };
 
+    // 0. Discrepancias de Socios (socio_mismatch)
+    if (members.length > 0) {
+      participants.forEach(p => {
+        if (p.status === 'cancelada') return;
+        if (p.isMember) {
+          const emailLower = (p.email || '').trim().toLowerCase();
+          const nameLower = (p.fullName || '').trim().toLowerCase();
+          const memNumTrim = (p.membershipNumber || '').trim().toUpperCase();
+
+          const foundMember = members.find(m => {
+            if (!m.active) return false;
+            const mEmail = (m.email || '').trim().toLowerCase();
+            const mName = (m.fullName || '').trim().toLowerCase();
+            const mMemNum = (m.membershipNumber || '').trim().toUpperCase();
+            
+            if (emailLower && mEmail && emailLower === mEmail) return true;
+            if (memNumTrim && mMemNum && memNumTrim === mMemNum) return true;
+            if (nameLower && mName && nameLower === mName) return true;
+            return false;
+          });
+
+          if (!foundMember) {
+            const act = activities.find(a => a.id === p.activityId);
+            const actTitle = act?.title || 'Actividad';
+            addNotif(
+              'socio_mismatch',
+              'attention',
+              `socio_mismatch_${p.id}`,
+              'Socio no Encontrado en Censo',
+              `"${p.fullName}" (${p.email}) se inscribió con tarifa de socio en "${actTitle}", pero no figura como socio activo en el censo.`,
+              p.activityId,
+              p.id
+            );
+          }
+        }
+      });
+    }
+
     // 1. Ocupación Alta y Baja
     activities.forEach(act => {
       if (act.status === 'celebrada') return; // Only upcoming

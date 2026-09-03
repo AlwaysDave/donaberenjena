@@ -7,6 +7,13 @@ export interface ParsedCataInfo {
   bodegaRegion?: string;
   date: string; // First date
   time: string; // e.g. "21:00" or "13:00"
+  date2?: string; // Second date if multi-day or second shift
+  time2?: string; // Second shift start time
+  hasMultipleShifts?: boolean;
+  shift1Name?: string;
+  shift2Name?: string;
+  spots2?: number;
+  isShiftAmbiguous?: boolean;
   shifts?: { id: string; name: string; time: string }[];
   price: number; // Default 25.00
   totalSpots: number; // Default 14
@@ -268,6 +275,13 @@ export function parseCataText(rawText: string): ParsedCataInfo {
   let subtitle = '';
   const dates: string[] = [];
   let date1 = new Date().toISOString().split('T')[0];
+  let date2: string | undefined = undefined;
+  let time1 = '21:00';
+  let time2: string | undefined = undefined;
+  let hasMultipleShifts = false;
+  let shift1Name: string | undefined = undefined;
+  let shift2Name: string | undefined = undefined;
+  let isShiftAmbiguous = false;
   
   let location = DEFAULT_OFFICIAL_LOCATION;
   let bodegaName = '';
@@ -298,7 +312,7 @@ export function parseCataText(rawText: string): ParsedCataInfo {
     }
   }
 
-  // 1. DATE EXTRACTION: Handles "5 y 19 de JUNIO de 2026", "10 y 17 de ABRIL de 2026", etc.
+  // 1. DATE & SHIFTS EXTRACTION: Handles "5 y 19 de JUNIO de 2026", "10 y 17 de ABRIL de 2026", etc.
   for (const line of lines) {
     const twoDatesMatch = line.match(/(\d{1,2})\s*(?:y|&|\/|-)\s*(\d{1,2})\s*de\s*([a-zA-ZáéíóúÁÉÍÓÚ]+)\s*(?:de)?\s*(\d{4})/i);
     if (twoDatesMatch) {
@@ -309,8 +323,13 @@ export function parseCataText(rawText: string): ParsedCataInfo {
       const monthNum = MONTHS_MAP[monthStr] || '06';
 
       date1 = `${year}-${monthNum}-${day1}`;
+      date2 = `${year}-${monthNum}-${day2}`;
       
       dates.push(date1);
+      dates.push(date2);
+      hasMultipleShifts = true;
+      shift1Name = `Turno 1 (${parseInt(day1, 10)} de ${twoDatesMatch[3]})`;
+      shift2Name = `Turno 2 (${parseInt(day2, 10)} de ${twoDatesMatch[3]})`;
       break;
     }
 
@@ -323,6 +342,28 @@ export function parseCataText(rawText: string): ParsedCataInfo {
       date1 = `${year}-${monthNum}-${day}`;
       dates.push(date1);
       break;
+    }
+  }
+
+  // Explicit Shift / Schedule Detection (e.g. "1º Turno: 20:30 h", "2º Turno: 22:30 h")
+  const shiftRegex1 = /(?:1[º°ªer\.]*|primer)\s*turno[:\s-]*(\d{1,2})[:.](\d{2})/i;
+  const shiftRegex2 = /(?:2[º°ªndo\.]*|segundo)\s*turno[:\s-]*(\d{1,2})[:.](\d{2})/i;
+
+  const matchShift1 = fullText.match(shiftRegex1);
+  const matchShift2 = fullText.match(shiftRegex2);
+
+  if (matchShift1 && matchShift2) {
+    time1 = `${matchShift1[1].padStart(2, '0')}:${matchShift1[2]}`;
+    time2 = `${matchShift2[1].padStart(2, '0')}:${matchShift2[2]}`;
+    hasMultipleShifts = true;
+    shift1Name = 'Turno 1';
+    shift2Name = 'Turno 2';
+    if (!date2) date2 = date1;
+  } else {
+    // If not detected via explicit shifts, derive default start time
+    time1 = getDefaultStartTime(date1);
+    if (hasMultipleShifts && date2) {
+      time2 = getDefaultStartTime(date2);
     }
   }
 
@@ -539,14 +580,22 @@ export function parseCataText(rawText: string): ParsedCataInfo {
     }
   }
 
-  const time1 = getDefaultStartTime(date1);
-  
+  if (!time1 || time1 === '21:00') {
+    time1 = getDefaultStartTime(date1);
+  }
 
   return {
     title: title || 'Cata de Bodega',
     subtitle: subtitle || (bodegaName ? `Con ${bodegaName}` : 'Vino Artesano y Ecologico'),
     date: date1,
     time: time1,
+    date2: date2 || undefined,
+    time2: time2 || undefined,
+    hasMultipleShifts,
+    shift1Name: shift1Name || (hasMultipleShifts ? 'Turno 1' : undefined),
+    shift2Name: shift2Name || (hasMultipleShifts ? 'Turno 2' : undefined),
+    spots2: 14,
+    isShiftAmbiguous,
     price: detectedPrice || 25.0, // Default 25.00€
     totalSpots: 14, // Default 14
     location,

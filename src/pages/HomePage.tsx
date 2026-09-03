@@ -35,30 +35,25 @@ export const HomePage: React.FC = () => {
           <div className="absolute inset-0 bg-gradient-to-r from-[#290824] via-[#290824]/90 to-[#290824]/60" />
         </div>
 
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-32 flex flex-col items-start justify-center">
-          <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-[#521849]/70 border border-[#842A76]/50 text-xs font-semibold text-[#EDE4D7] mb-6 backdrop-blur-xs">
-            <div className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-xs bg-[#00B5E8]" title="Cuchara" />
-              <span className="w-2 h-2 rounded-xs bg-[#FFA000]" title="Tenedor" />
-              <span className="w-2 h-2 rounded-xs bg-[#E91E83]" title="Cuchillo" />
-              <span className="w-2 h-2 rounded-xs bg-[#8BC34A]" title="Copa" />
-            </div>
-            <span>Asociación Cultural y Gastronómica • Bolaños de Calatrava</span>
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-20 md:py-28 flex flex-col items-start justify-center">
+          <div className="inline-flex items-center gap-2.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#521849]/80 border border-[#842A76]/50 text-xs font-semibold text-[#EDE4D7] mb-5 sm:mb-6 backdrop-blur-xs shadow-2xs max-w-full">
+            <img src="/favicon.svg" alt="" className="w-4 h-4 rounded-xs shrink-0" />
+            <span className="truncate">Asociación Gastronómica Doña Berenjena • Bolaños</span>
           </div>
 
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-bold font-serif text-white tracking-tight leading-tight max-w-3xl">
+          <h1 className="text-2xl sm:text-4xl md:text-5xl lg:text-6xl font-bold font-serif text-white tracking-tight leading-snug sm:leading-tight max-w-3xl">
             El placer de compartir el vino, los fogones y la tierra.
           </h1>
 
-          <p className="mt-5 text-base sm:text-lg text-[#DFD3C2] max-w-2xl font-light leading-relaxed">
+          <p className="mt-4 sm:mt-5 text-sm sm:text-base md:text-lg text-[#DFD3C2] max-w-2xl font-light leading-relaxed">
             Bienvenidos a <strong className="text-white font-medium">Doña Berenjena</strong>. Un punto de encuentro para apasionados del buen comer, donde descubrir cosechas singulares, aprender técnicas culinarias de la mano de chefs y recorrer las comarcas más ricas de nuestra geografía.
           </p>
 
-          <div className="mt-8 flex flex-wrap gap-4">
+          <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row w-full sm:w-auto gap-3 sm:gap-4">
             <Link
               id="hero-btn-catas"
               to="/catas"
-              className="px-6 py-3.5 rounded-xl bg-[#C96043] hover:bg-[#B84E33] text-white text-sm font-semibold tracking-wide transition-all shadow-md hover:shadow-lg flex items-center gap-2"
+              className="w-full sm:w-auto justify-center px-6 py-3.5 rounded-xl bg-[#C96043] hover:bg-[#B84E33] active:bg-[#A7432A] text-white text-sm font-semibold tracking-wide transition-all shadow-md hover:shadow-lg flex items-center gap-2 min-h-[44px]"
             >
               <Wine className="w-4 h-4" />
               <span>Ver Próximas Catas</span>
@@ -66,7 +61,7 @@ export const HomePage: React.FC = () => {
             <Link
               id="hero-btn-cursos"
               to="/cursos"
-              className="px-6 py-3.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-sm font-semibold tracking-wide transition-all backdrop-blur-xs flex items-center gap-2"
+              className="w-full sm:w-auto justify-center px-6 py-3.5 rounded-xl bg-white/10 hover:bg-white/20 active:bg-white/25 text-white border border-white/20 text-sm font-semibold tracking-wide transition-all backdrop-blur-xs flex items-center gap-2 min-h-[44px]"
             >
               <ChefHat className="w-4 h-4" />
               <span>Cursos de Cocina</span>
@@ -74,7 +69,7 @@ export const HomePage: React.FC = () => {
             <Link
               id="hero-btn-viajes"
               to="/viajes"
-              className="px-6 py-3.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-sm font-semibold tracking-wide transition-all backdrop-blur-xs flex items-center gap-2"
+              className="w-full sm:w-auto justify-center px-6 py-3.5 rounded-xl bg-white/10 hover:bg-white/20 active:bg-white/25 text-white border border-white/20 text-sm font-semibold tracking-wide transition-all backdrop-blur-xs flex items-center gap-2 min-h-[44px]"
             >
               <Compass className="w-4 h-4" />
               <span>Viajes Organizados</span>
@@ -85,21 +80,21 @@ export const HomePage: React.FC = () => {
 
       {/* 3 Pillars Showcase */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center max-w-2xl mx-auto mb-12">
+        <div className="text-center max-w-2xl mx-auto mb-8 sm:mb-12">
           <span className="text-xs uppercase tracking-widest font-semibold text-[#521849]">
             Nuestras tres líneas de actividad
           </span>
           <h2 className="text-2xl sm:text-3xl font-bold font-serif text-[#26201D] mt-2">
             Pasión gastronómica en tres formatos
           </h2>
-          <p className="text-sm text-[#574B45] mt-3 leading-relaxed">
+          <p className="text-xs sm:text-sm text-[#574B45] mt-2.5 sm:mt-3 leading-relaxed">
             Diseñamos cada encuentro con rigor técnico, cercanía y una cuidada selección de materias primas y productores locales.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6 md:gap-8">
           {/* Pillar 1: Catas */}
-          <div className="group rounded-2xl bg-white p-7 border border-[#EDE4D7] shadow-xs hover:shadow-md hover:border-[#DFD3C2] transition-all flex flex-col justify-between">
+          <div className="group rounded-2xl bg-white p-6 sm:p-7 border border-[#EDE4D7] shadow-2xs hover:shadow-md hover:border-[#DFD3C2] transition-all flex flex-col justify-between">
             <div>
               <div className="w-12 h-12 rounded-xl bg-[#521849]/10 text-[#521849] flex items-center justify-center mb-5 group-hover:bg-[#521849] group-hover:text-white transition-colors">
                 <Wine className="w-6 h-6" />
@@ -124,7 +119,7 @@ export const HomePage: React.FC = () => {
           </div>
 
           {/* Pillar 2: Cursos de Cocina */}
-          <div className="group rounded-2xl bg-white p-7 border border-[#EDE4D7] shadow-xs hover:shadow-md hover:border-[#DFD3C2] transition-all flex flex-col justify-between">
+          <div className="group rounded-2xl bg-white p-6 sm:p-7 border border-[#EDE4D7] shadow-2xs hover:shadow-md hover:border-[#DFD3C2] transition-all flex flex-col justify-between">
             <div>
               <div className="w-12 h-12 rounded-xl bg-[#C96043]/10 text-[#C96043] flex items-center justify-center mb-5 group-hover:bg-[#C96043] group-hover:text-white transition-colors">
                 <ChefHat className="w-6 h-6" />
@@ -149,7 +144,7 @@ export const HomePage: React.FC = () => {
           </div>
 
           {/* Pillar 3: Viajes */}
-          <div className="group rounded-2xl bg-white p-7 border border-[#EDE4D7] shadow-xs hover:shadow-md hover:border-[#DFD3C2] transition-all flex flex-col justify-between">
+          <div className="group rounded-2xl bg-white p-6 sm:p-7 border border-[#EDE4D7] shadow-2xs hover:shadow-md hover:border-[#DFD3C2] transition-all flex flex-col justify-between">
             <div>
               <div className="w-12 h-12 rounded-xl bg-[#4D6233]/10 text-[#4D6233] flex items-center justify-center mb-5 group-hover:bg-[#4D6233] group-hover:text-white transition-colors">
                 <Compass className="w-6 h-6" />
@@ -177,7 +172,7 @@ export const HomePage: React.FC = () => {
 
       {/* Featured Upcoming Activities Section with dynamic filters */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8 border-b border-[#EDE4D7] pb-6">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6 sm:mb-8 border-b border-[#EDE4D7] pb-4 sm:pb-6">
           <div>
             <span className="text-xs uppercase tracking-widest font-semibold text-[#521849]">
               Agenda Oficial
@@ -187,13 +182,13 @@ export const HomePage: React.FC = () => {
             </h2>
           </div>
 
-          {/* Activity Category Filters */}
-          <div className="flex flex-wrap gap-2">
+          {/* Activity Category Filters (Horizontally scrollable on mobile) */}
+          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1.5 sm:pb-0 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-none">
             <button
               id="filter-home-all"
               type="button"
               onClick={() => setFilterType('all')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`px-3.5 py-2 sm:py-1.5 rounded-xl text-xs font-semibold transition-all shrink-0 cursor-pointer min-h-[38px] flex items-center ${
                 filterType === 'all'
                   ? 'bg-[#521849] text-white shadow-xs'
                   : 'bg-white text-[#574B45] border border-[#EDE4D7] hover:bg-[#F6F1EA]'
@@ -205,7 +200,7 @@ export const HomePage: React.FC = () => {
               id="filter-home-catas"
               type="button"
               onClick={() => setFilterType('cata')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`px-3.5 py-2 sm:py-1.5 rounded-xl text-xs font-semibold transition-all shrink-0 cursor-pointer min-h-[38px] flex items-center ${
                 filterType === 'cata'
                   ? 'bg-[#521849] text-white shadow-xs'
                   : 'bg-white text-[#574B45] border border-[#EDE4D7] hover:bg-[#F6F1EA]'
@@ -217,7 +212,7 @@ export const HomePage: React.FC = () => {
               id="filter-home-cursos"
               type="button"
               onClick={() => setFilterType('curso')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`px-3.5 py-2 sm:py-1.5 rounded-xl text-xs font-semibold transition-all shrink-0 cursor-pointer min-h-[38px] flex items-center ${
                 filterType === 'curso'
                   ? 'bg-[#521849] text-white shadow-xs'
                   : 'bg-white text-[#574B45] border border-[#EDE4D7] hover:bg-[#F6F1EA]'
@@ -229,7 +224,7 @@ export const HomePage: React.FC = () => {
               id="filter-home-viajes"
               type="button"
               onClick={() => setFilterType('viaje')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`px-3.5 py-2 sm:py-1.5 rounded-xl text-xs font-semibold transition-all shrink-0 cursor-pointer min-h-[38px] flex items-center ${
                 filterType === 'viaje'
                   ? 'bg-[#521849] text-white shadow-xs'
                   : 'bg-white text-[#574B45] border border-[#EDE4D7] hover:bg-[#F6F1EA]'
@@ -242,7 +237,7 @@ export const HomePage: React.FC = () => {
 
         {/* Activity Grid */}
         {featuredActivities.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6 md:gap-8">
             {featuredActivities.map((activity) => (
               <ActivityCard key={activity.id} activity={activity} />
             ))}
@@ -259,32 +254,32 @@ export const HomePage: React.FC = () => {
 
       {/* Institutional Philosophy Banner */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="rounded-3xl bg-[#F6EDF4] border border-[#521849]/20 p-8 md:p-14 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-          <div className="lg:col-span-7 space-y-4">
+        <div className="rounded-2xl sm:rounded-3xl bg-[#F6EDF4] border border-[#521849]/20 p-6 sm:p-8 md:p-14 grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-center">
+          <div className="lg:col-span-7 space-y-3.5 sm:space-y-4">
             <span className="text-xs uppercase tracking-widest font-bold text-[#521849]">
               Nuestra Filosofía
             </span>
             <h3 className="text-2xl sm:text-3xl font-bold font-serif text-[#26201D] leading-tight">
               Una asociación hecha por y para apasionados de la mesa
             </h3>
-            <p className="text-sm text-[#574B45] leading-relaxed">
-              En Doña Berenjena no buscamos el academicismo rígido, sino el conocimiento vivido: saber por qué un vino sabe a su suelo, cómo un corte de carne cambia según su braseado y qué historia guardan los artesanos que cuidan nuestras tradiciones.
+            <p className="text-xs sm:text-sm text-[#574B45] leading-relaxed">
+              En <strong className="text-[#26201D] font-semibold">Doña Berenjena</strong> no buscamos el academicismo rígido, sino el conocimiento vivido: saber por qué un vino sabe a su suelo, cómo un corte de carne cambia según su braseado y qué historia guardan los artesanos que cuidan nuestras tradiciones.
             </p>
-            <div className="pt-2 flex flex-wrap gap-6 text-xs font-semibold text-[#26201D]">
+            <div className="pt-2 flex flex-wrap gap-4 sm:gap-6 text-xs font-semibold text-[#26201D]">
               <div className="flex items-center gap-2">
-                <Award className="w-4 h-4 text-[#521849]" />
+                <Award className="w-4 h-4 text-[#521849] shrink-0" />
                 <span>Sumilleres y Chefs Acreditados</span>
               </div>
               <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-[#521849]" />
+                <Users className="w-4 h-4 text-[#521849] shrink-0" />
                 <span>Grupos Reducidos y Cercanos</span>
               </div>
               <div className="flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-[#521849]" />
+                <BookOpen className="w-4 h-4 text-[#521849] shrink-0" />
                 <span>Documentación y Fichas Propias</span>
               </div>
             </div>
-            <div className="pt-4">
+            <div className="pt-3 sm:pt-4">
               <Link
                 to="/conocenos"
                 className="inline-flex items-center gap-2 text-xs font-bold text-[#521849] hover:text-[#290824] uppercase tracking-wider"
@@ -303,7 +298,7 @@ export const HomePage: React.FC = () => {
                 className="w-full h-full object-cover"
               />
             </div>
-            <div className="absolute -bottom-4 -left-4 bg-white p-4 rounded-xl shadow-md border border-[#EDE4D7] hidden sm:flex items-center gap-3 max-w-xs">
+            <div className="mt-3 sm:mt-0 sm:absolute sm:-bottom-4 sm:-left-4 bg-white p-3.5 sm:p-4 rounded-xl shadow-md border border-[#EDE4D7] flex items-center gap-3 sm:max-w-xs">
               <MapPin className="w-5 h-5 text-[#521849] shrink-0" />
               <p className="text-xs text-[#26201D] font-medium leading-tight">
                 Sede central con salón de catas y cocina profesional en Bolaños de Calatrava.

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Activity, AdminNotification, CataActivity, CursoActivity, Member, Participant, ReservationFormData, ViajeActivity, WebMetric, Expense, Sponsorship, ContactMessage } from '../types';
+import { Activity, AdminNotification, CataActivity, CursoActivity, Member, Participant, ParticipantStatus, ReservationFormData, ViajeActivity, WebMetric, Expense, Sponsorship, ContactMessage } from '../types';
 import { useAuth } from './AuthContext';
 import { db, isFirebaseConfigured } from '../services/firebase';
 import { INITIAL_PARTICIPANTS } from '../data/mockData';
@@ -16,6 +16,8 @@ import {
   deleteParticipantFirestore,
   createReservationWithParticipantsFirestore,
   adjustActivitySpotsFirestore,
+  executeParticipantTransitionFirestore,
+  executeBulkAttendanceCloseFirestore,
   subscribeToMembersFirestore,
   saveMemberFirestore,
   updateMemberFirestore,
@@ -37,6 +39,7 @@ import {
   updateContactMessageFirestore,
   deleteContactMessageFirestore
 } from '../services/firestoreService';
+import { validateAndPrepareTransition, prepareAttendanceClose } from '../services/participantTransitions';
 
 interface DataContextType {
   activities: Activity[];
@@ -65,6 +68,18 @@ interface DataContextType {
   updateParticipant: (id: string, updates: Partial<Participant>) => Promise<void>;
   deleteParticipant: (id: string, activityId: string, _legacySpots?: number) => Promise<void>;
   markAttendance: (id: string, attended: boolean) => Promise<void>;
+  executeParticipantTransition: (params: {
+    participantId: string;
+    activityId: string;
+    targetStatus: ParticipantStatus;
+    actor?: string;
+    cancellationData?: {
+      reason: string;
+      justified: boolean;
+      kind: 'cancelacion_usuario' | 'no_presentado';
+    };
+  }) => Promise<{ success: boolean; error?: string; updatedParticipant?: Partial<Participant> }>;
+  closeActivityAttendance: (activityId: string, actor?: string) => Promise<{ success: boolean; affectedCount: number; error?: string }>;
   incrementViews: (id: string) => void;
   // Member management
   addMember: (memberData: Omit<Member, 'id' | 'createdAt'> & { id?: string }) => Promise<{ success: boolean; message: string }>;
@@ -332,36 +347,68 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const addActivity = async (activity: Activity) => {
     if (useMockData) {
-      setActivities(prev => [activity, ...prev]);
+      setDemoActivities(prev => [activity, ...prev]);
       return;
     }
-    await saveActivityFirestore(activity);
+    setActivities(prev => [activity, ...prev]);
+    try {
+      if (isFirebaseConfigured() && db) {
+        await saveActivityFirestore(activity);
+      }
+    } catch (err) {
+      console.error('Error saving activity to Firestore:', err);
+    }
   };
 
   const updateActivity = async (updated: Activity) => {
     if (useMockData) {
-      setActivities(prev => prev.map(a => a.id === updated.id ? updated : a));
+      setDemoActivities(prev => prev.map(a => a.id === updated.id ? updated : a));
       return;
     }
-    await saveActivityFirestore(updated);
+    setActivities(prev => prev.map(a => a.id === updated.id ? updated : a));
+    try {
+      if (isFirebaseConfigured() && db) {
+        await saveActivityFirestore(updated);
+      }
+    } catch (err) {
+      console.error('Error saving activity to Firestore:', err);
+    }
   };
 
   const quickUpdateActivity = async (id: string, updates: Partial<Activity>) => {
     if (useMockData) {
-      setActivities(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
+      setDemoActivities(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
       return;
     }
-    await updateActivityFirestore(id, updates);
+    // Optimistic local state update so the UI reacts immediately
+    setActivities(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
+    try {
+      if (isFirebaseConfigured() && db) {
+        await updateActivityFirestore(id, updates);
+      }
+    } catch (err) {
+      console.error('Error updating activity in Firestore:', err);
+    }
   };
 
   const deleteActivity = async (id: string) => {
+    if (useMockData) {
+      setDemoActivities(prev => prev.filter(a => a.id !== id));
+      return;
+    }
     // Optimistic local state removal so UI updates immediately
     setActivities(prev => prev.filter(a => a.id !== id));
-    if (!useMockData) {
-      await deleteActivityFirestore(id);
+    try {
+      if (isFirebaseConfigured() && db) {
+        await deleteActivityFirestore(id);
+      }
+    } catch (err) {
+      console.error('Error deleting activity from Firestore:', err);
     }
-  };  const reserveSpots = async (id: string, requestedSpots: number, reservationData: ReservationFormData) => {
-    const activity = activities.find(a => a.id === id);
+  };
+
+  const reserveSpots = async (id: string, requestedSpots: number, reservationData: ReservationFormData) => {
+    const activity = displayActivities.find(a => a.id === id);
     if (!activity) {
       return { success: false, message: 'La actividad solicitada no existe o no está disponible.' };
     }
@@ -493,6 +540,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const priceNonMember = activity.priceNonMember;
     const turnText = reservationData.turn || (activity.time ? `Turno (${activity.time})` : undefined);
 
+    const availableSpots = Math.max(0, activity.totalSpots - activity.bookedSpots);
+    const hasEnoughCapacity = availableSpots >= requestedSpots;
+    const assignedStatus: ParticipantStatus = hasEnoughCapacity ? 'pendiente_pago' : 'lista_de_espera';
+
     const newParticipants: Participant[] = [];
 
     // 1. Titular (First attendee)
@@ -514,7 +565,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       turn: turnText,
       membershipNumber: reservationData.membershipNumber?.trim() || undefined,
       notes: reservationData.notes?.trim() || undefined,
-      status: 'confirmada',
+      status: assignedStatus,
       totalAmount: titularPrice,
       paidAmount: 0,
       paymentMethod: reservationData.paymentMethod || 'bizum',
@@ -543,7 +594,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         turn: turnText,
         membershipNumber: compData?.membershipNumber?.trim() || undefined,
         notes: compData?.notes?.trim() || undefined,
-        status: 'confirmada',
+        status: assignedStatus,
         totalAmount: compPrice,
         paidAmount: 0,
         paymentMethod: reservationData.paymentMethod || 'bizum',
@@ -554,7 +605,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Local state commit
     setParticipants(prev => [...newParticipants, ...prev]);
-    setActivities(prev => prev.map(a => a.id === id ? { ...a, bookedSpots: a.bookedSpots + requestedSpots } : a));
+    if (hasEnoughCapacity) {
+      setActivities(prev => prev.map(a => a.id === id ? { ...a, bookedSpots: a.bookedSpots + requestedSpots } : a));
+    }
 
     // Contrast check against members census
     const activeCensus = displayMembers;
@@ -604,7 +657,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return { 
       success: true, 
-      message: `¡Plazas reservadas con éxito para ${reservationData.fullName}! En breve recibirás las instrucciones de abono.`,
+      message: hasEnoughCapacity 
+        ? `Reserva de ${requestedSpots} plaza${requestedSpots > 1 ? 's' : ''} confirmada con éxito para ${reservationData.fullName}.` 
+        : `Solicitud registrada en lista de espera correctamente para ${reservationData.fullName}.`,
       groupId
     };
   };
@@ -758,8 +813,155 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const markAttendance = async (id: string, attended: boolean) => {
-    const newStatus = attended ? 'asistio' : 'confirmada';
-    await updateParticipant(id, { status: newStatus });
+    const list = useMockData ? demoParticipants : participants;
+    const target = list.find(p => p.id === id);
+    if (!target) return;
+    const targetActivity = (useMockData ? demoActivities : activities).find(a => a.id === target.activityId);
+
+    if (attended) {
+      await executeParticipantTransition({
+        participantId: id,
+        activityId: target.activityId,
+        targetStatus: 'asistio'
+      });
+    } else {
+      await executeParticipantTransition({
+        participantId: id,
+        activityId: target.activityId,
+        targetStatus: 'cancelada',
+        cancellationData: {
+          reason: 'No presentado',
+          justified: false,
+          kind: 'no_presentado'
+        }
+      });
+    }
+  };
+
+  const executeParticipantTransition = async ({
+    participantId,
+    activityId,
+    targetStatus,
+    actor = 'Administración',
+    cancellationData
+  }: {
+    participantId: string;
+    activityId: string;
+    targetStatus: ParticipantStatus;
+    actor?: string;
+    cancellationData?: {
+      reason: string;
+      justified: boolean;
+      kind: 'cancelacion_usuario' | 'no_presentado';
+    };
+  }): Promise<{ success: boolean; error?: string; updatedParticipant?: Partial<Participant> }> => {
+    const currentParticipants = useMockData ? demoParticipants : participants;
+    const currentActivities = useMockData ? demoActivities : activities;
+
+    const participant = currentParticipants.find(p => p.id === participantId);
+    const activity = currentActivities.find(a => a.id === activityId);
+
+    if (!participant) {
+      return { success: false, error: 'Participante no encontrado.' };
+    }
+
+    const transition = validateAndPrepareTransition({
+      participant,
+      targetStatus,
+      activity,
+      actor,
+      cancellationData
+    });
+
+    if (!transition.allowed) {
+      return { success: false, error: transition.error };
+    }
+
+    const updates = transition.updatedParticipant || {};
+    const spotsDelta = transition.spotsDelta || 0;
+
+    if (useMockData) {
+      setDemoParticipants(prev => prev.map(p => p.id === participantId ? { ...p, ...updates } : p));
+      if (spotsDelta !== 0 && activityId) {
+        setDemoActivities(prev => prev.map(a => a.id === activityId ? { ...a, bookedSpots: Math.max(0, a.bookedSpots + spotsDelta) } : a));
+      }
+      return { success: true, updatedParticipant: updates };
+    }
+
+    // Optimistic local state update
+    setParticipants(prev => prev.map(p => p.id === participantId ? { ...p, ...updates } : p));
+    if (spotsDelta !== 0 && activityId) {
+      setActivities(prev => prev.map(a => a.id === activityId ? { ...a, bookedSpots: Math.max(0, a.bookedSpots + spotsDelta) } : a));
+    }
+
+    if (isFirebaseConfigured() && db) {
+      try {
+        const res = await executeParticipantTransitionFirestore({
+          participantId,
+          activityId,
+          targetStatus,
+          actor,
+          cancellationData
+        });
+        return res;
+      } catch (err: any) {
+        console.error('Error executing Firestore transition transaction:', err);
+        // Rollback
+        setParticipants(prev => prev.map(p => p.id === participantId ? participant : p));
+        if (spotsDelta !== 0 && activityId && activity) {
+          setActivities(prev => prev.map(a => a.id === activityId ? { ...a, bookedSpots: activity.bookedSpots } : a));
+        }
+        return { success: false, error: err.message || 'Error al persistir la transición en la base de datos.' };
+      }
+    }
+
+    return { success: true, updatedParticipant: updates };
+  };
+
+  const closeActivityAttendance = async (
+    activityId: string,
+    actor: string = 'Administración'
+  ): Promise<{ success: boolean; affectedCount: number; error?: string }> => {
+    const currentParticipants = useMockData ? demoParticipants : participants;
+    const currentActivities = useMockData ? demoActivities : activities;
+    const activity = currentActivities.find(a => a.id === activityId);
+
+    if (!activity) {
+      return { success: false, affectedCount: 0, error: 'Actividad no encontrada.' };
+    }
+
+    const { affectedCount, updatedParticipants } = prepareAttendanceClose(currentParticipants, activity, actor);
+    if (affectedCount === 0) {
+      return { success: true, affectedCount: 0 };
+    }
+
+    const updateMap = new Map(updatedParticipants.map(u => [u.id, u.updates]));
+
+    if (useMockData) {
+      setDemoParticipants(prev => prev.map(p => {
+        const u = updateMap.get(p.id);
+        return u ? { ...p, ...u } : p;
+      }));
+      return { success: true, affectedCount };
+    }
+
+    // Optimistic local update
+    setParticipants(prev => prev.map(p => {
+      const u = updateMap.get(p.id);
+      return u ? { ...p, ...u } : p;
+    }));
+
+    if (isFirebaseConfigured() && db) {
+      try {
+        const res = await executeBulkAttendanceCloseFirestore(currentParticipants, activity, actor);
+        return res;
+      } catch (err: any) {
+        console.error('Error executing bulk attendance close:', err);
+        return { success: false, affectedCount: 0, error: err.message || 'Error al cerrar asistencias en el servidor.' };
+      }
+    }
+
+    return { success: true, affectedCount };
   };
 
   // Member Management Functions (Prompt 4)
@@ -1186,6 +1388,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updateParticipant,
       deleteParticipant,
       markAttendance,
+      executeParticipantTransition,
+      closeActivityAttendance,
       incrementViews,
       addMember,
       updateMember,

@@ -1,0 +1,142 @@
+<svg viewBox="0 0 780 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- 1. Cyan Blue Badge -->
+    <linearGradient id="eb-blue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#00BAF2" />
+      <stop offset="45%" stop-color="#00A0E3" />
+      <stop offset="85%" stop-color="#007DC1" />
+      <stop offset="100%" stop-color="#006DAA" />
+    </linearGradient>
+
+    <!-- 2. Warm Amber Orange Badge -->
+    <linearGradient id="eb-orange" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFB300" />
+      <stop offset="45%" stop-color="#FF8C00" />
+      <stop offset="85%" stop-color="#F4511E" />
+      <stop offset="100%" stop-color="#D84315" />
+    </linearGradient>
+
+    <!-- 3. Vivid Magenta Badge -->
+    <linearGradient id="eb-magenta" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F0188F" />
+      <stop offset="45%" stop-color="#D81B60" />
+      <stop offset="85%" stop-color="#AD1457" />
+      <stop offset="100%" stop-color="#880E4F" />
+    </linearGradient>
+
+    <!-- 4. Fresh Lime Green Badge -->
+    <linearGradient id="eb-green" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#8BC34A" />
+      <stop offset="45%" stop-color="#689F38" />
+      <stop offset="85%" stop-color="#4E8421" />
+      <stop offset="100%" stop-color="#33691E" />
+    </linearGradient>
+
+    <!-- 3D Convex Gloss / Reflection Overlay -->
+    <linearGradient id="eb-gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.75" />
+      <stop offset="35%" stop-color="#FFFFFF" stop-opacity="0.2" />
+      <stop offset="50%" stop-color="#FFFFFF" stop-opacity="0" />
+      <stop offset="90%" stop-color="#000000" stop-opacity="0" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.16" />
+    </linearGradient>
+
+    <!-- Soft Base Drop Shadow for Badges -->
+    <radialGradient id="eb-shadow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0.6" />
+      <stop offset="40%" stop-color="#000000" stop-opacity="0.25" />
+      <stop offset="70%" stop-color="#000000" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Ground Soft Drop Shadows -->
+  <ellipse cx="88" cy="236" rx="72" ry="9" fill="url(#eb-shadow)" />
+  <ellipse cx="278" cy="236" rx="72" ry="9" fill="url(#eb-shadow)" />
+  <ellipse cx="478" cy="236" rx="72" ry="9" fill="url(#eb-shadow)" />
+  <ellipse cx="678" cy="236" rx="72" ry="9" fill="url(#eb-shadow)" />
+
+  <!-- ================= 1. BLUE BUTTON (Spoon + dña. + b) ================= -->
+  <g id="eb-badge-blue">
+    <rect x="5" y="8" width="166" height="220" rx="30" fill="url(#eb-blue)" />
+    <rect x="5" y="8" width="166" height="220" rx="30" fill="url(#eb-gloss)" />
+
+    <!-- Spoon in top section -->
+    <g id="spoon" fill="#FFFFFF">
+      <ellipse cx="88" cy="66" rx="32" ry="46" />
+      <rect x="83" y="108" width="10" height="38" rx="3" />
+    </g>
+
+    <!-- "dña." rotated sideways -->
+    <g transform="translate(64, 204) rotate(-90)">
+      <text
+        fill="#FFFFFF"
+        font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', Arial, sans-serif"
+        font-size="36"
+        font-weight="700"
+        letter-spacing="0.5"
+      >
+        dña.
+      </text>
+    </g>
+
+    <!-- Lowercase "b" -->
+    <g id="letter-b" transform="translate(83, 120)">
+      <rect x="0" y="0" width="13" height="88" rx="4" fill="#FFFFFF" />
+      <circle cx="33" cy="51" r="33" fill="#FFFFFF" />
+      <circle cx="33" cy="51" r="21" fill="url(#eb-blue)" />
+    </g>
+  </g>
+
+  <!-- ================= 2. ORANGE BUTTON (Fork) ================= -->
+  <g id="eb-badge-orange">
+    <rect x="195" y="8" width="166" height="220" rx="30" fill="url(#eb-orange)" />
+    <rect x="195" y="8" width="166" height="220" rx="30" fill="url(#eb-gloss)" />
+
+    <!-- Fork Icon -->
+    <g id="fork" transform="translate(247, 34)" fill="#FFFFFF">
+      <rect x="0" y="0" width="8" height="84" rx="4" />
+      <rect x="18" y="0" width="8" height="84" rx="4" />
+      <rect x="36" y="0" width="8" height="84" rx="4" />
+      <rect x="54" y="0" width="8" height="84" rx="4" />
+      <!-- Fork neck curve -->
+      <path d="M 0 56 C 0 106, 62 106, 62 56 L 62 78 C 62 108, 41 112, 36 112 L 26 112 C 21 112, 0 108, 0 78 Z" />
+      <!-- Fork handle -->
+      <rect x="25.5" y="108" width="11" height="42" rx="4" />
+    </g>
+  </g>
+
+  <!-- ================= 3. MAGENTA BUTTON (Knife) ================= -->
+  <g id="eb-badge-magenta">
+    <rect x="395" y="8" width="166" height="220" rx="30" fill="url(#eb-magenta)" />
+    <rect x="395" y="8" width="166" height="220" rx="30" fill="url(#eb-gloss)" />
+
+    <!-- Knife Icon -->
+    <g id="knife" transform="translate(460, 32)" fill="#FFFFFF">
+      <!-- Curved Blade -->
+      <path d="M 23 0 C 23 0, 20 70, 2 118 L 38 118 C 40 118, 40 104, 40 90 L 40 0 Z" />
+      <!-- Knife Handle -->
+      <path d="M 20 118 L 38 118 L 38 152 C 38 155, 35 156, 32 156 L 22 156 C 20 156, 20 154, 20 150 Z" />
+    </g>
+  </g>
+
+  <!-- ================= 4. GREEN BUTTON (Wine Glass) ================= -->
+  <g id="eb-badge-green">
+    <rect x="595" y="8" width="166" height="220" rx="30" fill="url(#eb-green)" />
+    <rect x="595" y="8" width="166" height="220" rx="30" fill="url(#eb-gloss)" />
+
+    <!-- Wine Glass Icon -->
+    <g id="wine-glass" transform="translate(636, 48)">
+      <!-- Outer White Glass Silhouette -->
+      <path
+        d="M 12 0 L 86 0 C 88 40, 82 78, 54 82 L 54 114 L 75 114 C 78 114, 80 116, 80 119 C 80 122, 78 124, 75 124 L 23 124 C 20 124, 18 122, 18 119 C 18 116, 20 114, 23 114 L 44 114 L 44 82 C 16 78, 10 40, 12 0 Z"
+        fill="#FFFFFF"
+      />
+      <!-- Inner Green Wine Liquid with Top Meniscus -->
+      <path
+        d="M 18 42 L 80 42 C 81 66, 76 78, 49 78 C 22 78, 17 66, 18 42 Z"
+        fill="url(#eb-green)"
+      />
+    </g>
+  </g>
+</svg>

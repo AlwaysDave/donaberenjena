@@ -13,6 +13,7 @@ import { MembersManager } from '../../components/admin/MembersManager';
 import { HistoryManager } from '../../components/admin/HistoryManager';
 import { AccountsManager } from '../../components/admin/AccountsManager';
 import { MessagesManager } from '../../components/admin/MessagesManager';
+import { AdminNotificationsCenter } from '../../components/admin/AdminNotificationsCenter';
 import { Pagination } from '../../components/common/Pagination';
 import { getAdminAuthHeader } from '../../services/authHelper';
 import { 
@@ -38,6 +39,7 @@ import {
   Loader2,
   Check,
   AlertTriangle,
+  AlertCircle,
   Calendar,
   MapPin,
   Globe,
@@ -50,13 +52,15 @@ import {
 
 // Import ITMetricsDashboard
 import { ITMetricsDashboard } from '../../components/admin/ITMetricsDashboard';
+import { computeAdminAlerts } from '../../services/adminAlertsService';
 
 export const ModoAvanzadoView: React.FC = () => {
-  const { activities, participants, members, unreadNotificationsCount, unreadMessagesCount, metrics, addActivity, updateActivity, deleteActivity } = useData();
+  const { activities, participants, members, contactMessages, unreadMessagesCount, metrics, addActivity, updateActivity, deleteActivity, useMockData } = useData();
 
-  const [activeTab, setActiveTab] = useState<'gestion' | 'participantes' | 'historico' | 'socios' | 'celebradas' | 'metricas' | 'cuentas' | 'contacto'>('gestion');
+  const [activeTab, setActiveTab] = useState<'gestion' | 'participantes' | 'historico' | 'socios' | 'celebradas' | 'metricas' | 'cuentas' | 'contacto' | 'avisos'>('gestion');
   const [metricsSort, setMetricsSort] = useState<{ key: 'date' | 'type' | 'occupancy'; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
   const [selectedParticipantActivityId, setSelectedParticipantActivityId] = useState<string | null>(null);
+  const [selectedParticipantSearchQuery, setSelectedParticipantSearchQuery] = useState<string | null>(null);
   const [activeModalTab, setActiveModalTab] = useState<'form' | 'participantes'>('form');
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
@@ -64,6 +68,19 @@ export const ModoAvanzadoView: React.FC = () => {
   const [notification, setNotification] = useState<string | null>(null);
   const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Dynamic real-time admin alerts calculation (Punto 8)
+  const activeAlerts = useMemo(() => {
+    return computeAdminAlerts({
+      activities,
+      participants,
+      members,
+      contactMessages,
+      isDemoMode: useMockData
+    });
+  }, [activities, participants, members, contactMessages, useMockData]);
+
+  const activeAlertsCount = activeAlerts.length;
 
   // Activity type filter switches (ON / OFF)
   const [filterTypes, setFilterTypes] = useState<{ cata: boolean; curso: boolean; viaje: boolean }>({
@@ -126,9 +143,18 @@ export const ModoAvanzadoView: React.FC = () => {
   const [syllabusText, setSyllabusText] = useState<string>(''); // For cursos
   const [servicesText, setServicesText] = useState<string>(''); // For viajes
 
-  // Point 1: Activity date
+  // Turnos state (exclusivo para catas)
+  const [sessionMode, setSessionMode] = useState<'una_sesion' | 'dos_turnos'>('una_sesion');
+  const [shift1Name, setShift1Name] = useState<string>('Turno 1');
+  const [shift2Name, setShift2Name] = useState<string>('Turno 2');
   const [date1, setDate1] = useState<string>('');
   const [time1, setTime1] = useState<string>('21:00');
+  const [date2, setDate2] = useState<string>('');
+  const [time2, setTime2] = useState<string>('22:30');
+  const [spots1, setSpots1] = useState<number>(14);
+  const [spots2, setSpots2] = useState<number>(14);
+  const [formValidationError, setFormValidationError] = useState<string | null>(null);
+  const [isSavingActivity, setIsSavingActivity] = useState<boolean>(false);
 
   // Specific cata state
   const [cataBodegas, setCataBodegas] = useState<BodegaItem[]>([
@@ -164,7 +190,14 @@ export const ModoAvanzadoView: React.FC = () => {
 
   const handleDate1Change = (val: string) => {
     setDate1(val);
-    setTime1(getDefaultStartTime(val));
+    if (!date2 || date2 === date1) {
+      setDate2(val);
+    }
+    const defT = getDefaultStartTime(val);
+    setTime1(defT);
+    if (sessionMode === 'dos_turnos' && time2 === defT) {
+      setTime2(defT === '21:00' ? '22:45' : defT === '13:00' ? '15:00' : '22:30');
+    }
   };
 
   const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -174,6 +207,7 @@ export const ModoAvanzadoView: React.FC = () => {
     setIsParsingPdf(true);
     setPdfErrorMessage(null);
     setPdfSuccessMessage(null);
+    setFormValidationError(null);
 
     try {
       const formData = new FormData();
@@ -219,7 +253,7 @@ export const ModoAvanzadoView: React.FC = () => {
         title: parsed.title,
         subtitle: parsed.subtitle,
         priceMember: parsed.price ? parsed.price - 5 : 20,
-      priceNonMember: parsed.price || 25.0,
+        priceNonMember: parsed.price || 25.0,
         totalSpots: parsed.spots || 14,
         location: parsed.location || DEFAULT_OFFICIAL_LOCATION,
         description: parsed.description || '', // Marketing description generated by AI
@@ -233,7 +267,25 @@ export const ModoAvanzadoView: React.FC = () => {
       };
 
       setDate1(parsed.date || '');
-      setTime1(formatTime(parsed.time) || (parsed.date ? getDefaultStartTime(parsed.date) : '21:00'));
+      const formattedTime1 = formatTime(parsed.time) || (parsed.date ? getDefaultStartTime(parsed.date) : '21:00');
+      setTime1(formattedTime1);
+      setSpots1(parsed.spots || 14);
+
+      if (parsed.hasMultipleShifts) {
+        setSessionMode('dos_turnos');
+        setShift1Name(parsed.shift1Name || 'Turno 1');
+        setShift2Name(parsed.shift2Name || 'Turno 2');
+        setDate2(parsed.date2 || parsed.date || '');
+        setTime2(formatTime(parsed.time2) || '22:30');
+        setSpots2(parsed.spots2 || parsed.spots || 14);
+      } else {
+        setSessionMode('una_sesion');
+        setShift1Name('Turno 1');
+        setShift2Name('Turno 2');
+        setDate2(parsed.date || '');
+        setTime2('22:30');
+        setSpots2(14);
+      }
 
       // Handle extracted bodegas
       if (parsed.bodegas && Array.isArray(parsed.bodegas) && parsed.bodegas.length > 0) {
@@ -268,7 +320,13 @@ export const ModoAvanzadoView: React.FC = () => {
       }
 
       const totalWinesCount = (parsed.bodegas || []).reduce((acc: number, b: any) => acc + (b.wines?.length || 0), 0) || parsed.wines?.length || 0;
-      setPdfSuccessMessage(`¡Archivo "${file.name}" analizado con IA con éxito! Detectadas ${parsed.bodegas?.length || 1} bodegas, ${totalWinesCount} vinos y sumiller ${parsed.sumiller || 'Ana García'}.`);
+      if (parsed.hasMultipleShifts) {
+        setPdfSuccessMessage(`¡Cartel analizado con IA! Detectados 2 turnos independientes (${parsed.shift1Name || 'Turno 1'} y ${parsed.shift2Name || 'Turno 2'}), ${parsed.bodegas?.length || 1} bodegas y ${totalWinesCount} vinos.`);
+      } else if (parsed.isShiftAmbiguous) {
+        setPdfSuccessMessage(`¡Cartel analizado! Se detectó posible ambigüedad en los turnos; se ha cargado como una única sesión para revisión administrativa.`);
+      } else {
+        setPdfSuccessMessage(`¡Archivo "${file.name}" analizado con IA con éxito! Detectadas ${parsed.bodegas?.length || 1} bodegas, ${totalWinesCount} vinos y sumiller ${parsed.sumiller || 'Ana García'}.`);
+      }
     } catch (err: any) {
       console.error('Error procesando PDF/Imagen:', err);
       setPdfErrorMessage(err.message || 'No se pudo extraer el texto. Puedes rellenar los datos manualmente.');
@@ -293,12 +351,18 @@ export const ModoAvanzadoView: React.FC = () => {
     setActivityTypeToCreate(type);
     setPdfSuccessMessage(null);
     setPdfErrorMessage(null);
+    setFormValidationError(null);
 
     const defaultDate = new Date().toISOString().split('T')[0];
     setDate1(defaultDate);
-    
+    setDate2(defaultDate);
     setTime1(getDefaultStartTime(defaultDate));
-    
+    setTime2('22:30');
+    setSessionMode('una_sesion');
+    setShift1Name('Turno 1');
+    setShift2Name('Turno 2');
+    setSpots1(14);
+    setSpots2(14);
 
     // Default bodegas structure
     setCataBodegas([
@@ -371,6 +435,8 @@ export const ModoAvanzadoView: React.FC = () => {
     setIsCreatingNew(false);
     setPdfSuccessMessage(null);
     setPdfErrorMessage(null);
+    setFormValidationError(null);
+    setSessionMode('una_sesion');
     setFormData(act);
     setDate1(act.date);
     
@@ -379,6 +445,9 @@ export const ModoAvanzadoView: React.FC = () => {
 
     if (act.type === 'cata') {
       const cata = act as CataActivity;
+      if (cata.shiftName) {
+        setShift1Name(cata.shiftName);
+      }
       if (cata.bodegas && cata.bodegas.length > 0) {
         setCataBodegas(cata.bodegas);
       } else {
@@ -410,7 +479,16 @@ export const ModoAvanzadoView: React.FC = () => {
 
   const handleSaveForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.title || !date1) return;
+    setFormValidationError(null);
+
+    if (!formData.title?.trim()) {
+      setFormValidationError('El título de la actividad es obligatorio.');
+      return;
+    }
+    if (!date1) {
+      setFormValidationError('La fecha de la actividad es obligatoria.');
+      return;
+    }
 
     // Process image URLs
     const images = imageUrlsText
@@ -452,51 +530,136 @@ export const ModoAvanzadoView: React.FC = () => {
       notes: w.grape || undefined
     }));
 
-    // Construct primary record
-    let finalActivity1: Activity = {
-      ...formData,
-      date: date1,
-      time: time1,
-      images: images.length > 0 ? images : ['https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=1200&q=80'],
-      updatedAt: new Date().toISOString().split('T')[0]
-    } as Activity;
-
-    if (finalActivity1.type === 'cata') {
-      finalActivity1 = {
-        ...finalActivity1,
-        bodegas: cleanedBodegas,
-        // Legacy fields filled for backwards compatibility
-        bodegaProductor: {
-          name: cleanedBodegas[0]?.name || 'Bodega Invitada',
-          region: cleanedBodegas[0]?.region || 'Castilla-La Mancha',
-          website: cleanedBodegas[0]?.website || undefined
-        },
-        wines: allWines,
-        pairingMenu: pairings,
-        sumiller: cataSumiller.trim() || 'Ana García',
-        aove: cataAove.trim() || undefined,
-      } as CataActivity;
-    } else if (finalActivity1.type === 'curso') {
-      const syllabus = syllabusText
-        .split('\n')
-        .map(s => s.trim())
-        .filter(s => s.length > 0);
-      finalActivity1 = {
-        ...finalActivity1,
-        syllabus
-      } as CursoActivity;
-    } else if (finalActivity1.type === 'viaje') {
-      const services = servicesText
-        .split('\n')
-        .map(s => s.trim())
-        .filter(s => s.length > 0);
-      finalActivity1 = {
-        ...finalActivity1,
-        includedServices: services
-      } as ViajeActivity;
-    }
+    setIsSavingActivity(true);
 
     try {
+      if (isCreatingNew && formData.type === 'cata' && sessionMode === 'dos_turnos') {
+        if (!date2) {
+          setFormValidationError('La fecha del segundo turno es obligatoria.');
+          setIsSavingActivity(false);
+          return;
+        }
+        if (!time1 || !time2) {
+          setFormValidationError('Las horas de inicio de ambos turnos son obligatorias.');
+          setIsSavingActivity(false);
+          return;
+        }
+        if (date1 === date2 && time1 === time2) {
+          setFormValidationError('Los dos turnos no pueden coincidir exactamente en el mismo día y a la misma hora.');
+          setIsSavingActivity(false);
+          return;
+        }
+        if (spots1 <= 0 || spots2 <= 0) {
+          setFormValidationError('El aforo de cada turno debe ser al menos de 1 plaza.');
+          setIsSavingActivity(false);
+          return;
+        }
+
+        const tastingGroupId = `tg-${Date.now()}`;
+        const baseImages = images.length > 0 ? images : ['https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=1200&q=80'];
+        const nowIso = new Date().toISOString().split('T')[0];
+
+        const baseCataData: Omit<CataActivity, 'id' | 'date' | 'time' | 'totalSpots' | 'bookedSpots' | 'shiftName' | 'tastingGroupId'> = {
+          type: 'cata',
+          title: formData.title.trim(),
+          subtitle: formData.subtitle?.trim() || '',
+          description: formData.description?.trim() || '',
+          priceMember: Number(formData.priceMember) || 20.0,
+          priceNonMember: Number(formData.priceNonMember) || 25.0,
+          status: 'proxima',
+          registrationStatus: 'abierta',
+          location: formData.location?.trim() || DEFAULT_OFFICIAL_LOCATION,
+          images: baseImages,
+          category: 'vino' as CataCategory,
+          bodegas: cleanedBodegas,
+          bodegaProductor: {
+            name: cleanedBodegas[0]?.name || 'Bodega Invitada',
+            region: cleanedBodegas[0]?.region || 'Castilla-La Mancha',
+            website: cleanedBodegas[0]?.website || undefined
+          },
+          wines: allWines,
+          pairingMenu: pairings,
+          sumiller: cataSumiller.trim() || 'Ana García',
+          aove: cataAove.trim() || undefined,
+          createdAt: nowIso,
+          updatedAt: nowIso
+        };
+
+        const activity1: CataActivity = {
+          ...baseCataData,
+          id: `cata-${Date.now()}-t1`,
+          date: date1,
+          time: time1,
+          totalSpots: spots1,
+          bookedSpots: 0,
+          shiftName: shift1Name.trim() || 'Turno 1',
+          tastingGroupId
+        };
+
+        const activity2: CataActivity = {
+          ...baseCataData,
+          id: `cata-${Date.now() + 1}-t2`,
+          date: date2,
+          time: time2,
+          totalSpots: spots2,
+          bookedSpots: 0,
+          shiftName: shift2Name.trim() || 'Turno 2',
+          tastingGroupId
+        };
+
+        await addActivity(activity1);
+        await addActivity(activity2);
+        showNotification(`¡Cata con 2 turnos creada con éxito! (${activity1.shiftName} y ${activity2.shiftName})`);
+        setEditingActivity(null);
+        return;
+      }
+
+      // Single activity creation or update
+      let finalActivity1: Activity = {
+        ...formData,
+        date: date1,
+        time: time1,
+        images: images.length > 0 ? images : ['https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=1200&q=80'],
+        updatedAt: new Date().toISOString().split('T')[0]
+      } as Activity;
+
+      if (finalActivity1.type === 'cata') {
+        finalActivity1 = {
+          ...finalActivity1,
+          shiftName: isCreatingNew 
+            ? (sessionMode === 'una_sesion' ? undefined : (shift1Name.trim() || 'Turno 1'))
+            : (shift1Name.trim() || (editingActivity as CataActivity)?.shiftName || undefined),
+          bodegas: cleanedBodegas,
+          bodegaProductor: {
+            name: cleanedBodegas[0]?.name || 'Bodega Invitada',
+            region: cleanedBodegas[0]?.region || 'Castilla-La Mancha',
+            website: cleanedBodegas[0]?.website || undefined
+          },
+          wines: allWines,
+          pairingMenu: pairings,
+          sumiller: cataSumiller.trim() || 'Ana García',
+          aove: cataAove.trim() || undefined,
+        } as CataActivity;
+      } else if (finalActivity1.type === 'curso') {
+        const syllabus = syllabusText
+          .split('\n')
+          .map(s => s.trim())
+          .filter(s => s.length > 0);
+        finalActivity1 = {
+          ...finalActivity1,
+          syllabus
+        } as CursoActivity;
+      } else if (finalActivity1.type === 'viaje') {
+        const services = servicesText
+          .split('\n')
+          .map(s => s.trim())
+          .filter(s => s.length > 0);
+        finalActivity1 = {
+          ...finalActivity1,
+          includedServices: services
+        } as ViajeActivity;
+      }
+
       if (isCreatingNew) {
         finalActivity1.id = `${finalActivity1.type}-${Date.now()}`;
         await addActivity(finalActivity1);
@@ -508,7 +671,9 @@ export const ModoAvanzadoView: React.FC = () => {
       setEditingActivity(null);
     } catch (err: any) {
       console.error('Error saving activity:', err);
-      alert('Error al guardar en Firestore: ' + err.message);
+      setFormValidationError('Error al guardar en Firestore: ' + (err.message || 'Error desconocido'));
+    } finally {
+      setIsSavingActivity(false);
     }
   };
 
@@ -620,12 +785,6 @@ export const ModoAvanzadoView: React.FC = () => {
         >
           <UserCheck className="w-4 h-4" />
           <span>Censo de Socios ({members.length})</span>
-          {unreadNotificationsCount > 0 && (
-            <span className="px-1.5 py-0.5 rounded-full bg-amber-400 text-amber-950 font-extrabold text-[10px] flex items-center gap-0.5">
-              <Bell className="w-2.5 h-2.5" />
-              {unreadNotificationsCount}
-            </span>
-          )}
         </button>
 
         <button
@@ -668,6 +827,25 @@ export const ModoAvanzadoView: React.FC = () => {
           {unreadMessagesCount > 0 && (
             <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white font-extrabold text-[10px]">
               {unreadMessagesCount}
+            </span>
+          )}
+        </button>
+
+        <button
+          id="tab-admin-avisos"
+          type="button"
+          onClick={() => setActiveTab('avisos')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 relative ${
+            activeTab === 'avisos'
+              ? 'bg-[#521849] text-white shadow-xs'
+              : 'bg-white text-[#574B45] hover:bg-[#F6F1EA]'
+          }`}
+        >
+          <Bell className="w-4 h-4" />
+          <span>Avisos y Alertas</span>
+          {activeAlertsCount > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full bg-amber-400 text-amber-950 font-extrabold text-[10px]">
+              {activeAlertsCount}
             </span>
           )}
         </button>
@@ -932,9 +1110,11 @@ export const ModoAvanzadoView: React.FC = () => {
       {/* Tab 2: Participantes y Hoja de Sala */}
       {activeTab === 'participantes' && (
         <ParticipantsManager
-          initialActivityId={selectedParticipantActivityId}
+          initialActivityId={selectedParticipantActivityId || undefined}
+          initialSearchQuery={selectedParticipantSearchQuery || undefined}
           onCloseDetailedView={() => {
             setSelectedParticipantActivityId(null);
+            setSelectedParticipantSearchQuery(null);
             setActiveTab('gestion');
           }}
         />
@@ -945,6 +1125,7 @@ export const ModoAvanzadoView: React.FC = () => {
         <PastActivitiesManager 
           onViewParticipants={(actId) => {
             setSelectedParticipantActivityId(actId);
+            setSelectedParticipantSearchQuery(null);
             setActiveTab('participantes');
           }}
         />
@@ -973,6 +1154,22 @@ export const ModoAvanzadoView: React.FC = () => {
       {/* Tab 8: Contacto */}
       {activeTab === 'contacto' && (
         <MessagesManager />
+      )}
+
+      {/* Tab 9: Avisos y Alertas */}
+      {activeTab === 'avisos' && (
+        <AdminNotificationsCenter 
+          onClose={() => setActiveTab('gestion')} 
+          onNavigateTab={(targetTab, options) => {
+            if (options?.activityId) {
+              setSelectedParticipantActivityId(options.activityId);
+            }
+            if (options?.searchQuery) {
+              setSelectedParticipantSearchQuery(options.searchQuery);
+            }
+            setActiveTab(targetTab as any);
+          }}
+        />
       )}
 
       {/* ========================================================================= */}
@@ -1112,38 +1309,233 @@ export const ModoAvanzadoView: React.FC = () => {
                   />
                 </div>
 
-                {/* Point 1: Two dates */}
-                <div className="p-3.5 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7] space-y-2">
-                  <span className="text-xs font-bold text-[#521849] flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-[#C96043]" />
-                    Fecha de Actividad *
-                  </span>
-                  <div className="grid grid-cols-2 gap-2">
+                {/* Selector de Modalidad de Turnos para Catas Nuevas */}
+                {formData.type === 'cata' && isCreatingNew && (
+                  <div className="sm:col-span-2 p-4 rounded-2xl bg-[#F6EDF4]/60 border border-[#521849]/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
-                      <label className="block text-[11px] text-[#574B45] mb-1">Fecha</label>
-                      <input
-                        type="date"
-                        required
-                        value={date1}
-                        onChange={(e) => handleDate1Change(e.target.value)}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] text-[#574B45] mb-1 flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-[#521849]" />
-                        Hora Inicio
+                      <label className="block text-xs font-bold text-[#521849] mb-0.5">
+                        Modalidad de Turnos para la Cata
                       </label>
-                      <input
-                        type="time"
-                        required
-                        value={time1}
-                        onChange={(e) => setTime1(e.target.value)}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
-                      />
+                      <p className="text-[11px] text-[#574B45]">
+                        Configura si la cata tendrá una única sesión o se celebrará en dos turnos independientes con sus propios aforos y reservas.
+                      </p>
+                    </div>
+                    <div className="inline-flex rounded-xl bg-white p-1 border border-[#EDE4D7] shadow-2xs shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setSessionMode('una_sesion')}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          sessionMode === 'una_sesion'
+                            ? 'bg-[#521849] text-white shadow-xs'
+                            : 'text-[#574B45] hover:bg-[#F6F1EA]'
+                        }`}
+                      >
+                        Una sesión
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSessionMode('dos_turnos');
+                          if (!date2) setDate2(date1);
+                        }}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          sessionMode === 'dos_turnos'
+                            ? 'bg-[#521849] text-white shadow-xs'
+                            : 'text-[#574B45] hover:bg-[#F6F1EA]'
+                        }`}
+                      >
+                        Dos turnos
+                      </button>
                     </div>
                   </div>
-                </div>
+                )}
+
+                {/* Si es cata en creación y modo dos_turnos: Renderizar Turno 1 y Turno 2 */}
+                {formData.type === 'cata' && isCreatingNew && sessionMode === 'dos_turnos' ? (
+                  <div className="sm:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Turno 1 */}
+                    <div className="p-4 rounded-2xl bg-[#FCFAF7] border border-[#521849]/20 space-y-3">
+                      <div className="flex items-center justify-between pb-2 border-b border-[#EDE4D7]">
+                        <span className="text-xs font-bold text-[#521849] flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-[#C96043]" />
+                          Primer Turno (Turno 1) *
+                        </span>
+                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-[#521849]/10 text-[#521849]">
+                          Turno 1
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-[#26201D] mb-1">Nombre del Turno</label>
+                        <input
+                          type="text"
+                          value={shift1Name}
+                          onChange={(e) => setShift1Name(e.target.value)}
+                          placeholder="Turno 1"
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] text-[#574B45] mb-1">Fecha Turno 1 *</label>
+                          <input
+                            type="date"
+                            required
+                            value={date1}
+                            onChange={(e) => handleDate1Change(e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] text-[#574B45] mb-1 flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-[#521849]" />
+                            Hora Inicio 1 *
+                          </label>
+                          <input
+                            type="time"
+                            required
+                            value={time1}
+                            onChange={(e) => setTime1(e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-[#26201D] mb-1">Aforo Turno 1 (Plazas) *</label>
+                        <input
+                          type="number"
+                          min="1"
+                          required
+                          value={spots1}
+                          onChange={(e) => setSpots1(Math.max(1, parseInt(e.target.value) || 0))}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-bold text-[#26201D]"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Turno 2 */}
+                    <div className="p-4 rounded-2xl bg-[#FCFAF7] border border-[#521849]/20 space-y-3">
+                      <div className="flex items-center justify-between pb-2 border-b border-[#EDE4D7]">
+                        <span className="text-xs font-bold text-[#521849] flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-[#C96043]" />
+                          Segundo Turno (Turno 2) *
+                        </span>
+                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-[#C96043]/10 text-[#C96043]">
+                          Turno 2
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-[#26201D] mb-1">Nombre del Turno</label>
+                        <input
+                          type="text"
+                          value={shift2Name}
+                          onChange={(e) => setShift2Name(e.target.value)}
+                          placeholder="Turno 2"
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] text-[#574B45] mb-1">Fecha Turno 2 *</label>
+                          <input
+                            type="date"
+                            required
+                            value={date2}
+                            onChange={(e) => setDate2(e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] text-[#574B45] mb-1 flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-[#521849]" />
+                            Hora Inicio 2 *
+                          </label>
+                          <input
+                            type="time"
+                            required
+                            value={time2}
+                            onChange={(e) => setTime2(e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-[11px] font-semibold text-[#26201D]">Aforo Turno 2 (Plazas) *</label>
+                          <button
+                            type="button"
+                            onClick={() => setSpots2(spots1)}
+                            className="text-[10px] text-[#521849] hover:text-[#C96043] font-semibold underline cursor-pointer"
+                          >
+                            Copiar aforo de Turno 1 ({spots1})
+                          </button>
+                        </div>
+                        <input
+                          type="number"
+                          min="1"
+                          required
+                          value={spots2}
+                          onChange={(e) => setSpots2(Math.max(1, parseInt(e.target.value) || 0))}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-bold text-[#26201D]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Modo Una Sesión (O Modo Edición O Cursos / Viajes) */}
+                    <div className="p-3.5 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7] space-y-2">
+                      <span className="text-xs font-bold text-[#521849] flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-[#C96043]" />
+                        Fecha y Hora de la Actividad *
+                      </span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] text-[#574B45] mb-1">Fecha</label>
+                          <input
+                            type="date"
+                            required
+                            value={date1}
+                            onChange={(e) => handleDate1Change(e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] text-[#574B45] mb-1 flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-[#521849]" />
+                            Hora Inicio
+                          </label>
+                          <input
+                            type="time"
+                            required
+                            value={time1}
+                            onChange={(e) => setTime1(e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-[#EDE4D7] bg-white text-xs font-medium cursor-pointer"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Si estamos editando una cata, permitir editar el nombre del turno */}
+                    {formData.type === 'cata' && !isCreatingNew && (
+                      <div>
+                        <label className="block text-xs font-semibold text-[#26201D] mb-1">Nombre / Identificador de Turno</label>
+                        <input
+                          type="text"
+                          value={shift1Name}
+                          onChange={(e) => setShift1Name(e.target.value)}
+                          placeholder="Ej. Turno 1 o Turno 2"
+                          className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-medium"
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
 
                 {/* Precios y Aforo */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7]">
@@ -1182,29 +1574,31 @@ export const ModoAvanzadoView: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-[#26201D] mb-1">Aforo Total (Plazas) *</label>
-                    <input
-                      type="number"
-                      min="1"
-                      required
-                      value={formData.totalSpots ?? 14}
-                      onChange={(e) => setFormData({ ...formData, totalSpots: Number(e.target.value) })}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-bold"
-                    />
+                {(!isCreatingNew || formData.type !== 'cata' || sessionMode !== 'dos_turnos') && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-[#26201D] mb-1">Aforo Total (Plazas) *</label>
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={formData.totalSpots ?? 14}
+                        onChange={(e) => setFormData({ ...formData, totalSpots: Number(e.target.value) })}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#26201D] mb-1">Plazas Reservadas</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={formData.bookedSpots || 0}
+                        onChange={(e) => setFormData({ ...formData, bookedSpots: Number(e.target.value) })}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-bold"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-[#26201D] mb-1">Plazas Reservadas</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={formData.bookedSpots || 0}
-                      onChange={(e) => setFormData({ ...formData, bookedSpots: Number(e.target.value) })}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-bold"
-                    />
-                  </div>
-                </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-semibold text-[#26201D] mb-1">Estado de la actividad</label>
@@ -1361,21 +1755,48 @@ export const ModoAvanzadoView: React.FC = () => {
                 />
               </div>
 
+              {/* Form Validation Error Message */}
+              {formValidationError && (
+                <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{formValidationError}</span>
+                </div>
+              )}
+
               {/* Actions */}
               <div className="pt-4 border-t border-[#EDE4D7] flex items-center justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => setEditingActivity(null)}
+                  onClick={() => {
+                    setEditingActivity(null);
+                    setFormValidationError(null);
+                  }}
                   className="px-4 py-2.5 rounded-xl border border-[#EDE4D7] text-xs font-medium text-[#574B45] hover:bg-[#F6F1EA] cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold tracking-wide transition-colors cursor-pointer flex items-center gap-2"
+                  disabled={isSavingActivity}
+                  className="px-6 py-2.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold tracking-wide transition-colors cursor-pointer flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Save className="w-4 h-4" />
-                  <span>{isCreatingNew ? 'Guardar Ficha en Firestore' : 'Actualizar Ficha en Firestore'}</span>
+                  {isSavingActivity ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Guardando en Firestore...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      <span>
+                        {isCreatingNew && formData.type === 'cata' && sessionMode === 'dos_turnos'
+                          ? 'Guardar los 2 Turnos en Firestore'
+                          : isCreatingNew
+                          ? 'Guardar Ficha en Firestore'
+                          : 'Actualizar Ficha en Firestore'}
+                      </span>
+                    </>
+                  )}
                 </button>
               </div>
                 </form>

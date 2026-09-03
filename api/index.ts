@@ -338,9 +338,14 @@ app.post("/api/parse-cata", rateLimitMiddleware, requireAdminAuth, upload.single
         subtitle: { type: Type.STRING, description: "Explicit subtitle under title or generated marketing subtitle" },
         description: { type: Type.STRING, description: "Enological marketing description. If there is an in-situ workshop or special guest winemakers, include it described here." },
         date: { type: Type.STRING, description: "First date ISO YYYY-MM-DD" },
-        date2: { type: Type.STRING, description: "Second date ISO YYYY-MM-DD if event has 2 dates" },
+        date2: { type: Type.STRING, description: "Second date ISO YYYY-MM-DD if event has 2 dates or second session" },
         time: { type: Type.STRING, description: "Start time for first shift e.g. 21:00 or 13:00" },
-        time2: { type: Type.STRING, description: "Start time for second shift e.g. 21:00 or 13:00" },
+        time2: { type: Type.STRING, description: "Start time for second shift e.g. 22:30 or 13:00 if 2 shifts exist" },
+        hasMultipleShifts: { type: Type.BOOLEAN, description: "True ONLY if document explicitly specifies two distinct sessions or shifts" },
+        shift1Name: { type: Type.STRING, description: "Name of first shift if multi-shift e.g. 'Turno 1' or from doc" },
+        shift2Name: { type: Type.STRING, description: "Name of second shift if multi-shift e.g. 'Turno 2' or from doc" },
+        spots2: { type: Type.NUMBER, description: "Spots for second shift if specified (default 14)" },
+        isShiftAmbiguous: { type: Type.BOOLEAN, description: "True if document mentions multiple dates or times ambiguously without clear separation" },
         location: { type: Type.STRING, description: "Location, default: Polígono Industrial “El Salobral “- Centro de Formación – Bolaños de Calatrava" },
         price: { type: Type.NUMBER, description: "Standard price in euros (default 25)" },
         spots: { type: Type.NUMBER, description: "Total spots (default 14)" },
@@ -414,7 +419,29 @@ app.post("/api/parse-cata", rateLimitMiddleware, requireAdminAuth, upload.single
 
     parsedData.time = cleanTime(parsedData.time) || "21:00";
     if (parsedData.time2) {
-      parsedData.time2 = cleanTime(parsedData.time2) || "13:00";
+      parsedData.time2 = cleanTime(parsedData.time2) || "22:30";
+    }
+
+    // Determine if two shifts are clearly confirmed
+    const hasDistinctTimes = Boolean(parsedData.time && parsedData.time2 && parsedData.time !== parsedData.time2);
+    const hasDistinctDates = Boolean(parsedData.date && parsedData.date2 && parsedData.date !== parsedData.date2);
+
+    if (parsedData.hasMultipleShifts && (hasDistinctTimes || hasDistinctDates)) {
+      parsedData.hasMultipleShifts = true;
+      parsedData.shift1Name = parsedData.shift1Name?.trim() || "Turno 1";
+      parsedData.shift2Name = parsedData.shift2Name?.trim() || "Turno 2";
+      parsedData.spots2 = parsedData.spots2 || parsedData.spots || 14;
+      parsedData.isShiftAmbiguous = false;
+    } else if (parsedData.isShiftAmbiguous || (parsedData.hasMultipleShifts && !hasDistinctTimes && !hasDistinctDates)) {
+      // Ambiguous or missing second schedule - do NOT invent a second shift
+      parsedData.hasMultipleShifts = false;
+      parsedData.isShiftAmbiguous = true;
+      parsedData.shift1Name = "Sesión única";
+      parsedData.time2 = undefined;
+      parsedData.date2 = undefined;
+    } else {
+      parsedData.hasMultipleShifts = false;
+      parsedData.isShiftAmbiguous = false;
     }
 
     // Ensure subtitle and description are never empty
@@ -658,7 +685,7 @@ app.post("/api/reserve", rateLimitMiddleware, async (req: Request, res: Response
         phone: titularPhone,
         isMember: isTitularMember,
         groupId,
-        status: "confirmada",
+        status: "pendiente_pago",
         totalAmount: titularPrice,
         paidAmount: 0,
         paymentMethod: reservationData.paymentMethod || "bizum",
@@ -692,7 +719,7 @@ app.post("/api/reserve", rateLimitMiddleware, async (req: Request, res: Response
           phone: comp?.phone?.trim() || "",
           isMember: isCompMember,
           groupId,
-          status: "confirmada",
+          status: "pendiente_pago",
           totalAmount: compPrice,
           paidAmount: 0,
           paymentMethod: reservationData.paymentMethod || "bizum",

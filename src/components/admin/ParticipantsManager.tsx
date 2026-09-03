@@ -1,49 +1,53 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
-import { Activity, Participant, ParticipantStatus, PaymentMethod } from '../../types';
-import { sortActivitiesAscending, formatDisplayDate } from '../../utils/dateUtils';
-import { Pagination } from '../common/Pagination';
+import { Participant, PaymentMethod, ParticipantStatus } from '../../types';
 import { 
   Users, 
-  Search, 
-  Filter, 
   Plus, 
-  Edit3, 
   Trash2, 
+  Edit3, 
+  X, 
+  Check, 
   CheckCircle, 
   Clock, 
   AlertTriangle, 
-  Download, 
-  Printer, 
-  Copy, 
-  Check, 
+  AlertCircle, 
   Phone, 
   Mail, 
-  FileText, 
-  Wine, 
+  UserCheck, 
+  XCircle, 
+  Printer, 
+  Download, 
+  Copy, 
+  ChevronRight, 
   ChevronDown, 
-  X, 
   Sparkles, 
-  MessageSquare, 
-  AlertCircle, 
-  DollarSign, 
-  Calendar,
-  Layers,
-  UserCheck,
-  UserX,
-  XCircle,
-  Ban,
-  RefreshCw
+  ArrowRight, 
+  RefreshCw, 
+  ShieldCheck, 
+  HelpCircle,
+  CreditCard,
+  UserX
 } from 'lucide-react';
+import { sortActivitiesAscending } from '../../utils/dateUtils';
+import { Pagination } from '../common/Pagination';
+import { 
+  isActivityConcluded, 
+  isActivityTodayOrPast, 
+  validateAndPrepareTransition 
+} from '../../services/participantTransitions';
+import { simulateParticipantMigration, MigrationSimulationResult } from '../../services/participantMigration';
 
 interface ParticipantsManagerProps {
-  initialActivityId?: string | null;
+  initialActivityId?: string;
+  initialSearchQuery?: string;
   onCloseDetailedView?: () => void;
 }
 
-export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
-  initialActivityId = null,
+export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({ 
+  initialActivityId,
+  initialSearchQuery,
   onCloseDetailedView
 }) => {
   const { 
@@ -51,45 +55,66 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     participants, 
     addManualParticipant, 
     updateParticipant, 
-    deleteParticipant, 
-    markAttendance 
+    deleteParticipant 
   } = useData();
   const { user } = useAuth();
 
+  // Filters State
   const [selectedActivityId, setSelectedActivityId] = useState<string>(initialActivityId || 'all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  
+  const [searchTerm, setSearchTerm] = useState<string>(initialSearchQuery || '');
+
+  // Synchronize when parent navigation changes initialActivityId or initialSearchQuery
+  useEffect(() => {
+    if (initialActivityId !== undefined) {
+      setSelectedActivityId(initialActivityId || 'all');
+    }
+  }, [initialActivityId]);
+
+  useEffect(() => {
+    if (initialSearchQuery !== undefined) {
+      setSearchTerm(initialSearchQuery || '');
+    }
+  }, [initialSearchQuery]);
+
+  // Modals & Tools State
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingParticipant, setEditingParticipant] = useState<Participant | null>(null);
   const [participantToDelete, setParticipantToDelete] = useState<Participant | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
   const [copiedNotification, setCopiedNotification] = useState<string | null>(null);
+  const [showWorkflowDiagram, setShowWorkflowDiagram] = useState<boolean>(false);
 
-  // Dedicated Cancellation Modal state
+  // Dedicated Cancellation Modal State (Bloque 5)
   const [cancellationModalParticipant, setCancellationModalParticipant] = useState<Participant | null>(null);
   const [cancellationReasonInput, setCancellationReasonInput] = useState<string>('');
+  const [cancellationIsJustified, setCancellationIsJustified] = useState<boolean>(true);
   const [cancellationRefundInput, setCancellationRefundInput] = useState<string>('');
   const [cancellationError, setCancellationError] = useState<string | null>(null);
 
-  // Dedicated Reactivation Confirmation Modal state
-  const [reactivationParticipant, setReactivationParticipant] = useState<Participant | null>(null);
+  // Close Attendance Modal State (Bloque 5)
+  const [isCloseAttendanceModalOpen, setIsCloseAttendanceModalOpen] = useState<boolean>(false);
+  const [closingAttendanceActivityId, setClosingAttendanceActivityId] = useState<string | null>(null);
+  const [isClosingAttendanceLoading, setIsClosingAttendanceLoading] = useState<boolean>(false);
 
-  // Form State for Adding / Editing Participant
+  // Data Migration Simulation & Execution State (Bloque 5)
+  const [isMigrationModalOpen, setIsMigrationModalOpen] = useState<boolean>(false);
+  const [migrationSimulation, setMigrationSimulation] = useState<MigrationSimulationResult | null>(null);
+  const [isApplyingMigration, setIsApplyingMigration] = useState<boolean>(false);
+  const [migrationSuccessMsg, setMigrationSuccessMsg] = useState<string | null>(null);
+
+  // Form State (Only personal and administrative data, NO direct arbitrary status manipulation)
   const [formData, setFormData] = useState<{
     activityId: string;
     fullName: string;
     email: string;
     phone: string;
     isMember: boolean;
-    groupId?: string;
     turn: string;
     membershipNumber: string;
     notes: string;
-    status: ParticipantStatus;
     paymentMethod: PaymentMethod;
-    cancellationReason?: string;
-    refundAmount?: string;
+    totalAmount: string;
   }>({
     activityId: '',
     fullName: '',
@@ -99,18 +124,13 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     turn: '',
     membershipNumber: '',
     notes: '',
-    status: 'confirmada',
     paymentMethod: 'bizum',
-    cancellationReason: '',
-    refundAmount: ''
+    totalAmount: ''
   });
 
-  // Filtered Activities (focusing on Catas and other events with bookings)
+  // Filtered Activities
   const activeActivities = useMemo(() => {
     let filtered = activities.filter(a => a.status !== 'celebrada');
-    
-    // Si selectedActivityId no está en las filtradas, lo forzamos para que no se rompa el select
-    // (Por ejemplo, cuando navegamos desde la tabla de Actividades Celebradas)
     if (selectedActivityId !== 'all' && !filtered.some(a => a.id === selectedActivityId)) {
       const selected = activities.find(a => a.id === selectedActivityId);
       if (selected) {
@@ -134,26 +154,24 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     setCurrentPage(1);
   }, [selectedActivityId, statusFilter, searchTerm, pageSize]);
 
-  // Filtered Participants
+  // Filtered Participants (Canonical 5 statuses)
   const filteredParticipants = useMemo(() => {
     return participants.filter(p => {
-      // Past Activities filter
-      if (selectedActivityId === 'all') {
-        const act = activities.find(a => a.id === p.activityId);
-        if (act && act.status === 'celebrada') {
-          return false;
-        }
-      }
-      
       // Activity filter
       if (selectedActivityId !== 'all' && p.activityId !== selectedActivityId) {
         return false;
       }
       // Status filter
-      if (statusFilter !== 'all' && p.status !== statusFilter) {
-        return false;
+      if (statusFilter !== 'all') {
+        if (statusFilter === 'cancelada') {
+          if (p.status !== 'cancelada') return false;
+        } else if (statusFilter === 'asistio') {
+          if (p.status !== 'asistio') return false;
+        } else if (p.status !== statusFilter) {
+          return false;
+        }
       }
-      // Search term
+      // Search query
       if (searchTerm.trim()) {
         const query = searchTerm.toLowerCase().trim();
         const matchesName = (p.fullName || '').toLowerCase().includes(query);
@@ -166,7 +184,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       }
       return true;
     });
-  }, [participants, selectedActivityId, statusFilter, searchTerm, activities]);
+  }, [participants, selectedActivityId, statusFilter, searchTerm]);
 
   // Paginated slice
   const paginatedParticipants = useMemo(() => {
@@ -187,14 +205,10 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     }
   }, [filteredParticipants.length, pageSize, currentPage]);
 
-  // Key Metrics Calculations
+  // Key Metrics Calculations strictly for the 5 Canonical States
   const metrics = useMemo(() => {
     const relevant = selectedActivityId === 'all' 
-      ? participants.filter(p => {
-          const act = activities.find(a => a.id === p.activityId);
-          if (act && act.status === 'celebrada') return false;
-          return true;
-        })
+      ? participants 
       : participants.filter(p => p.activityId === selectedActivityId);
 
     const activeParticipants = relevant.filter(p => p.status !== 'cancelada' && p.status !== 'lista_de_espera');
@@ -203,18 +217,18 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     const sociosCount = activeParticipants.filter(p => p.isMember).length;
     const noSociosCount = activeParticipants.filter(p => !p.isMember).length;
     const withAllergies = activeParticipants.filter(p => p.notes && p.notes.trim().length > 0).length;
-    const attendedCount = relevant.filter(p => p.status === 'asistio' || p.attended === true).length;
-    const noShowCount = relevant.filter(p => p.status === 'no_asistio').length;
-    const cancelledCount = relevant.filter(p => p.status === 'cancelada').length;
-    const confirmedCount = relevant.filter(p => p.status === 'confirmada').length;
+    
+    // 5 canonical counts
     const pendingPaymentCount = relevant.filter(p => p.status === 'pendiente_pago').length;
+    const paidCount = relevant.filter(p => p.status === 'pagada' || p.status === 'confirmada').length;
+    const attendedCount = relevant.filter(p => p.status === 'asistio').length;
+    const cancelledCount = relevant.filter(p => p.status === 'cancelada').length;
+    const cancelledJustifiedCount = relevant.filter(p => p.status === 'cancelada' && p.cancellationJustified === true).length;
+    const cancelledUnjustifiedCount = relevant.filter(p => p.status === 'cancelada' && p.cancellationJustified === false).length;
 
     let maxCapacity = 0;
     if (selectedActivityId === 'all') {
-      maxCapacity = activities.reduce((sum, a) => {
-        if (a.status === 'celebrada') return sum;
-        return sum + (a.totalSpots || 0);
-      }, 0);
+      maxCapacity = activities.reduce((sum, a) => sum + (a.totalSpots || 0), 0);
     } else if (currentActivity) {
       maxCapacity = currentActivity.totalSpots || 0;
     }
@@ -230,15 +244,16 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       maxCapacity,
       occupancyRate,
       withAllergies,
+      pendingPaymentCount,
+      paidCount,
       attendedCount,
-      noShowCount,
       cancelledCount,
-      confirmedCount,
-      pendingPaymentCount
+      cancelledJustifiedCount,
+      cancelledUnjustifiedCount
     };
   }, [participants, selectedActivityId, activities, currentActivity]);
 
-  // Open modal for new manual participant
+  // Open modal for new manual participant (Always starts in 'pendiente_pago' or auto 'lista_de_espera' if full)
   const handleOpenNewModal = () => {
     setEditingParticipant(null);
     const defaultActId = selectedActivityId !== 'all' ? selectedActivityId : (activeActivities[0]?.id || '');
@@ -252,15 +267,13 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       turn: act?.time ? `Turno (${act.time})` : '',
       membershipNumber: '',
       notes: '',
-      status: 'confirmada',
       paymentMethod: 'bizum',
-      cancellationReason: '',
-      refundAmount: ''
+      totalAmount: act ? String(act.priceNonMember || 0) : ''
     });
     setIsModalOpen(true);
   };
 
-  // Open modal for editing participant
+  // Open modal for editing participant data (Personal/Contact ONLY)
   const handleOpenEditModal = (p: Participant) => {
     setEditingParticipant(p);
     setFormData({
@@ -269,33 +282,30 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       email: p.email || '',
       phone: p.phone || '',
       isMember: p.isMember,
-      groupId: p.groupId,
       turn: p.turn || '',
       membershipNumber: p.membershipNumber || '',
       notes: p.notes || '',
-      status: p.status,
       paymentMethod: p.paymentMethod || 'bizum',
-      cancellationReason: p.cancellationReason || '',
-      refundAmount: p.refundAmount !== undefined ? String(p.refundAmount) : ''
+      totalAmount: p.totalAmount !== undefined ? String(p.totalAmount) : ''
     });
     setIsModalOpen(true);
   };
 
-  // Open dedicated cancellation modal
+  // Dedicated Cancellation Modal (Bloque 5)
   const handleOpenCancellationModal = (p: Participant) => {
     setCancellationModalParticipant(p);
     setCancellationReasonInput('');
+    setCancellationIsJustified(true);
     setCancellationRefundInput(p.totalAmount ? String(p.totalAmount) : '');
     setCancellationError(null);
   };
 
-  // Confirm cancellation with mandatory reason and optional refund
   const handleConfirmCancellation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cancellationModalParticipant) return;
 
     if (!cancellationReasonInput.trim()) {
-      setCancellationError('Por favor, indica el motivo de la cancelación.');
+      setCancellationError('El motivo de la cancelación es obligatorio.');
       return;
     }
 
@@ -309,12 +319,26 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       parsedRefund = num;
     }
 
+    const activity = activities.find(a => a.id === cancellationModalParticipant.activityId);
+    const transition = validateAndPrepareTransition({
+      participant: cancellationModalParticipant,
+      targetStatus: 'cancelada',
+      activity,
+      actor: user?.name || user?.email || 'Secretaría / Administración',
+      cancellationData: {
+        reason: cancellationReasonInput.trim(),
+        justified: cancellationIsJustified,
+        kind: 'cancelacion_usuario'
+      }
+    });
+
+    if (!transition.allowed) {
+      setCancellationError(transition.error || 'No se pudo cancelar la inscripción.');
+      return;
+    }
+
     await updateParticipant(cancellationModalParticipant.id, {
-      status: 'cancelada',
-      attended: false,
-      cancellationReason: cancellationReasonInput.trim(),
-      cancelledAt: new Date().toISOString(),
-      cancelledBy: user?.name || user?.email || 'Secretaría / Administración',
+      ...transition.updatedParticipant,
       refundAmount: parsedRefund
     });
 
@@ -324,17 +348,116 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     setCancellationError(null);
   };
 
-  // Confirm reactivation of a cancelled reservation
-  const handleConfirmReactivation = async () => {
-    if (!reactivationParticipant) return;
-    await updateParticipant(reactivationParticipant.id, {
-      status: 'confirmada',
-      attended: false
+  // Action: Confirm Payment (pendiente_pago -> pagada)
+  const handleConfirmPayment = async (p: Participant) => {
+    const activity = activities.find(a => a.id === p.activityId);
+    const transition = validateAndPrepareTransition({
+      participant: p,
+      targetStatus: 'pagada',
+      activity,
+      actor: user?.name || user?.email || 'Administración'
     });
-    setReactivationParticipant(null);
+
+    if (!transition.allowed) {
+      alert(transition.error);
+      return;
+    }
+
+    await updateParticipant(p.id, transition.updatedParticipant || { status: 'pagada' });
   };
 
-  // Save Participant Form (Add or Edit)
+  // Action: Check-in / Asistió (pendiente_pago / pagada -> asistio)
+  const handleCheckIn = async (p: Participant) => {
+    const activity = activities.find(a => a.id === p.activityId);
+    const transition = validateAndPrepareTransition({
+      participant: p,
+      targetStatus: 'asistio',
+      activity,
+      actor: user?.name || user?.email || 'Puerta / Check-in'
+    });
+
+    if (!transition.allowed) {
+      alert(transition.error);
+      return;
+    }
+
+    await updateParticipant(p.id, transition.updatedParticipant || { status: 'asistio', attended: true });
+  };
+
+  // Action: Promote from Waitlist (lista_de_espera -> pendiente_pago)
+  const handlePromoteWaitlist = async (p: Participant) => {
+    const activity = activities.find(a => a.id === p.activityId);
+    if (!activity) return;
+
+    if (isActivityConcluded(activity)) {
+      alert('No se puede promocionar de lista de espera en una actividad ya celebrada.');
+      return;
+    }
+
+    if (activity.bookedSpots >= activity.totalSpots) {
+      alert(`El aforo está completo (${activity.bookedSpots}/${activity.totalSpots}). Debes disponer de una vacante para promocionar.`);
+      return;
+    }
+
+    const transition = validateAndPrepareTransition({
+      participant: p,
+      targetStatus: 'pendiente_pago',
+      activity,
+      actor: user?.name || user?.email || 'Administración'
+    });
+
+    if (!transition.allowed) {
+      alert(transition.error);
+      return;
+    }
+
+    await updateParticipant(p.id, transition.updatedParticipant || { status: 'pendiente_pago' });
+  };
+
+  // Action: Close Activity Attendance (Batch non-checked-in to cancelada / no_presentado)
+  const handleOpenCloseAttendanceModal = (activityId: string) => {
+    const act = activities.find(a => a.id === activityId);
+    if (!act) return;
+
+    if (!isActivityTodayOrPast(act)) {
+      alert('No es posible cerrar la asistencia de una actividad que aún no se ha celebrado (fecha futura).');
+      return;
+    }
+
+    setClosingAttendanceActivityId(activityId);
+    setIsCloseAttendanceModalOpen(true);
+  };
+
+  const handleConfirmCloseAttendance = async () => {
+    if (!closingAttendanceActivityId) return;
+    setIsClosingAttendanceLoading(true);
+
+    try {
+      const actParts = participants.filter(p => p.activityId === closingAttendanceActivityId);
+      const pendingToCheckIn = actParts.filter(p => p.status === 'pendiente_pago' || p.status === 'pagada' || p.status === 'confirmada');
+
+      for (const p of pendingToCheckIn) {
+        await updateParticipant(p.id, {
+          status: 'cancelada',
+          cancellationReason: 'No presentado',
+          cancellationJustified: false,
+          cancellationKind: 'no_presentado',
+          cancelledAt: new Date().toISOString(),
+          cancelledBy: 'Cierre de Asistencia'
+        });
+      }
+
+      setIsCloseAttendanceModalOpen(false);
+      setClosingAttendanceActivityId(null);
+    } catch (err) {
+      console.error('Error closing attendance:', err);
+      alert('Ocurrió un error al cerrar la asistencia.');
+    } finally {
+      setIsClosingAttendanceLoading(false);
+    }
+  };
+
+  // Save Participant Form (Add or Edit personal details ONLY)
   const handleSaveForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.fullName.trim() || !formData.activityId) return;
@@ -342,20 +465,16 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     const targetActivity = activities.find(a => a.id === formData.activityId);
     if (!targetActivity) return;
 
-    const priceMember = targetActivity.priceMember;
-    const priceNonMember = targetActivity.priceNonMember;
-    const calculatedPrice = formData.isMember ? priceMember : priceNonMember;
+    let parsedPrice: number | undefined = undefined;
+    if (formData.totalAmount.trim() !== '') {
+      const num = parseFloat(formData.totalAmount.replace(',', '.'));
+      if (!isNaN(num) && num >= 0) parsedPrice = num;
+    }
+    if (parsedPrice === undefined) {
+      parsedPrice = formData.isMember ? targetActivity.priceMember : targetActivity.priceNonMember;
+    }
 
     if (editingParticipant) {
-      const isNowCancelled = formData.status === 'cancelada';
-      let parsedRefund: number | undefined = undefined;
-      if (formData.refundAmount && formData.refundAmount.trim() !== '') {
-        const num = parseFloat(formData.refundAmount.replace(',', '.'));
-        if (!isNaN(num) && num >= 0) {
-          parsedRefund = num;
-        }
-      }
-
       await updateParticipant(editingParticipant.id, {
         fullName: formData.fullName.trim(),
         email: formData.email.trim(),
@@ -364,18 +483,14 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
         turn: formData.turn.trim() || undefined,
         membershipNumber: formData.membershipNumber.trim() || undefined,
         notes: formData.notes.trim() || undefined,
-        status: formData.status,
         paymentMethod: formData.paymentMethod,
-        totalAmount: calculatedPrice,
-        ...(isNowCancelled ? {
-          cancellationReason: formData.cancellationReason?.trim() || editingParticipant.cancellationReason || 'Cancelada en edición',
-          cancelledAt: editingParticipant.cancelledAt || new Date().toISOString(),
-          cancelledBy: editingParticipant.cancelledBy || user?.name || user?.email || 'Administración',
-          refundAmount: parsedRefund !== undefined ? parsedRefund : editingParticipant.refundAmount
-        } : {})
+        totalAmount: parsedPrice
       });
     } else {
-      // Create
+      // Add Manual: determines status based on available spots
+      const availableSpots = Math.max(0, targetActivity.totalSpots - targetActivity.bookedSpots);
+      const assignedStatus: ParticipantStatus = availableSpots > 0 ? 'pendiente_pago' : 'lista_de_espera';
+
       const newGroupId = typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
         : `grp-manual-${Date.now()}`;
@@ -393,9 +508,9 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
         turn: formData.turn.trim() || (targetActivity.time ? `Turno (${targetActivity.time})` : undefined),
         membershipNumber: formData.membershipNumber.trim() || undefined,
         notes: formData.notes.trim() || undefined,
-        status: formData.status,
+        status: assignedStatus,
         paymentMethod: formData.paymentMethod,
-        totalAmount: calculatedPrice
+        totalAmount: parsedPrice
       });
     }
 
@@ -409,7 +524,35 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     setParticipantToDelete(null);
   };
 
-  // Export to CSV with full cancellation and tracking columns
+  // Data Migration Simulation & Application Tool (Bloque 5)
+  const handleOpenMigrationTool = () => {
+    const sim = simulateParticipantMigration(participants, activities);
+    setMigrationSimulation(sim);
+    setMigrationSuccessMsg(null);
+    setIsMigrationModalOpen(true);
+  };
+
+  const handleApplyCanonicalMigration = async () => {
+    if (!migrationSimulation || migrationSimulation.itemsToMigrate.length === 0) return;
+    setIsApplyingMigration(true);
+
+    try {
+      for (const item of migrationSimulation.itemsToMigrate) {
+        await updateParticipant(item.id, item.changes);
+      }
+      setMigrationSuccessMsg(`¡Normalización completada con éxito! Se han actualizado ${migrationSimulation.itemsToMigrate.length} registros al modelo canónico.`);
+      // Refresh simulation
+      const refreshedSim = simulateParticipantMigration(participants, activities);
+      setMigrationSimulation(refreshedSim);
+    } catch (err) {
+      console.error('Error applying migration:', err);
+      alert('Hubo un problema al aplicar la normalización.');
+    } finally {
+      setIsApplyingMigration(false);
+    }
+  };
+
+  // Export to CSV
   const handleExportCsv = () => {
     const headers = [
       'ID', 
@@ -423,10 +566,12 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       'Turno', 
       'N_Socio', 
       'Alergias_Observaciones', 
-      'Estado', 
+      'Estado_Canonico', 
       'Metodo_Pago', 
       'Total_Euros', 
       'Motivo_Cancelacion',
+      'Cancelacion_Justificada',
+      'Tipo_Cancelacion',
       'Fecha_Cancelacion',
       'Responsable_Cancelacion',
       'Importe_Devuelto_Euros',
@@ -447,7 +592,9 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       `"${p.status}"`,
       `"${p.paymentMethod || ''}"`,
       p.totalAmount || 0,
-      `"${(p.cancellationReason || p.justificationReason || '').replace(/"/g, '""')}"`,
+      `"${(p.cancellationReason || '').replace(/"/g, '""')}"`,
+      p.status === 'cancelada' ? (p.cancellationJustified ? 'SI' : 'NO') : '',
+      `"${p.cancellationKind || ''}"`,
       `"${p.cancelledAt || ''}"`,
       `"${(p.cancelledBy || '').replace(/"/g, '""')}"`,
       p.refundAmount !== undefined ? p.refundAmount : '',
@@ -471,12 +618,18 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     const dateStr = currentActivity ? ` (${currentActivity.date})` : '';
     
     let text = `🍷 *DOÑA BERENJENA — LISTA DE ASISTENTES*\n📌 *${actTitle}*${dateStr}\n\n`;
-    text += `👥 *Total plazas reservadas:* ${metrics.totalSpotsBooked}\n`;
+    text += `👥 *Total plazas ocupadas:* ${metrics.totalSpotsBooked}\n`;
     text += `⚠️ *Alergias registradas:* ${metrics.withAllergies}\n\n`;
-    text += `--- LISTADO DE COMENSALES ---\n`;
+    text += `--- LISTADO DE PARTICIPANTES ---\n`;
 
     filteredParticipants.forEach((p, idx) => {
-      text += `${idx + 1}. *${p.fullName}* ${p.isMember ? '(Socio)' : '(No socio)'}`;
+      const statusLabel = 
+        p.status === 'asistio' ? '✅ Asistió' :
+        p.status === 'pagada' ? '💳 Pagada' :
+        p.status === 'pendiente_pago' ? '⏳ Pendiente Pago' :
+        p.status === 'lista_de_espera' ? '📋 Lista Espera' : '❌ Cancelada';
+
+      text += `${idx + 1}. *${p.fullName}* ${p.isMember ? '(Socio)' : '(No socio)'} [${statusLabel}]`;
       if (p.phone) text += ` - Tel: ${p.phone}`;
       if (p.notes) text += `\n   ⚠️ _Alergias/Notas:_ ${p.notes}`;
       text += `\n`;
@@ -497,19 +650,19 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs uppercase tracking-widest font-bold text-[#521849]">
-                Control de Asistencia
+                Control de Asistencia • Modelo Canónico
               </span>
               {currentActivity && (
                 <span className="px-2.5 py-0.5 rounded-full bg-[#521849]/10 text-[#521849] text-[11px] font-bold">
-                  Filtrando por actividad
+                  {currentActivity.title}
                 </span>
               )}
             </div>
             <h3 className="text-xl sm:text-2xl font-bold font-serif text-[#26201D] mt-1">
-              Reservas de Próximas Actividades
+              Gestión de Asistentes y Reservas
             </h3>
             <p className="text-xs text-[#574B45] mt-0.5">
-              Gestión centralizada de comensales, plazas confirmadas, alergias alimentarias y hojas de sala para sumillería.
+              Control con 5 estados normalizados: Lista de espera, Pendiente de pago, Pagada, Asistió y Cancelada.
             </p>
           </div>
 
@@ -522,7 +675,47 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
               className="px-4 py-2.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold flex items-center gap-2 transition-all shadow-xs cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>+ Nueva Reserva Manual</span>
+              <span>+ Nueva Inscripción Manual</span>
+            </button>
+
+            {/* Cierre de Asistencia Button (Visible when specific activity is filtered) */}
+            {currentActivity && (
+              <button
+                id="btn-close-attendance"
+                type="button"
+                onClick={() => handleOpenCloseAttendanceModal(currentActivity.id)}
+                className={`px-3.5 py-2.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  isActivityTodayOrPast(currentActivity)
+                    ? 'border-purple-300 bg-purple-50 hover:bg-purple-100 text-purple-900 shadow-2xs'
+                    : 'border-stone-200 bg-stone-100 text-stone-400 cursor-not-allowed'
+                }`}
+                title={isActivityTodayOrPast(currentActivity) ? 'Cerrar asistencia de la actividad' : 'Bloqueado: La actividad es futura'}
+              >
+                <UserX className="w-4 h-4 text-purple-700" />
+                <span>Cerrar Asistencia</span>
+              </button>
+            )}
+
+            <button
+              id="btn-workflow-diagram"
+              type="button"
+              onClick={() => setShowWorkflowDiagram(!showWorkflowDiagram)}
+              className="px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] hover:bg-white text-[#26201D] text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Ver diagrama de transiciones canónicas"
+            >
+              <HelpCircle className="w-4 h-4 text-[#521849]" />
+              <span>Flujo de Estados</span>
+            </button>
+
+            <button
+              id="btn-audit-migration"
+              type="button"
+              onClick={handleOpenMigrationTool}
+              className="px-3.5 py-2.5 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+              title="Auditoría y normalización de estados de participantes"
+            >
+              <RefreshCw className="w-4 h-4 text-amber-700" />
+              <span>Normalizar Datos</span>
             </button>
 
             <button
@@ -541,7 +734,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
               type="button"
               onClick={handleExportCsv}
               className="px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] hover:bg-white text-[#26201D] text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
-              title="Descargar listado en CSV / Excel"
+              title="Descargar listado en CSV"
             >
               <Download className="w-4 h-4 text-[#521849]" />
               <span>Exportar CSV</span>
@@ -571,6 +764,84 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
           </div>
         </div>
 
+        {/* Collapsible Canonical State Diagram */}
+        {showWorkflowDiagram && (
+          <div className="p-5 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7] space-y-4 animate-fadeIn">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-[#521849]" />
+                <h4 className="font-bold text-sm font-serif text-[#26201D]">
+                  Diagrama de Flujo Canónico de Participantes (Bloque 5)
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowWorkflowDiagram(false)}
+                className="text-xs text-[#8C7E77] hover:text-[#26201D] cursor-pointer"
+              >
+                Cerrar diagrama
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+              <div className="p-3 rounded-xl bg-white border border-[#EDE4D7] space-y-1">
+                <span className="font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full text-[10px] uppercase">
+                  1. Pendiente de pago
+                </span>
+                <p className="text-[#574B45] text-[11px] mt-1">
+                  Inscripción inicial cuando hay plaza libre. Ocupa 1 plaza en el aforo.
+                </p>
+                <div className="text-[10px] text-[#8C7E77] pt-1 border-t border-[#EDE4D7]/60">
+                  Transiciona a: <strong>Pagada</strong>, <strong>Asistió</strong> o <strong>Cancelada</strong>.
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-white border border-[#EDE4D7] space-y-1">
+                <span className="font-bold text-blue-800 bg-blue-100 px-2 py-0.5 rounded-full text-[10px] uppercase">
+                  2. Pagada
+                </span>
+                <p className="text-[#574B45] text-[11px] mt-1">
+                  Pago verificado mediante Bizum, transferencia o en sede. Ocupa 1 plaza.
+                </p>
+                <div className="text-[10px] text-[#8C7E77] pt-1 border-t border-[#EDE4D7]/60">
+                  Transiciona a: <strong>Asistió</strong> o <strong>Cancelada</strong>.
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-white border border-[#EDE4D7] space-y-1">
+                <span className="font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full text-[10px] uppercase">
+                  3. Asistió
+                </span>
+                <p className="text-[#574B45] text-[11px] mt-1">
+                  Check-in validado en la puerta de la sala de catas (hoy o pasado).
+                </p>
+                <div className="text-[10px] text-emerald-800 font-semibold pt-1 border-t border-[#EDE4D7]/60">
+                  Estado terminal. No admite reversión operativa.
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-white border border-[#EDE4D7] space-y-1">
+                <span className="font-bold text-rose-800 bg-rose-100 px-2 py-0.5 rounded-full text-[10px] uppercase">
+                  4. Cancelada
+                </span>
+                <p className="text-[#574B45] text-[11px] mt-1">
+                  Libera 1 plaza. Puede ser <em>Justificada</em> o <em>Injustificada</em> (con motivo obligatorio).
+                </p>
+                <div className="text-[10px] text-rose-800 font-semibold pt-1 border-t border-[#EDE4D7]/60">
+                  Estado terminal. No admite reactivación directa.
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-amber-50/80 border border-amber-200 text-xs text-amber-950 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+              <div>
+                <strong>Regla de Lista de Espera y Cierre de Asistencia:</strong> Si una actividad está llena, la persona queda en <strong>Lista de espera</strong> (sin plaza). Solo se promociona a <em>Pendiente de pago</em> si se libera una plaza antes de celebrarse la actividad. Al pulsar «Cerrar Asistencia», las plazas no presentadas pasan automáticamente a <strong>Cancelada (Injustificada, «No presentado»)</strong>.
+              </div>
+            </div>
+          </div>
+        )}
+
         {copiedNotification && (
           <div className="p-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold flex items-center gap-2 animate-fadeIn">
             <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -592,164 +863,63 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                 onChange={(e) => setSelectedActivityId(e.target.value)}
                 className="w-full pl-3.5 pr-8 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-medium text-[#26201D] focus:outline-none focus:border-[#521849] focus:bg-white appearance-none cursor-pointer"
               >
-                <option value="all">🌟 Todas las Próximas Actividades</option>
+                <option value="all">🌟 Todas las Actividades ({participants.length} inscripciones)</option>
                 {activeActivities.map(act => {
                   const actParticipants = participants.filter(p => p.activityId === act.id);
-                  const actSpots = actParticipants.filter(p => p.status !== 'cancelada').length;
+                  const actOccupied = actParticipants.filter(p => p.status !== 'cancelada' && p.status !== 'lista_de_espera').length;
+                  const isConcluded = isActivityConcluded(act);
                   return (
                     <option key={act.id} value={act.id}>
-                      {act.type === 'cata' ? '🍷' : act.type === 'curso' ? '🍳' : '🧳'} {new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })} — {act.title} ({actSpots}/{act.totalSpots} plazas)
+                      {act.title} — {new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })} ({actOccupied}/{act.totalSpots} plazas) {isConcluded ? '[Celebrada]' : ''}
                     </option>
                   );
                 })}
               </select>
-              <ChevronDown className="w-4 h-4 text-[#574B45] absolute right-2.5 top-2.5 pointer-events-none" />
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-[#574B45]">
+                <ChevronDown className="w-3.5 h-3.5" />
+              </div>
             </div>
           </div>
 
-          {/* Status Filter */}
-          <div className="sm:col-span-3">
+          {/* Status Filter (Canonical 5) */}
+          <div className="sm:col-span-4">
             <label className="block text-[11px] font-bold text-[#574B45] uppercase tracking-wider mb-1">
-              Estado:
+              Filtrar por Estado Canónico:
             </label>
             <select
               id="select-participant-status"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-medium text-[#26201D] focus:outline-none focus:border-[#521849] focus:bg-white cursor-pointer"
+              className="w-full px-3.5 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-medium text-[#26201D] focus:outline-none focus:border-[#521849] focus:bg-white cursor-pointer"
             >
-              <option value="all">Todos los estados ({metrics.totalBookings})</option>
-              <option value="confirmada">✅ Confirmadas ({metrics.confirmedCount})</option>
-              <option value="asistio">🎉 Asistió / En Sala ({metrics.attendedCount})</option>
-              <option value="no_asistio">⚠️ No asistió ({metrics.noShowCount})</option>
-              <option value="cancelada">❌ Canceladas ({metrics.cancelledCount})</option>
-              <option value="pendiente_pago">⏳ Pendientes de Pago ({metrics.pendingPaymentCount})</option>
+              <option value="all">Todos los estados</option>
+              <option value="pendiente_pago">⏳ Pendiente de Pago ({metrics.pendingPaymentCount})</option>
+              <option value="pagada">💳 Pagada ({metrics.paidCount})</option>
+              <option value="asistio">✅ Asistió ({metrics.attendedCount})</option>
               <option value="lista_de_espera">📋 Lista de Espera ({metrics.waitingListCount})</option>
+              <option value="cancelada">❌ Cancelada ({metrics.cancelledCount})</option>
             </select>
           </div>
 
-          {/* Search Input */}
-          <div className="sm:col-span-4">
+          {/* Search bar */}
+          <div className="sm:col-span-3">
             <label className="block text-[11px] font-bold text-[#574B45] uppercase tracking-wider mb-1">
-              Buscar comensal:
+              Búsqueda Rápida:
             </label>
-            <div className="relative">
-              <input
-                id="input-search-participant"
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Nombre, teléfono, email, alergia..."
-                className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs text-[#26201D] focus:outline-none focus:border-[#521849] focus:bg-white"
-              />
-              <Search className="w-4 h-4 text-[#574B45] absolute left-3 top-2.5" />
-              {searchTerm && (
-                <button
-                  type="button"
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-2.5 top-2.5 text-[#574B45] hover:text-[#26201D]"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar por nombre, email, teléfono, socio..."
+              className="w-full px-3 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs text-[#26201D] focus:outline-none focus:border-[#521849] focus:bg-white"
+            />
           </div>
-        </div>
-
-        {/* Interactive Quick Status Filter Pills */}
-        <div className="pt-2 border-t border-[#F6F1EA] flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] font-bold text-[#574B45] uppercase tracking-wider mr-1">Filtro Rápido:</span>
-          <button
-            type="button"
-            onClick={() => setStatusFilter('all')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              statusFilter === 'all'
-                ? 'bg-[#521849] text-white shadow-2xs'
-                : 'bg-[#FCFAF7] hover:bg-[#F6F1EA] text-[#574B45] border border-[#EDE4D7]'
-            }`}
-          >
-            Todos ({metrics.totalBookings})
-          </button>
-          <button
-            type="button"
-            onClick={() => setStatusFilter('confirmada')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-              statusFilter === 'confirmada'
-                ? 'bg-emerald-700 text-white shadow-2xs'
-                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200'
-            }`}
-          >
-            <CheckCircle className="w-3 h-3" />
-            <span>Confirmadas ({metrics.confirmedCount})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setStatusFilter('asistio')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-              statusFilter === 'asistio'
-                ? 'bg-purple-700 text-white shadow-2xs'
-                : 'bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200'
-            }`}
-          >
-            <Sparkles className="w-3 h-3" />
-            <span>En Sala ({metrics.attendedCount})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setStatusFilter('no_asistio')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-              statusFilter === 'no_asistio'
-                ? 'bg-amber-600 text-white shadow-2xs'
-                : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300'
-            }`}
-          >
-            <UserX className="w-3 h-3" />
-            <span>No Asistió ({metrics.noShowCount})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setStatusFilter('cancelada')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-              statusFilter === 'cancelada'
-                ? 'bg-rose-700 text-white shadow-2xs'
-                : 'bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200'
-            }`}
-          >
-            <XCircle className="w-3 h-3" />
-            <span>Canceladas ({metrics.cancelledCount})</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setStatusFilter('pendiente_pago')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-              statusFilter === 'pendiente_pago'
-                ? 'bg-amber-700 text-white shadow-2xs'
-                : 'bg-amber-50/60 hover:bg-amber-100/80 text-amber-900 border border-amber-200'
-            }`}
-          >
-            <Clock className="w-3 h-3" />
-            <span>Pendientes ({metrics.pendingPaymentCount})</span>
-          </button>
-          {metrics.waitingListCount > 0 && (
-            <button
-              type="button"
-              onClick={() => setStatusFilter('lista_de_espera')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-                statusFilter === 'lista_de_espera'
-                  ? 'bg-blue-700 text-white shadow-2xs'
-                  : 'bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200'
-              }`}
-            >
-              <Clock className="w-3 h-3" />
-              <span>Lista Espera ({metrics.waitingListCount})</span>
-            </button>
-          )}
         </div>
       </div>
 
-      {/* KPI Cards Grid with No-Shows and Cancellations */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {/* Card 1: Plazas Ocupadas / Aforo */}
+      {/* KPI Stats Cards strictly aligned to Canonical States */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+        {/* Card 1: Plazas Ocupadas */}
         <div className="bg-white rounded-2xl border border-[#EDE4D7] p-3.5 shadow-2xs">
           <div className="flex items-center justify-between text-xs text-[#574B45] mb-1">
             <span className="font-semibold uppercase tracking-wider text-[10px]">Aforo Ocupado</span>
@@ -759,63 +929,87 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
             <span className="text-xl sm:text-2xl font-bold font-serif text-[#26201D]">
               {metrics.totalSpotsBooked}
             </span>
-            {metrics.maxCapacity > 0 && (
-              <span className="text-[11px] text-[#574B45]">
-                / {metrics.maxCapacity}
-              </span>
-            )}
-          </div>
-          {metrics.maxCapacity > 0 && (
-            <div className="mt-1.5 w-full bg-[#EDE4D7] h-1.5 rounded-full overflow-hidden">
-              <div 
-                className="bg-[#521849] h-full rounded-full transition-all duration-300"
-                style={{ width: `${metrics.occupancyRate}%` }}
-              />
-            </div>
-          )}
-          <p className="text-[10px] text-[#574B45] mt-1 truncate">
-            {metrics.occupancyRate}% de ocupación
-          </p>
-        </div>
-
-        {/* Card 2: Asistieron / En Sala */}
-        <div className="bg-white rounded-2xl border border-purple-200/80 bg-purple-50/20 p-3.5 shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-purple-900 mb-1">
-            <span className="font-semibold uppercase tracking-wider text-[10px]">En Sala / Asistió</span>
-            <Sparkles className="w-4 h-4 text-purple-600" />
-          </div>
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-xl sm:text-2xl font-bold font-serif text-purple-950">
-              {metrics.attendedCount}
+            <span className="text-[11px] text-[#574B45]">
+              / {metrics.maxCapacity > 0 ? metrics.maxCapacity : '-'} plazas
             </span>
-            <span className="text-[11px] text-purple-700">plazas</span>
           </div>
-          <p className="text-[10px] text-purple-800 mt-1 truncate">
-            {metrics.attendedCount > 0 ? 'Asistencia confirmada' : 'Pendiente check-in'}
+          <p className="text-[10px] text-[#574B45] mt-1 truncate">
+            {metrics.occupancyRate}% ocupación real
           </p>
         </div>
 
-        {/* Card 3: No Asistencias */}
+        {/* Card 2: Pendiente Pago */}
         <div className="bg-white rounded-2xl border border-amber-200 bg-amber-50/30 p-3.5 shadow-2xs">
           <div className="flex items-center justify-between text-xs text-amber-900 mb-1">
-            <span className="font-semibold uppercase tracking-wider text-[10px]">No Asistencias</span>
-            <UserX className="w-4 h-4 text-amber-600" />
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Pendiente Pago</span>
+            <Clock className="w-4 h-4 text-amber-600" />
           </div>
           <div className="flex items-baseline gap-1.5">
             <span className="text-xl sm:text-2xl font-bold font-serif text-amber-950">
-              {metrics.noShowCount}
+              {metrics.pendingPaymentCount}
             </span>
-            <span className="text-[11px] text-amber-800">faltas</span>
+            <span className="text-[11px] text-amber-800">por abonar</span>
           </div>
           <p className="text-[10px] text-amber-700 mt-1 truncate">
-            {metrics.noShowCount > 0 ? '⚠️ No presentados' : 'Sin ausencias registradas'}
+            {metrics.pendingPaymentCount > 0 ? 'Requiere abono' : 'Todos al día'}
           </p>
         </div>
 
-        {/* Card 4: Cancelaciones */}
+        {/* Card 3: Pagadas */}
+        <div className="bg-white rounded-2xl border border-blue-200 bg-blue-50/20 p-3.5 shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-blue-900 mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Pagadas</span>
+            <CreditCard className="w-4 h-4 text-blue-600" />
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-bold font-serif text-blue-950">
+              {metrics.paidCount}
+            </span>
+            <span className="text-[11px] text-blue-800">confirmadas</span>
+          </div>
+          <p className="text-[10px] text-blue-700 mt-1 truncate">
+            Abono registrado
+          </p>
+        </div>
+
+        {/* Card 4: Asistió */}
+        <div className="bg-white rounded-2xl border border-emerald-200 bg-emerald-50/30 p-3.5 shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-emerald-900 mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Asistió</span>
+            <CheckCircle className="w-4 h-4 text-emerald-600" />
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-bold font-serif text-emerald-950">
+              {metrics.attendedCount}
+            </span>
+            <span className="text-[11px] text-emerald-800">en sala</span>
+          </div>
+          <p className="text-[10px] text-emerald-700 mt-1 truncate">
+            Check-in completado
+          </p>
+        </div>
+
+        {/* Card 5: Lista de Espera */}
+        <div className="bg-white rounded-2xl border border-amber-200 bg-amber-50/20 p-3.5 shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-amber-900 mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Lista Espera</span>
+            <Clock className="w-4 h-4 text-amber-600" />
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-bold font-serif text-amber-950">
+              {metrics.waitingListCount}
+            </span>
+            <span className="text-[11px] text-amber-800">en cola</span>
+          </div>
+          <p className="text-[10px] text-amber-700 mt-1 truncate">
+            {metrics.waitingListCount > 0 ? 'Pendientes de vacante' : 'Sin cola'}
+          </p>
+        </div>
+
+        {/* Card 6: Canceladas */}
         <div className="bg-white rounded-2xl border border-rose-200 bg-rose-50/30 p-3.5 shadow-2xs">
           <div className="flex items-center justify-between text-xs text-rose-900 mb-1">
-            <span className="font-semibold uppercase tracking-wider text-[10px]">Cancelaciones</span>
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Canceladas</span>
             <XCircle className="w-4 h-4 text-rose-600" />
           </div>
           <div className="flex items-baseline gap-1.5">
@@ -825,79 +1019,10 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
             <span className="text-[11px] text-rose-800">bajas</span>
           </div>
           <p className="text-[10px] text-rose-700 mt-1 truncate">
-            {metrics.cancelledCount > 0 ? 'Plazas liberadas' : 'Cero cancelaciones'}
-          </p>
-        </div>
-
-        {/* Card 5: Lista de Espera */}
-        <div className="bg-white rounded-2xl border border-blue-200 bg-blue-50/20 p-3.5 shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-blue-900 mb-1">
-            <span className="font-semibold uppercase tracking-wider text-[10px]">Lista de Espera</span>
-            <Clock className="w-4 h-4 text-blue-600" />
-          </div>
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-xl sm:text-2xl font-bold font-serif text-blue-950">
-              {metrics.waitingListCount}
-            </span>
-            <span className="text-[11px] text-blue-800">en cola</span>
-          </div>
-          <p className="text-[10px] text-blue-700 mt-1 truncate">
-            {metrics.waitingListCount > 0 ? 'Pendientes de vacante' : 'Sin personas en espera'}
-          </p>
-        </div>
-
-        {/* Card 6: Socios vs No Socios */}
-        <div className="bg-white rounded-2xl border border-[#EDE4D7] p-3.5 shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-[#574B45] mb-1">
-            <span className="font-semibold uppercase tracking-wider text-[10px]">Socios / No Socios</span>
-            <UserCheck className="w-4 h-4 text-emerald-700" />
-          </div>
-          <div className="flex items-baseline gap-1">
-            <span className="text-xl sm:text-2xl font-bold font-serif text-emerald-800">
-              {metrics.sociosCount}
-            </span>
-            <span className="text-[11px] text-[#574B45]">
-              / {metrics.noSociosCount} no socios
-            </span>
-          </div>
-          <p className="text-[10px] text-[#574B45] mt-1 truncate">
-            {metrics.withAllergies > 0 ? `⚠️ ${metrics.withAllergies} con alergias` : 'Distribución confirmada'}
+            {metrics.cancelledJustifiedCount} just. / {metrics.cancelledUnjustifiedCount} injust.
           </p>
         </div>
       </div>
-
-      {/* Waiting List Alert Banner if applicable */}
-      {metrics.waitingListCount > 0 && (
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50/50 border border-blue-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
-          <div className="flex items-start gap-3">
-            <div className="p-2.5 rounded-xl bg-blue-100 text-blue-700 shrink-0">
-              <Clock className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-blue-950 text-sm">
-                  {metrics.waitingListCount} persona{metrics.waitingListCount !== 1 ? 's' : ''} en Lista de Espera
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-blue-200/80 text-blue-900 text-[10px] font-bold uppercase tracking-wider">
-                  Sin asignar aforo
-                </span>
-              </div>
-              <p className="text-xs text-blue-800/90 mt-0.5">
-                Si un asistente confirmado cancela su plaza, puedes asignar la vacante a las personas en espera con un solo clic pulsando «Asignar Plaza».
-              </p>
-            </div>
-          </div>
-          {statusFilter !== 'lista_de_espera' && (
-            <button
-              type="button"
-              onClick={() => setStatusFilter('lista_de_espera')}
-              className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs whitespace-nowrap cursor-pointer transition-colors shadow-2xs self-start sm:self-center"
-            >
-              Ver Lista de Espera ({metrics.waitingListCount})
-            </button>
-          )}
-        </div>
-      )}
 
       {/* Participants Table */}
       <div className="bg-white rounded-3xl border border-[#EDE4D7] overflow-hidden shadow-xs">
@@ -909,279 +1034,276 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                 <th className="p-4">Cata / Actividad</th>
                 <th className="p-4">Condición / Importe</th>
                 <th className="p-4">Alergias & Observaciones</th>
-                <th className="p-4">Estado & Pago</th>
+                <th className="p-4">Estado Canónico</th>
                 <th className="p-4">Fecha Registro</th>
-                <th className="p-4 text-right">Acciones</th>
+                <th className="p-4 text-right">Acciones Canónicas</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#EDE4D7]">
-              {paginatedParticipants.map((p) => (
-                <tr 
-                  key={p.id} 
-                  className={`hover:bg-[#FCFAF7] transition-colors ${
-                    p.status === 'cancelada' ? 'opacity-60 bg-stone-50' : 
-                    p.status === 'lista_de_espera' ? 'bg-blue-50/30' : ''
-                  }`}
-                >
-                  {/* Asistente */}
-                  <td className="p-4">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-[#26201D] text-sm font-serif">{p.fullName}</span>
-                        {p.membershipNumber && (
-                          <span className="px-1.5 py-0.5 rounded-md bg-[#521849]/10 text-[#521849] font-mono text-[10px] font-bold">
-                            {p.membershipNumber}
+              {paginatedParticipants.map((p) => {
+                const act = activities.find(a => a.id === p.activityId);
+                const isTodayOrPast = act ? isActivityTodayOrPast(act) : true;
+                const isConcluded = act ? isActivityConcluded(act) : false;
+                const hasAvailableSpots = act ? act.bookedSpots < act.totalSpots : false;
+
+                return (
+                  <tr 
+                    key={p.id} 
+                    className={`hover:bg-[#FCFAF7] transition-colors ${
+                      p.status === 'cancelada' ? 'opacity-60 bg-stone-50' : 
+                      p.status === 'lista_de_espera' ? 'bg-amber-50/20' : ''
+                    }`}
+                  >
+                    {/* Asistente */}
+                    <td className="p-4">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-[#26201D] text-sm font-serif">{p.fullName}</span>
+                          {p.membershipNumber && (
+                            <span className="px-1.5 py-0.5 rounded-md bg-[#521849]/10 text-[#521849] font-mono text-[10px] font-bold">
+                              {p.membershipNumber}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#574B45]">
+                          {p.phone && (
+                            <a 
+                              href={`tel:${p.phone}`} 
+                              className="inline-flex items-center gap-1 text-[#521849] hover:underline"
+                              title="Llamar"
+                            >
+                              <Phone className="w-3 h-3" />
+                              <span>{p.phone}</span>
+                            </a>
+                          )}
+                          {p.email && (
+                            <a 
+                              href={`mailto:${p.email}`} 
+                              className="inline-flex items-center gap-1 hover:text-[#26201D]"
+                              title="Enviar email"
+                            >
+                              <Mail className="w-3 h-3" />
+                              <span className="truncate max-w-[140px]">{p.email}</span>
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Actividad */}
+                    <td className="p-4 max-w-[200px]">
+                      <p className="font-medium text-[#26201D] truncate" title={p.activityTitle}>
+                        {p.activityTitle || 'Actividad'}
+                      </p>
+                      <p className="text-[11px] text-[#574B45]">
+                        {p.activityDate} {isConcluded ? '• (Celebrada)' : ''}
+                      </p>
+                    </td>
+
+                    {/* Condición, Importe y Turno */}
+                    <td className="p-4">
+                      <div className="space-y-1">
+                        <span className={`inline-flex items-center gap-1 font-bold text-[11px] px-2 py-0.5 rounded-full ${
+                          p.isMember ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-100 text-[#574B45]'
+                        }`}>
+                          {p.isMember ? '⭐ Socio' : '👤 No socio'}
+                        </span>
+                        <p className="text-xs font-bold text-[#521849]">
+                          {p.totalAmount !== undefined ? `${p.totalAmount} €` : '-'}
+                        </p>
+                        {p.turn && (
+                          <span className="inline-block text-[10px] text-[#574B45] font-mono bg-[#EDE4D7]/50 px-1.5 py-0.5 rounded">
+                            {p.turn}
                           </span>
                         )}
                       </div>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#574B45]">
-                        {p.phone && (
-                          <a 
-                            href={`tel:${p.phone}`} 
-                            className="inline-flex items-center gap-1 text-[#521849] hover:underline"
-                            title="Llamar"
-                          >
-                            <Phone className="w-3 h-3" />
-                            <span>{p.phone}</span>
-                          </a>
-                        )}
-                        {p.email && (
-                          <a 
-                            href={`mailto:${p.email}`} 
-                            className="inline-flex items-center gap-1 hover:text-[#26201D]"
-                            title="Enviar email"
-                          >
-                            <Mail className="w-3 h-3" />
-                            <span className="truncate max-w-[140px]">{p.email}</span>
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  </td>
+                    </td>
 
-                  {/* Actividad */}
-                  <td className="p-4 max-w-[200px]">
-                    <p className="font-medium text-[#26201D] truncate" title={p.activityTitle}>
-                      {p.activityTitle || 'Cata Seleccionada'}
-                    </p>
-                    <p className="text-[11px] text-[#574B45]">
-                      {p.activityDate}
-                    </p>
-                  </td>
-
-                  {/* Condición, Importe y Turno */}
-                  <td className="p-4">
-                    <div className="space-y-1">
-                      <span className={`inline-flex items-center gap-1 font-bold text-[11px] px-2 py-0.5 rounded-full ${
-                        p.isMember ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-100 text-[#574B45]'
-                      }`}>
-                        {p.isMember ? '⭐ Socio' : '👤 No socio'}
-                      </span>
-                      <p className="text-xs font-bold text-[#521849]">
-                        {p.totalAmount !== undefined ? `${p.totalAmount} €` : '-'}
-                      </p>
-                      {p.turn && (
-                        <span className="inline-block text-[10px] text-[#574B45] font-mono bg-[#EDE4D7]/50 px-1.5 py-0.5 rounded">
-                          {p.turn}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-
-                  {/* Alergias / Notas */}
-                  <td className="p-4 max-w-[220px]">
-                    {p.notes && p.notes.trim().length > 0 ? (
-                      <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] space-y-1">
-                        <div className="flex items-center gap-1 font-bold text-[10px] uppercase text-amber-800 tracking-wider">
-                          <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
-                          <span>Observaciones:</span>
-                        </div>
-                        <p className="leading-tight line-clamp-2" title={p.notes}>
-                          {p.notes}
-                        </p>
-                      </div>
-                    ) : (
-                      <span className="text-[#8C7E77] text-[11px] italic">Sin notas</span>
-                    )}
-                  </td>
-
-                  {/* Estado y Pago */}
-                  <td className="p-4">
-                    <div className="space-y-1.5">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                        p.status === 'confirmada'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : p.status === 'pendiente_pago'
-                          ? 'bg-amber-100 text-amber-800'
-                          : p.status === 'asistio'
-                          ? 'bg-purple-100 text-purple-800'
-                          : p.status === 'no_asistio'
-                          ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                          : p.status === 'lista_de_espera'
-                          ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                          : 'bg-rose-100 text-rose-800 border border-rose-200'
-                      }`}>
-                        {p.status === 'confirmada' && <CheckCircle className="w-3 h-3 text-emerald-600" />}
-                        {p.status === 'pendiente_pago' && <Clock className="w-3 h-3 text-amber-600" />}
-                        {p.status === 'asistio' && <Sparkles className="w-3 h-3 text-purple-600" />}
-                        {p.status === 'no_asistio' && <UserX className="w-3 h-3 text-amber-700" />}
-                        {p.status === 'lista_de_espera' && <Clock className="w-3 h-3 text-blue-600" />}
-                        {p.status === 'cancelada' && <XCircle className="w-3 h-3 text-rose-600" />}
-                        <span>
-                          {p.status === 'confirmada' ? 'Confirmada' :
-                           p.status === 'pendiente_pago' ? 'Pendiente Pago' :
-                           p.status === 'asistio' ? 'Asistió (En Sala)' :
-                           p.status === 'no_asistio' ? 'No Asistió' :
-                           p.status === 'lista_de_espera' ? 'Lista de Espera' : 'Cancelada'}
-                        </span>
-                      </span>
-
-                      {/* Motivo de cancelación si está cancelada */}
-                      {p.status === 'cancelada' && (p.cancellationReason || p.cancelledAt || p.refundAmount !== undefined) && (
-                        <div className="p-1.5 rounded-lg bg-rose-50 border border-rose-200/80 text-[10px] text-rose-950 space-y-0.5 max-w-[220px]">
-                          {p.cancellationReason && (
-                            <p className="line-clamp-2 italic text-rose-900" title={p.cancellationReason}>
-                              «{p.cancellationReason}»
-                            </p>
-                          )}
-                          <div className="text-[9px] text-rose-800/80">
-                            {p.cancelledAt && <span>{new Date(p.cancelledAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>}
-                            {p.cancelledBy && <span> • Por {p.cancelledBy}</span>}
+                    {/* Alergias / Notas */}
+                    <td className="p-4 max-w-[220px]">
+                      {p.notes && p.notes.trim().length > 0 ? (
+                        <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] space-y-1">
+                          <div className="flex items-center gap-1 font-bold text-[10px] uppercase text-amber-800 tracking-wider">
+                            <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                            <span>Observaciones:</span>
                           </div>
-                          {p.refundAmount !== undefined && (
-                            <div className="font-bold text-rose-950 bg-rose-200/60 px-1.5 py-0.5 rounded text-[9px] inline-block">
-                              Devolución: {p.refundAmount} €
+                          <p className="leading-tight line-clamp-2" title={p.notes}>
+                            {p.notes}
+                          </p>
+                        </div>
+                      ) : (
+                        <span className="text-[#8C7E77] text-[11px] italic">Sin notas</span>
+                      )}
+                    </td>
+
+                    {/* Estado Canónico */}
+                    <td className="p-4">
+                      <div className="space-y-1.5">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          p.status === 'pendiente_pago'
+                            ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                            : p.status === 'pagada' || p.status === 'confirmada'
+                            ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                            : p.status === 'asistio'
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            : p.status === 'lista_de_espera'
+                            ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                            : 'bg-rose-100 text-rose-800 border border-rose-200'
+                        }`}>
+                          {p.status === 'pendiente_pago' && <Clock className="w-3 h-3 text-amber-600" />}
+                          {(p.status === 'pagada' || p.status === 'confirmada') && <CreditCard className="w-3 h-3 text-blue-600" />}
+                          {p.status === 'asistio' && <CheckCircle className="w-3 h-3 text-emerald-600" />}
+                          {p.status === 'lista_de_espera' && <Clock className="w-3 h-3 text-amber-600" />}
+                          {p.status === 'cancelada' && <XCircle className="w-3 h-3 text-rose-600" />}
+                          <span>
+                            {p.status === 'pendiente_pago' ? 'Pendiente Pago' :
+                             p.status === 'pagada' || p.status === 'confirmada' ? 'Pagada' :
+                             p.status === 'asistio' ? 'Asistió' :
+                             p.status === 'lista_de_espera' ? 'Lista de Espera' : 'Cancelada'}
+                          </span>
+                        </span>
+
+                        {/* Detalles si es Cancelada */}
+                        {p.status === 'cancelada' && (
+                          <div className="p-2 rounded-xl bg-rose-50 border border-rose-200/80 text-[10px] text-rose-950 space-y-1 max-w-[220px]">
+                            <div className="flex items-center gap-1 font-bold">
+                              <span className={`px-1.5 py-0.2 rounded text-[9px] uppercase ${
+                                p.cancellationJustified ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-200 text-rose-900'
+                              }`}>
+                                {p.cancellationJustified ? '✓ Justificada' : '✗ Injustificada'}
+                              </span>
+                              {p.cancellationKind === 'no_presentado' && (
+                                <span className="text-[9px] text-rose-800 font-semibold">(No presentado)</span>
+                              )}
                             </div>
-                          )}
-                        </div>
+                            {p.cancellationReason && (
+                              <p className="line-clamp-2 italic text-rose-900" title={p.cancellationReason}>
+                                «{p.cancellationReason}»
+                              </p>
+                            )}
+                            <div className="text-[9px] text-rose-800/80">
+                              {p.cancelledAt && <span>{new Date(p.cancelledAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>}
+                              {p.cancelledBy && <span> • {p.cancelledBy}</span>}
+                            </div>
+                            {p.refundAmount !== undefined && (
+                              <div className="font-bold text-rose-950 bg-rose-200/60 px-1.5 py-0.5 rounded text-[9px] inline-block">
+                                Devolución: {p.refundAmount} €
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {p.paymentMethod && p.status !== 'cancelada' && p.status !== 'lista_de_espera' && (
+                          <div className="text-[10px] text-[#574B45] font-medium flex items-center gap-1">
+                            <span>Método:</span>
+                            <span className="capitalize font-semibold text-[#26201D]">{p.paymentMethod}</span>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Fecha Registro */}
+                    <td className="p-4 text-[#574B45] text-[11px]">
+                      {p.registeredAt ? new Date(p.registeredAt).toLocaleDateString('es-ES', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric'
+                      }) : '-'}
+                    </td>
+
+                    {/* Acciones Canónicas (Reglas Bloque 5) */}
+                    <td className="p-4 text-right space-x-1 whitespace-nowrap">
+                      {/* Caso 1: Lista de Espera -> Promocionar (si actividad no celebrada y hay aforo) */}
+                      {p.status === 'lista_de_espera' && (
+                        <button
+                          type="button"
+                          onClick={() => handlePromoteWaitlist(p)}
+                          disabled={isConcluded || !hasAvailableSpots}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-semibold ${
+                            !isConcluded && hasAvailableSpots
+                              ? 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 cursor-pointer'
+                              : 'border-stone-200 bg-stone-100 text-stone-400 cursor-not-allowed'
+                          }`}
+                          title={
+                            isConcluded ? 'Actividad ya celebrada' :
+                            !hasAvailableSpots ? 'Aforo completo: No hay vacantes' :
+                            'Promocionar a Pendiente de Pago (ocupa 1 plaza)'
+                          }
+                        >
+                          <UserCheck className="w-3.5 h-3.5" />
+                          <span>Promocionar</span>
+                        </button>
                       )}
 
-                      {/* Nota de justificación si es no asistencia */}
-                      {p.status === 'no_asistio' && p.justified && (
-                        <div className="p-1 rounded-md bg-emerald-50 border border-emerald-200 text-[9px] text-emerald-900 font-semibold inline-block">
-                          ✓ Falta Justificada {p.justificationReason ? `(${p.justificationReason})` : ''}
-                        </div>
+                      {/* Caso 2: Pendiente de Pago -> Confirmar Pago */}
+                      {p.status === 'pendiente_pago' && (
+                        <button
+                          type="button"
+                          onClick={() => handleConfirmPayment(p)}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100 font-semibold text-xs cursor-pointer"
+                          title="Confirmar Abono (pasa a Pagada)"
+                        >
+                          <CreditCard className="w-3.5 h-3.5" />
+                          <span>Confirmar Pago</span>
+                        </button>
                       )}
 
-                      {p.paymentMethod && (
-                        <div className="text-[10px] text-[#574B45] font-medium flex items-center gap-1">
-                          <span>Pago:</span>
-                          <span className="capitalize font-semibold text-[#26201D]">{p.paymentMethod}</span>
-                        </div>
+                      {/* Caso 3: Check-in / Asistió (Disponible para pendiente_pago y pagada si es hoy o pasado) */}
+                      {(p.status === 'pendiente_pago' || p.status === 'pagada' || p.status === 'confirmada') && isTodayOrPast && (
+                        <button
+                          type="button"
+                          onClick={() => handleCheckIn(p)}
+                          className="p-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 cursor-pointer"
+                          title="Check-in: Marcar Asistencia en Sala"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
                       )}
-                    </div>
-                  </td>
 
-                  {/* Fecha Registro */}
-                  <td className="p-4 text-[#574B45] text-[11px]">
-                    {p.registeredAt ? new Date(p.registeredAt).toLocaleDateString('es-ES', {
-                      day: '2-digit',
-                      month: '2-digit',
-                      year: 'numeric'
-                    }) : '-'}
-                  </td>
+                      {/* Caso 4: Gestionar Cancelación (Solo para pendiente_pago y pagada) */}
+                      {(p.status === 'pendiente_pago' || p.status === 'pagada' || p.status === 'confirmada') && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCancellationModal(p)}
+                          className="p-1.5 rounded-lg border border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 cursor-pointer"
+                          title="Gestionar Cancelación (Libera 1 plaza con motivo obligatorio)"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                        </button>
+                      )}
 
-                  {/* Acciones */}
-                  <td className="p-4 text-right space-x-1">
-                    {p.status === 'lista_de_espera' && (
+                      {/* Edición de Datos Personales */}
                       <button
                         type="button"
-                        onClick={() => updateParticipant(p.id, { status: 'confirmada' })}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold text-[11px] cursor-pointer"
-                        title="Asignar plaza y pasar a confirmada"
+                        onClick={() => handleOpenEditModal(p)}
+                        className="p-1.5 rounded-lg border border-[#EDE4D7] text-[#521849] hover:bg-[#F6EDF4] cursor-pointer"
+                        title="Editar Datos del Asistente"
                       >
-                        <UserCheck className="w-3.5 h-3.5" />
-                        <span>Asignar Plaza</span>
+                        <Edit3 className="w-3.5 h-3.5" />
                       </button>
-                    )}
-                    {p.status !== 'asistio' && p.status !== 'cancelada' && p.status !== 'lista_de_espera' && (
+
+                      {/* Eliminar Registro */}
                       <button
                         type="button"
-                        onClick={() => markAttendance(p.id, true)}
-                        className="p-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 cursor-pointer"
-                        title="Marcar Asistencia (Comensal en Sala)"
+                        onClick={() => setParticipantToDelete(p)}
+                        className="p-1.5 rounded-lg border border-[#EDE4D7] text-[#9B3E26] hover:bg-rose-50 cursor-pointer"
+                        title="Eliminar Registro"
                       >
-                        <Check className="w-3.5 h-3.5" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
-                    )}
-                    {p.status === 'asistio' && (
-                      <button
-                        type="button"
-                        onClick={() => markAttendance(p.id, false)}
-                        className="p-1.5 rounded-lg border border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100 cursor-pointer"
-                        title="Desmarcar Asistencia (volver a Confirmada)"
-                      >
-                        <Sparkles className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                    {p.status !== 'no_asistio' && p.status !== 'cancelada' && p.status !== 'lista_de_espera' && (
-                      <button
-                        type="button"
-                        onClick={() => updateParticipant(p.id, { status: 'no_asistio', attended: false })}
-                        className="p-1.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 cursor-pointer"
-                        title="Marcar No Asistencia (Falta)"
-                      >
-                        <UserX className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                    {p.status === 'no_asistio' && (
-                      <button
-                        type="button"
-                        onClick={() => updateParticipant(p.id, { status: 'confirmada' })}
-                        className="p-1.5 rounded-lg border border-amber-300 bg-white text-amber-800 hover:bg-amber-50 cursor-pointer"
-                        title="Restablecer a Confirmada"
-                      >
-                        <CheckCircle className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                    {p.status !== 'cancelada' && p.status !== 'lista_de_espera' && (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenCancellationModal(p)}
-                        className="p-1.5 rounded-lg border border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 cursor-pointer"
-                        title="Cancelar Reserva (Libera plaza con motivo y devolución)"
-                      >
-                        <XCircle className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                    {p.status === 'cancelada' && (
-                      <button
-                        type="button"
-                        onClick={() => setReactivationParticipant(p)}
-                        className="p-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 cursor-pointer"
-                        title="Reactivar Reserva Cancelada"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenEditModal(p)}
-                      className="p-1.5 rounded-lg border border-[#EDE4D7] text-[#521849] hover:bg-[#F6EDF4] cursor-pointer"
-                      title="Editar Reserva"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setParticipantToDelete(p)}
-                      className="p-1.5 rounded-lg border border-[#EDE4D7] text-[#9B3E26] hover:bg-rose-50 cursor-pointer"
-                      title="Eliminar Reserva"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                );
+              })}
 
               {filteredParticipants.length === 0 && (
                 <tr>
                   <td colSpan={7} className="p-8 text-center text-[#574B45]">
                     <Users className="w-8 h-8 text-[#574B45]/40 mx-auto mb-2" />
-                    <p className="font-semibold text-sm text-[#26201D]">No se encontraron reservas con los filtros aplicados</p>
+                    <p className="font-semibold text-sm text-[#26201D]">No se encontraron participantes con los filtros aplicados</p>
                     <p className="text-xs text-[#574B45] mt-1">
                       {participants.length === 0 
-                        ? 'Aún no hay ningún asistente registrado. Puedes añadir uno manualmente con el botón "+ Nueva Reserva Manual".' 
+                        ? 'Aún no hay inscripciones registradas.' 
                         : 'Prueba a cambiar el filtro de cata o limpiar el texto de búsqueda.'}
                     </p>
                   </td>
@@ -1198,31 +1320,33 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
           pageSize={pageSize}
           onPageChange={setCurrentPage}
           onPageSizeChange={setPageSize}
-          itemLabel="reservas"
+          itemLabel="participantes"
         />
       </div>
 
-      {/* MODAL: AÑADIR / EDITAR PARTICIPANTE */}
+      {/* MODAL: AÑADIR / EDITAR DATOS DE PARTICIPANTE (NO CAMBIO ARBITRARIO DE ESTADO) */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="relative w-full max-w-lg rounded-3xl bg-white p-6 sm:p-8 shadow-2xl border border-[#EDE4D7] max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
+          <div className="relative w-full max-w-lg rounded-3xl bg-white p-6 sm:p-8 shadow-2xl border border-[#EDE4D7] max-h-[90vh] overflow-y-auto animate-scaleUp">
             <button
               type="button"
               onClick={() => setIsModalOpen(false)}
-              className="absolute top-5 right-5 p-1 rounded-full text-[#574B45] hover:text-[#26201D] hover:bg-[#F6F1EA]"
+              className="absolute top-5 right-5 p-1 rounded-full text-[#574B45] hover:text-[#26201D] hover:bg-[#F6F1EA] cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
             <div className="mb-6">
               <span className="text-xs uppercase tracking-widest font-bold text-[#521849]">
-                {editingParticipant ? 'Modificar Registro' : 'Nueva Reserva Manual'}
+                {editingParticipant ? 'Modificar Datos de Inscripción' : 'Nueva Inscripción Manual'}
               </span>
               <h3 className="text-xl font-bold font-serif text-[#26201D] mt-1">
-                {editingParticipant ? `Editar Asistente: ${editingParticipant.fullName}` : 'Registrar Asistente para Cata'}
+                {editingParticipant ? `Editar: ${editingParticipant.fullName}` : 'Registrar Participante'}
               </h3>
               <p className="text-xs text-[#574B45] mt-0.5">
-                Los cambios actualizarán automáticamente el aforo disponible de la actividad seleccionada.
+                {editingParticipant 
+                  ? 'Modificación de datos personales y administrativos (nombre, contacto, socio, turno y notas).' 
+                  : 'Las nuevas inscripciones se crean como "Pendiente de pago" o "Lista de espera" si el aforo está completo.'}
               </p>
             </div>
 
@@ -1234,14 +1358,23 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                 </label>
                 <select
                   required
+                  disabled={!!editingParticipant}
                   value={formData.activityId}
-                  onChange={(e) => setFormData({ ...formData, activityId: e.target.value })}
+                  onChange={(e) => {
+                    const act = activities.find(a => a.id === e.target.value);
+                    const defaultPrice = act ? (formData.isMember ? act.priceMember : act.priceNonMember) : 0;
+                    setFormData({ 
+                      ...formData, 
+                      activityId: e.target.value,
+                      totalAmount: String(defaultPrice)
+                    });
+                  }}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-medium text-[#26201D] focus:outline-none focus:border-[#521849] focus:bg-white"
                 >
                   <option value="">-- Selecciona una actividad --</option>
                   {activeActivities.map(act => (
                     <option key={act.id} value={act.id}>
-                      {new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })} — {act.title} ({act.priceNonMember}€/plaza)
+                      {new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })} — {act.title} ({act.bookedSpots}/{act.totalSpots} plazas ocupadas)
                     </option>
                   ))}
                 </select>
@@ -1250,7 +1383,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
               {/* Nombre y Apellidos */}
               <div>
                 <label className="block text-xs font-semibold text-[#26201D] mb-1">
-                  Nombre y Apellidos del Asistente *
+                  Nombre y Apellidos del Participante *
                 </label>
                 <input
                   type="text"
@@ -1301,7 +1434,16 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                     <input
                       type="checkbox"
                       checked={formData.isMember}
-                      onChange={(e) => setFormData({ ...formData, isMember: e.target.checked })}
+                      onChange={(e) => {
+                        const isMember = e.target.checked;
+                        const act = activities.find(a => a.id === formData.activityId);
+                        const newPrice = act ? (isMember ? act.priceMember : act.priceNonMember) : 0;
+                        setFormData({ 
+                          ...formData, 
+                          isMember, 
+                          totalAmount: String(newPrice) 
+                        });
+                      }}
                       className="w-4 h-4 rounded text-[#521849] focus:ring-[#521849]"
                     />
                     <span className="text-xs font-medium text-[#26201D]">
@@ -1337,26 +1479,8 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                 </div>
               </div>
 
-              {/* Status and Payment Method */}
+              {/* Payment Method and Total Amount */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-[#26201D] mb-1">
-                    Estado de la Reserva *
-                  </label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value as ParticipantStatus })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs focus:outline-none focus:border-[#521849] focus:bg-white"
-                  >
-                    <option value="confirmada">Confirmada</option>
-                    <option value="pendiente_pago">Pendiente de Pago</option>
-                    <option value="lista_de_espera">Lista de Espera</option>
-                    <option value="asistio">Asistió (En Sala)</option>
-                    <option value="no_asistio">No Asistió (Falta)</option>
-                    <option value="cancelada">Cancelada (Libera Aforo)</option>
-                  </select>
-                </div>
-
                 <div>
                   <label className="block text-xs font-semibold text-[#26201D] mb-1">
                     Método de Pago
@@ -1373,44 +1497,21 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                     <option value="pendiente">Pendiente</option>
                   </select>
                 </div>
-              </div>
 
-              {/* Campos condicionales de Cancelación si el estado es cancelada */}
-              {formData.status === 'cancelada' && (
-                <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 space-y-3 animate-fadeIn">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-rose-950">
-                    <XCircle className="w-4 h-4 text-rose-600" />
-                    <span>Detalles de Cancelación de Reserva</span>
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-rose-950 mb-1">
-                      Motivo de la baja / cancelación *
-                    </label>
-                    <textarea
-                      required={formData.status === 'cancelada'}
-                      rows={2}
-                      value={formData.cancellationReason || ''}
-                      onChange={(e) => setFormData({ ...formData, cancellationReason: e.target.value })}
-                      placeholder="Indicar motivo de la cancelación..."
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-rose-300 bg-white focus:outline-none focus:ring-2 focus:ring-rose-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-rose-950 mb-1">
-                      Importe reembolsado / devuelto (€)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={formData.refundAmount || ''}
-                      onChange={(e) => setFormData({ ...formData, refundAmount: e.target.value })}
-                      placeholder="0.00 (dejar vacío si no procede devolución)"
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-rose-300 bg-white focus:outline-none focus:ring-2 focus:ring-rose-500"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#26201D] mb-1">
+                    Importe (€)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.totalAmount}
+                    onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs focus:outline-none focus:border-[#521849] focus:bg-white"
+                  />
                 </div>
-              )}
+              </div>
 
               {/* Alergias / Observaciones */}
               <div>
@@ -1421,7 +1522,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                   rows={2}
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  placeholder="Indicar intolerancias (gluten, marisco, lactosa, vegetarianos, mesa especial...)"
+                  placeholder="Indicar intolerancias (gluten, marisco, lactosa, vegetarianos...)"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs focus:outline-none focus:border-[#521849] focus:bg-white resize-none"
                 />
               </div>
@@ -1430,15 +1531,15 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl border border-[#EDE4D7] bg-white text-[#574B45] text-xs font-semibold hover:bg-[#F6F1EA]"
+                  className="px-4 py-2.5 rounded-xl border border-[#EDE4D7] bg-white text-[#574B45] text-xs font-semibold hover:bg-[#F6F1EA] cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold shadow-xs"
+                  className="px-5 py-2.5 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold shadow-xs cursor-pointer"
                 >
-                  {editingParticipant ? 'Guardar Cambios' : 'Registrar Asistente'}
+                  {editingParticipant ? 'Guardar Cambios' : 'Registrar Participante'}
                 </button>
               </div>
             </form>
@@ -1446,12 +1547,332 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
         </div>
       )}
 
+      {/* MODAL: GESTIONAR CANCELACIÓN (Bloque 5) */}
+      {cancellationModalParticipant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto animate-fadeIn">
+          <div className="relative w-full max-w-md rounded-3xl bg-white p-6 sm:p-7 shadow-2xl border border-[#EDE4D7] my-8 animate-scaleUp">
+            <div className="flex items-center justify-between pb-3 border-b border-[#EDE4D7] mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-rose-100 text-rose-700">
+                  <XCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold font-serif text-[#26201D]">
+                    Gestionar Cancelación
+                  </h3>
+                  <p className="text-xs text-[#574B45]">
+                    {cancellationModalParticipant.fullName}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCancellationModalParticipant(null)}
+                className="p-1.5 rounded-xl hover:bg-[#F6F1EA] text-[#574B45] cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmCancellation} className="space-y-4">
+              <div className="p-3 rounded-2xl bg-amber-50/80 border border-amber-200 text-xs text-amber-900 space-y-1">
+                <div className="font-semibold text-amber-950 flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                  <span>Actividad: {cancellationModalParticipant.activityTitle}</span>
+                </div>
+                <p className="text-[11px] text-amber-800">
+                  Esta acción cambiará el estado a <strong>Cancelada</strong> y <strong>liberará exactamente 1 plaza</strong> en el aforo. No se promocionará automáticamente a nadie de la lista de espera.
+                </p>
+              </div>
+
+              {cancellationError && (
+                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{cancellationError}</span>
+                </div>
+              )}
+
+              {/* Justification Switch */}
+              <div>
+                <label className="block text-xs font-bold text-[#26201D] mb-1.5">
+                  Tipo de Cancelación
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCancellationIsJustified(true)}
+                    className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
+                      cancellationIsJustified
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-900 shadow-2xs'
+                        : 'border-[#EDE4D7] bg-[#FCFAF7] text-[#574B45] hover:bg-white'
+                    }`}
+                  >
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Justificada</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCancellationIsJustified(false)}
+                    className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
+                      !cancellationIsJustified
+                        ? 'border-rose-500 bg-rose-50 text-rose-900 shadow-2xs'
+                        : 'border-[#EDE4D7] bg-[#FCFAF7] text-[#574B45] hover:bg-white'
+                    }`}
+                  >
+                    <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Injustificada</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Mandatory Reason */}
+              <div>
+                <label className="block text-xs font-bold text-[#26201D] mb-1">
+                  Motivo de la cancelación <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={cancellationReasonInput}
+                  onChange={(e) => setCancellationReasonInput(e.target.value)}
+                  placeholder="Ej. Avisó con más de 48h de antelación por motivos médicos justificados..."
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+
+              {/* Optional Refund */}
+              <div>
+                <label className="block text-xs font-bold text-[#26201D] mb-1">
+                  Importe devuelto (€, opcional)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={cancellationRefundInput}
+                  onChange={(e) => setCancellationRefundInput(e.target.value)}
+                  placeholder="0.00 (dejar vacío si no procede devolución)"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-[#EDE4D7]">
+                <button
+                  type="button"
+                  onClick={() => setCancellationModalParticipant(null)}
+                  className="px-4 py-2 rounded-xl border border-[#EDE4D7] bg-white text-[#574B45] text-xs font-semibold hover:bg-[#F6F1EA] cursor-pointer"
+                >
+                  Volver
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <XCircle className="w-4 h-4" />
+                  <span>Confirmar Cancelación</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CIERRE DE ASISTENCIA DE ACTIVIDAD (Bloque 5) */}
+      {isCloseAttendanceModalOpen && closingAttendanceActivityId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
+          <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-[#EDE4D7] animate-scaleUp">
+            {(() => {
+              const act = activities.find(a => a.id === closingAttendanceActivityId);
+              const actParts = participants.filter(p => p.activityId === closingAttendanceActivityId);
+              const pendingCount = actParts.filter(p => p.status === 'pendiente_pago' || p.status === 'pagada' || p.status === 'confirmada').length;
+
+              return (
+                <div>
+                  <div className="flex items-center gap-3 pb-3 border-b border-[#EDE4D7]">
+                    <div className="p-2.5 rounded-2xl bg-purple-100 text-purple-800">
+                      <UserX className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold font-serif text-[#26201D]">
+                        Cierre de Asistencia de Sala
+                      </h3>
+                      <p className="text-xs text-[#574B45]">
+                        {act?.title}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="py-4 space-y-3 text-xs text-[#574B45]">
+                    <p>
+                      Al cerrar la asistencia de esta actividad celebrada:
+                    </p>
+                    <div className="p-3 rounded-2xl bg-purple-50 border border-purple-200 text-purple-950 font-medium">
+                      <strong>{pendingCount} persona{pendingCount !== 1 ? 's' : ''}</strong> con reserva que no realizaron check-in pasarán automáticamente a:
+                      <div className="mt-1 text-xs font-bold text-rose-800 bg-white p-2 rounded-xl border border-purple-200">
+                        • Estado: Cancelada (Injustificada)<br />
+                        • Motivo: «No presentado»
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-[#8C7E77]">
+                      Esta acción consolida el histórico de faltas de asistencia y no puede revertirse masivamente.
+                    </p>
+                  </div>
+
+                  <div className="pt-3 flex items-center justify-end gap-2 border-t border-[#EDE4D7]">
+                    <button
+                      type="button"
+                      disabled={isClosingAttendanceLoading}
+                      onClick={() => {
+                        setIsCloseAttendanceModalOpen(false);
+                        setClosingAttendanceActivityId(null);
+                      }}
+                      className="px-4 py-2 rounded-xl border border-[#EDE4D7] bg-white text-[#574B45] text-xs font-semibold hover:bg-[#F6F1EA] cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isClosingAttendanceLoading || pendingCount === 0}
+                      onClick={handleConfirmCloseAttendance}
+                      className="px-5 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {isClosingAttendanceLoading ? (
+                        <span>Cerrando...</span>
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" />
+                          <span>Confirmar Cierre ({pendingCount} afectados)</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: AUDITORÍA Y NORMALIZACIÓN DE ESTADOS (Bloque 5) */}
+      {isMigrationModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs overflow-y-auto animate-fadeIn">
+          <div className="relative w-full max-w-2xl rounded-3xl bg-white p-6 sm:p-8 shadow-2xl border border-[#EDE4D7] my-8 animate-scaleUp">
+            <div className="flex items-center justify-between pb-3 border-b border-[#EDE4D7] mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-100 text-amber-800">
+                  <RefreshCw className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold font-serif text-[#26201D]">
+                    Auditoría y Normalización de Estados (Bloque 5)
+                  </h3>
+                  <p className="text-xs text-[#574B45]">
+                    Simulación y corrección de inconsistencias hacia el modelo canónico
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMigrationModalOpen(false)}
+                className="p-1.5 rounded-xl hover:bg-[#F6F1EA] text-[#574B45] cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {migrationSuccessMsg && (
+              <div className="p-3 mb-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{migrationSuccessMsg}</span>
+              </div>
+            )}
+
+            {migrationSimulation && (
+              <div className="space-y-4 text-xs">
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="p-3 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7]">
+                    <span className="text-[10px] text-[#574B45] uppercase font-bold">Total Registros</span>
+                    <p className="text-xl font-bold font-serif text-[#26201D] mt-0.5">{migrationSimulation.totalParticipants}</p>
+                  </div>
+                  <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200">
+                    <span className="text-[10px] text-emerald-800 uppercase font-bold">Ya Normalizados</span>
+                    <p className="text-xl font-bold font-serif text-emerald-950 mt-0.5">{migrationSimulation.alreadyNormalized}</p>
+                  </div>
+                  <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200">
+                    <span className="text-[10px] text-amber-800 uppercase font-bold">Requieren Mapeo</span>
+                    <p className="text-xl font-bold font-serif text-amber-950 mt-0.5">{migrationSimulation.affectedCount}</p>
+                  </div>
+                </div>
+
+                {migrationSimulation.itemsToMigrate.length > 0 ? (
+                  <div className="space-y-2">
+                    <h5 className="font-bold text-xs text-[#26201D]">
+                      Detalle de Registros a Normalizar ({migrationSimulation.itemsToMigrate.length}):
+                    </h5>
+                    <div className="max-h-60 overflow-y-auto rounded-xl border border-[#EDE4D7] divide-y divide-[#EDE4D7]">
+                      {migrationSimulation.itemsToMigrate.map(item => (
+                        <div key={item.id} className="p-3 bg-[#FCFAF7] flex items-center justify-between text-[11px]">
+                          <div>
+                            <span className="font-bold text-[#26201D]">{item.fullName}</span>
+                            <span className="text-[#8C7E77] ml-2">({item.activityTitle})</span>
+                            <div className="text-[10px] text-[#574B45] mt-0.5">{item.reason}</div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="line-through text-stone-400 font-mono">{item.previousStatus}</span>
+                            <ArrowRight className="w-3.5 h-3.5 text-[#521849]" />
+                            <span className="font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded font-mono">
+                              {item.targetStatus}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-center font-medium">
+                    ✓ Todos los participantes se encuentran alineados al 100% con los 5 estados canónicos de Bloque 5.
+                  </div>
+                )}
+
+                <div className="pt-3 flex items-center justify-end gap-2 border-t border-[#EDE4D7]">
+                  <button
+                    type="button"
+                    onClick={() => setIsMigrationModalOpen(false)}
+                    className="px-4 py-2 rounded-xl border border-[#EDE4D7] bg-white text-[#574B45] text-xs font-semibold hover:bg-[#F6F1EA] cursor-pointer"
+                  >
+                    Cerrar
+                  </button>
+                  {migrationSimulation.itemsToMigrate.length > 0 && (
+                    <button
+                      type="button"
+                      disabled={isApplyingMigration}
+                      onClick={handleApplyCanonicalMigration}
+                      className="px-5 py-2 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {isApplyingMigration ? (
+                        <span>Normalizando...</span>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-4 h-4" />
+                          <span>Ejecutar Normalización Canónica</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* MODAL: CONFIRMAR ELIMINACIÓN */}
       {participantToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-[#EDE4D7]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
+          <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-[#EDE4D7] animate-scaleUp">
             <h3 className="text-lg font-bold font-serif text-[#26201D]">
-              ¿Eliminar reserva de {participantToDelete.fullName}?
+              ¿Eliminar inscripción de {participantToDelete.fullName}?
             </h3>
             <p className="text-xs text-[#574B45] mt-2">
               Se eliminará el registro de este asistente para la actividad <strong>{participantToDelete.activityTitle}</strong> y se liberará el aforo correspondiente.
@@ -1460,16 +1881,16 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
               <button
                 type="button"
                 onClick={() => setParticipantToDelete(null)}
-                className="px-4 py-2 rounded-xl border border-[#EDE4D7] text-xs font-semibold text-[#574B45] hover:bg-[#F6F1EA]"
+                className="px-4 py-2 rounded-xl border border-[#EDE4D7] text-xs font-semibold text-[#574B45] hover:bg-[#F6F1EA] cursor-pointer"
               >
                 Volver
               </button>
               <button
                 type="button"
                 onClick={handleConfirmDelete}
-                className="px-4 py-2 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-semibold shadow-xs"
+                className="px-4 py-2 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-semibold shadow-xs cursor-pointer"
               >
-                Sí, eliminar reserva
+                Sí, eliminar inscripción
               </button>
             </div>
           </div>
@@ -1496,7 +1917,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsPrintModalOpen(false)}
-                  className="p-2 rounded-xl border border-[#EDE4D7] text-[#574B45] hover:text-[#26201D]"
+                  className="p-2 rounded-xl border border-[#EDE4D7] text-[#574B45] hover:text-[#26201D] cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1505,7 +1926,6 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
 
             {/* Printable Content */}
             <div className="space-y-6 text-[#26201D]">
-              {/* Header */}
               <div className="flex items-start justify-between border-b-2 border-[#521849] pb-4">
                 <div>
                   <span className="text-[11px] uppercase tracking-widest font-bold text-[#521849]">
@@ -1522,12 +1942,11 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                   <p className="font-bold text-[#521849]">Fecha: {currentActivity?.date || new Date().toISOString().split('T')[0]}</p>
                   <p className="text-[#574B45]">Hora: {currentActivity?.time || '21:00 h'}</p>
                   <p className="text-[#574B45] font-semibold mt-1">
-                    Aforo: {metrics.totalSpotsBooked} plazas reservadas
+                    Aforo: {metrics.totalSpotsBooked} plazas ocupadas
                   </p>
                 </div>
               </div>
 
-              {/* Table for print */}
               <table className="w-full text-left text-xs border border-stone-300">
                 <thead>
                   <tr className="bg-stone-100 border-b border-stone-300 text-stone-800 font-bold">
@@ -1537,11 +1956,11 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                     <th className="p-2.5 text-center">Condición</th>
                     <th className="p-2.5">Turno / Socio</th>
                     <th className="p-2.5">Alergias & Requisitos de Cocina</th>
-                    <th className="p-2.5">Estado Pago</th>
+                    <th className="p-2.5">Estado Canónico</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-300">
-                  {filteredParticipants.filter(p => p.status !== 'cancelada').map((p, idx) => (
+                  {filteredParticipants.filter(p => p.status !== 'cancelada' && p.status !== 'lista_de_espera').map((p, idx) => (
                     <tr key={p.id} className="hover:bg-stone-50">
                       <td className="p-2.5 text-center">
                         <div className="w-5 h-5 border border-stone-400 rounded-sm mx-auto flex items-center justify-center">
@@ -1570,164 +1989,17 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                         )}
                       </td>
                       <td className="p-2.5 text-[11px] capitalize">
-                        {p.status === 'pendiente_pago' ? '⏳ Pendiente' : '✅ Pagado'} ({p.paymentMethod || 'bizum'})
+                        {p.status === 'pendiente_pago' ? '⏳ Pendiente Pago' : p.status === 'asistio' ? '✅ Asistió' : '💳 Pagada'}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
 
-              {/* Footer Summary */}
               <div className="pt-4 border-t border-stone-300 flex justify-between text-xs text-stone-600">
                 <p>Generado el {new Date().toLocaleString('es-ES')}</p>
                 <p>Doña Berenjena — Sede Oficial (C/ Mayor 14, Planta 1)</p>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: REGISTRAR CANCELACIÓN DE RESERVA */}
-      {cancellationModalParticipant && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto animate-fadeIn">
-          <div className="relative w-full max-w-md rounded-3xl bg-white p-6 sm:p-7 shadow-2xl border border-[#EDE4D7] my-8 animate-scaleUp">
-            <div className="flex items-center justify-between pb-3 border-b border-[#EDE4D7] mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-rose-100 text-rose-700">
-                  <XCircle className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold font-serif text-[#26201D]">
-                    Cancelar Reserva
-                  </h3>
-                  <p className="text-xs text-[#574B45]">
-                    {cancellationModalParticipant.fullName}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setCancellationModalParticipant(null)}
-                className="p-1.5 rounded-xl hover:bg-[#F6F1EA] text-[#574B45] cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleConfirmCancellation} className="space-y-4">
-              <div className="p-3 rounded-2xl bg-amber-50/80 border border-amber-200 text-xs text-amber-900 space-y-1">
-                <div className="font-semibold text-amber-950 flex items-center gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 text-amber-700" />
-                  <span>Actividad: {cancellationModalParticipant.activityTitle}</span>
-                </div>
-                <p className="text-[11px] text-amber-800">
-                  Esta acción cambiará el estado a <strong>Cancelada</strong> y liberará de inmediato la plaza para el aforo y la lista de espera.
-                </p>
-              </div>
-
-              {cancellationError && (
-                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{cancellationError}</span>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-bold text-[#26201D] mb-1">
-                  Motivo de la cancelación / baja <span className="text-rose-500">*</span>
-                </label>
-                <textarea
-                  required
-                  rows={3}
-                  value={cancellationReasonInput}
-                  onChange={(e) => setCancellationReasonInput(e.target.value)}
-                  placeholder="Ej. Aviso por teléfono / WhatsApp con más de 48h de antelación..."
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-[#26201D] mb-1">
-                  Importe devuelto o abonado (€)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={cancellationRefundInput}
-                  onChange={(e) => setCancellationRefundInput(e.target.value)}
-                  placeholder="0.00 (dejar vacío si no procede devolución)"
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500"
-                />
-                <p className="text-[10px] text-[#574B45] mt-1">
-                  Importe de la reserva original: <strong>{cancellationModalParticipant.totalAmount || 0} €</strong>.
-                </p>
-              </div>
-
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-[#EDE4D7]">
-                <button
-                  type="button"
-                  onClick={() => setCancellationModalParticipant(null)}
-                  className="px-4 py-2 rounded-xl border border-[#EDE4D7] bg-white text-[#574B45] text-xs font-semibold hover:bg-[#F6F1EA] cursor-pointer"
-                >
-                  Volver
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer"
-                >
-                  <XCircle className="w-4 h-4" />
-                  <span>Confirmar Cancelación</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: REACTIVAR RESERVA CANCELADA */}
-      {reactivationParticipant && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
-          <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-[#EDE4D7] animate-scaleUp">
-            <div className="flex items-center gap-3 pb-3 border-b border-[#EDE4D7]">
-              <div className="p-2.5 rounded-2xl bg-emerald-100 text-emerald-800">
-                <RefreshCw className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold font-serif text-[#26201D]">
-                  Reactivar Reserva Cancelada
-                </h3>
-                <p className="text-xs text-[#574B45]">
-                  {reactivationParticipant.fullName}
-                </p>
-              </div>
-            </div>
-
-            <div className="py-4 space-y-2 text-xs text-[#574B45]">
-              <p>
-                ¿Deseas reactivar la reserva para la actividad <strong>{reactivationParticipant.activityTitle}</strong>?
-              </p>
-              <p className="text-amber-900 bg-amber-50 p-2.5 rounded-xl border border-amber-200">
-                ⚠️ El estado pasará a <strong>Confirmada</strong> y volverá a computar como plaza ocupada en el aforo.
-              </p>
-            </div>
-
-            <div className="pt-3 flex items-center justify-end gap-2 border-t border-[#EDE4D7]">
-              <button
-                type="button"
-                onClick={() => setReactivationParticipant(null)}
-                className="px-4 py-2 rounded-xl border border-[#EDE4D7] bg-white text-[#574B45] text-xs font-semibold hover:bg-[#F6F1EA] cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmReactivation}
-                className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <Check className="w-4 h-4" />
-                <span>Sí, Reactivar Reserva</span>
-              </button>
             </div>
           </div>
         </div>

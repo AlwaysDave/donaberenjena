@@ -1,220 +1,267 @@
-<svg viewBox="0 0 980 500" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+<svg viewBox="0 0 1060 590" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
   <defs>
-    <!-- Badge Gradients -->
-    <linearGradient id="blue-tile" x1="0" y1="0" x2="0" y2="1">
+    <!-- Card Gradients with rich photorealistic vibrance -->
+    <!-- 1. Cyan Blue Badge -->
+    <linearGradient id="blue-card-grad" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#00BAF2" />
-      <stop offset="100%" stop-color="#006DB8" />
-    </linearGradient>
-    <linearGradient id="orange-tile" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#FFA400" />
-      <stop offset="100%" stop-color="#E85900" />
-    </linearGradient>
-    <linearGradient id="magenta-tile" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#EB1C85" />
-      <stop offset="100%" stop-color="#9C0056" />
-    </linearGradient>
-    <linearGradient id="green-tile" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#8DC63F" />
-      <stop offset="100%" stop-color="#3FA636" />
+      <stop offset="45%" stop-color="#00A0E3" />
+      <stop offset="85%" stop-color="#007DC1" />
+      <stop offset="100%" stop-color="#006DAA" />
     </linearGradient>
 
-    <!-- Glossy Highlight Overlay -->
-    <linearGradient id="tile-gloss" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.45" />
-      <stop offset="42%" stop-color="#FFFFFF" stop-opacity="0.1" />
+    <!-- 2. Warm Amber Orange Badge -->
+    <linearGradient id="orange-card-grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFB300" />
+      <stop offset="45%" stop-color="#FF8C00" />
+      <stop offset="85%" stop-color="#F4511E" />
+      <stop offset="100%" stop-color="#D84315" />
+    </linearGradient>
+
+    <!-- 3. Vivid Magenta Badge -->
+    <linearGradient id="magenta-card-grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F0188F" />
+      <stop offset="45%" stop-color="#D81B60" />
+      <stop offset="85%" stop-color="#AD1457" />
+      <stop offset="100%" stop-color="#880E4F" />
+    </linearGradient>
+
+    <!-- 4. Fresh Lime Green Badge -->
+    <linearGradient id="green-card-grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#8BC34A" />
+      <stop offset="45%" stop-color="#689F38" />
+      <stop offset="85%" stop-color="#4E8421" />
+      <stop offset="100%" stop-color="#33691E" />
+    </linearGradient>
+
+    <!-- 3D Convex Gloss / Reflection Overlay -->
+    <linearGradient id="gloss-overlay" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.65" />
+      <stop offset="35%" stop-color="#FFFFFF" stop-opacity="0.18" />
       <stop offset="50%" stop-color="#FFFFFF" stop-opacity="0" />
+      <stop offset="90%" stop-color="#000000" stop-opacity="0" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.12" />
     </linearGradient>
 
-    <!-- Ground Drop Shadows -->
-    <filter id="tile-shadow" x="-12%" y="-8%" width="124%" height="124%" filterUnits="userSpaceOnUse">
-      <feDropShadow dx="0" dy="8" stdDeviation="6" flood-color="#000000" flood-opacity="0.22" />
-    </filter>
-    <radialGradient id="ground-shadow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#000000" stop-opacity="0.35" />
+    <!-- Soft Base Drop Shadow for Badges -->
+    <radialGradient id="base-shadow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0.55" />
+      <stop offset="40%" stop-color="#000000" stop-opacity="0.25" />
+      <stop offset="70%" stop-color="#000000" stop-opacity="0.08" />
       <stop offset="100%" stop-color="#000000" stop-opacity="0" />
     </radialGradient>
 
-    <!-- Watercolor purple ribbon stroke gradient -->
-    <linearGradient id="purple-ribbon" x1="0" y1="0" x2="1" y2="0.6">
-      <stop offset="0%" stop-color="#B88CC4" stop-opacity="0.25" />
-      <stop offset="35%" stop-color="#9E6FB0" stop-opacity="0.45" />
-      <stop offset="70%" stop-color="#884C9C" stop-opacity="0.35" />
-      <stop offset="100%" stop-color="#A573B8" stop-opacity="0.2" />
+    <!-- Violet/Lavender Ribbon Brush Gradient -->
+    <linearGradient id="brush-grad-1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#BE9FCC" stop-opacity="0.55" />
+      <stop offset="30%" stop-color="#A57BB8" stop-opacity="0.6" />
+      <stop offset="70%" stop-color="#8E5EA3" stop-opacity="0.5" />
+      <stop offset="100%" stop-color="#B894C9" stop-opacity="0.4" />
+    </linearGradient>
+
+    <linearGradient id="brush-grad-2" x1="0" y1="0" x2="1" y2="0.5">
+      <stop offset="0%" stop-color="#A47BB7" stop-opacity="0.4" />
+      <stop offset="60%" stop-color="#C5A6D5" stop-opacity="0.6" />
+      <stop offset="100%" stop-color="#9362A5" stop-opacity="0.5" />
     </linearGradient>
   </defs>
 
-  <!-- Ground Shadows under tiles -->
-  <ellipse cx="110" cy="365" rx="80" ry="12" fill="url(#ground-shadow)" />
-  <ellipse cx="325" cy="192" rx="70" ry="9" fill="url(#ground-shadow)" />
-  <ellipse cx="545" cy="192" rx="70" ry="9" fill="url(#ground-shadow)" />
-  <ellipse cx="765" cy="192" rx="70" ry="9" fill="url(#ground-shadow)" />
-
-  <!-- Purple Artistic Watercolor Ribbon in Background -->
-  <g opacity="0.85">
-    <!-- Main swoosh under and across -->
+  <!-- ================= BACKGROUND WATERCOLOR LAVENDER RIBBON ================= -->
+  <g id="watercolor-ribbon">
+    <!-- Fluid organic brush strokes matching the official brand identity -->
     <path
-      d="M 195 330
-         C 280 320, 360 410, 480 370
-         C 600 330, 720 390, 840 370
-         C 910 360, 960 420, 975 460
-         C 960 485, 905 450, 850 435
-         C 750 410, 640 445, 520 420
-         C 400 395, 300 480, 200 400
-         C 180 380, 185 345, 195 330 Z"
-      fill="url(#purple-ribbon)"
+      d="M 370 230
+         C 430 280, 520 400, 620 365
+         C 720 330, 810 240, 940 245
+         C 1000 250, 1045 300, 1050 345
+         C 1055 395, 1010 460, 945 500
+         C 880 535, 785 520, 815 465
+         C 845 425, 960 410, 985 355
+         C 1005 310, 965 285, 905 295
+         C 800 315, 720 440, 600 445
+         C 485 450, 435 345, 375 295
+         C 365 285, 355 250, 370 230 Z"
+      fill="url(#brush-grad-1)"
     />
-    <!-- Subtle upper branch -->
+    <!-- Fine trailing loops and whisps on right edge -->
     <path
-      d="M 330 255
-         C 410 275, 450 340, 560 330
-         C 640 320, 730 270, 760 280
-         C 780 290, 750 325, 680 345
-         C 580 370, 460 360, 390 320
-         C 350 300, 325 270, 330 255 Z"
-      fill="#A875BD"
-      opacity="0.3"
+      d="M 780 400
+         C 870 485, 990 505, 1040 430
+         C 1010 495, 925 535, 840 510
+         C 805 500, 770 445, 780 400 Z"
+      fill="url(#brush-grad-2)"
     />
-    <!-- Delicate right curl -->
+    <!-- Downward brush splash at lower right -->
     <path
-      d="M 880 380
-         C 930 360, 970 420, 960 450
-         C 940 490, 890 500, 870 480
-         C 860 470, 875 450, 895 440
-         C 920 425, 915 395, 880 380 Z"
-      fill="#8E48A5"
-      opacity="0.25"
+      d="M 940 515
+         C 970 525, 975 565, 965 588
+         C 955 568, 960 540, 940 515 Z"
+      fill="#8E5EA3"
+      opacity="0.65"
     />
   </g>
 
-  <!-- ================= 1. BLUE TILE: Cuchara + dña. b ================= -->
-  <g filter="url(#tile-shadow)">
-    <rect x="15" y="15" width="190" height="340" rx="26" fill="url(#blue-tile)" />
-    <rect x="15" y="15" width="190" height="340" rx="26" fill="url(#tile-gloss)" />
+  <!-- ================= GROUND SOFT DROP SHADOWS ================= -->
+  <ellipse cx="112" cy="378" rx="92" ry="12" fill="url(#base-shadow)" />
+  <ellipse cx="355" cy="214" rx="92" ry="10" fill="url(#base-shadow)" />
+  <ellipse cx="605" cy="214" rx="92" ry="10" fill="url(#base-shadow)" />
+  <ellipse cx="855" cy="214" rx="92" ry="10" fill="url(#base-shadow)" />
 
-    <!-- Spoon Head -->
-    <ellipse cx="110" cy="85" rx="34" ry="48" fill="#FFFFFF" />
-    <!-- Spoon Handle -->
-    <path d="M104 125 L104 205 C104 210, 116 210, 116 205 L116 125 Z" fill="#FFFFFF" />
+  <!-- ================= 1. TALL BLUE BADGE (Cuchara + dña. + b) ================= -->
+  <g id="badge-blue">
+    <!-- Rounded Rectangle container with soft border radius -->
+    <rect x="5" y="0" width="215" height="375" rx="32" fill="url(#blue-card-grad)" />
+    <rect x="5" y="0" width="215" height="375" rx="32" fill="url(#gloss-overlay)" />
 
-    <!-- "dña." vertical text -->
-    <g transform="translate(76, 305) rotate(-90)">
+    <!-- Spoon in top section -->
+    <g id="spoon" fill="#FFFFFF">
+      <ellipse cx="118" cy="98" rx="44" ry="64" />
+      <rect x="111" y="156" width="14" height="56" rx="4" />
+    </g>
+
+    <!-- "dña." rotated sideways (vertical along left side of the "b") -->
+    <g transform="translate(85, 348) rotate(-90)">
       <text
         fill="#FFFFFF"
-        font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', system-ui, sans-serif"
-        font-size="44"
+        font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', Arial, sans-serif"
+        font-size="56"
         font-weight="700"
-        letter-spacing="1"
+        letter-spacing="0.5"
       >
         dña.
       </text>
     </g>
 
-    <!-- Lowercase "b" -->
-    <g transform="translate(104, 225)">
+    <!-- Lowercase "b" filling bottom right of the blue card -->
+    <g id="letter-b" transform="translate(111, 222)">
       <!-- b vertical stem -->
-      <rect x="0" y="0" width="16" height="98" rx="5" fill="#FFFFFF" />
-      <!-- b round loop -->
-      <circle cx="42" cy="60" r="37" fill="none" stroke="#FFFFFF" stroke-width="16" />
+      <rect x="0" y="0" width="19" height="135" rx="5" fill="#FFFFFF" />
+      <!-- b outer circle -->
+      <circle cx="51" cy="78" r="51" fill="#FFFFFF" />
+      <!-- b inner hole filled with card gradient -->
+      <circle cx="51" cy="78" r="32" fill="url(#blue-card-grad)" />
     </g>
   </g>
 
-  <!-- ================= 2. ORANGE TILE: Tenedor ================= -->
-  <g filter="url(#tile-shadow)">
-    <rect x="230" y="15" width="190" height="170" rx="26" fill="url(#orange-tile)" />
-    <rect x="230" y="15" width="190" height="170" rx="26" fill="url(#tile-gloss)" />
+  <!-- ================= 2. ORANGE BADGE (Tenedor) ================= -->
+  <g id="badge-orange">
+    <rect x="245" y="0" width="218" height="218" rx="32" fill="url(#orange-card-grad)" />
+    <rect x="245" y="0" width="218" height="218" rx="32" fill="url(#gloss-overlay)" />
 
-    <!-- Fork 4 tines & body -->
-    <g transform="translate(297, 40)">
-      <rect x="5" y="4" width="6.5" height="64" rx="3" fill="#FFFFFF" />
-      <rect x="21" y="4" width="6.5" height="64" rx="3" fill="#FFFFFF" />
-      <rect x="37" y="4" width="6.5" height="64" rx="3" fill="#FFFFFF" />
-      <rect x="53" y="4" width="6.5" height="64" rx="3" fill="#FFFFFF" />
-      <path d="M5 45 C5 72, 60 72, 60 45 L60 66 C60 88, 39 92, 33 92 L31 92 C25 92, 5 88, 5 66 Z" fill="#FFFFFF" />
-      <rect x="28" y="90" width="9" height="34" rx="4" fill="#FFFFFF" />
+    <!-- Fork Icon -->
+    <g id="fork" transform="translate(318, 25)" fill="#FFFFFF">
+      <rect x="0" y="0" width="10" height="96" rx="5" />
+      <rect x="21" y="0" width="10" height="96" rx="5" />
+      <rect x="42" y="0" width="10" height="96" rx="5" />
+      <rect x="63" y="0" width="10" height="96" rx="5" />
+      <!-- Fork neck curve -->
+      <path d="M 0 65 C 0 122, 73 122, 73 65 L 73 90 C 73 125, 48 130, 42 130 L 31 130 C 25 130, 0 125, 0 90 Z" />
+      <!-- Fork handle -->
+      <rect x="30" y="126" width="13" height="46" rx="4" />
     </g>
   </g>
 
-  <!-- ================= 3. MAGENTA TILE: Cuchillo ================= -->
-  <g filter="url(#tile-shadow)">
-    <rect x="450" y="15" width="190" height="170" rx="26" fill="url(#magenta-tile)" />
-    <rect x="450" y="15" width="190" height="170" rx="26" fill="url(#tile-gloss)" />
+  <!-- ================= 3. MAGENTA BADGE (Cuchillo) ================= -->
+  <g id="badge-magenta">
+    <rect x="495" y="0" width="218" height="218" rx="32" fill="url(#magenta-card-grad)" />
+    <rect x="495" y="0" width="218" height="218" rx="32" fill="url(#gloss-overlay)" />
 
-    <!-- Knife blade & handle -->
-    <g transform="translate(528, 35)">
-      <path d="M22 6 C22 6, 18 60, 2 100 L32 100 C34 100, 34 92, 34 82 L34 6 Z" fill="#FFFFFF" />
-      <rect x="20" y="100" width="13" height="30" rx="3" fill="#FFFFFF" />
+    <!-- Knife Icon -->
+    <g id="knife" transform="translate(585, 24)" fill="#FFFFFF">
+      <!-- Curved Blade -->
+      <path d="M 28 0 C 28 0, 25 80, 2 134 L 46 134 C 48 134, 48 118, 48 102 L 48 0 Z" />
+      <!-- Knife Handle -->
+      <path d="M 24 134 L 46 134 L 46 172 C 46 176, 43 177, 39 177 L 27 177 C 25 177, 24 175, 24 170 Z" />
     </g>
   </g>
 
-  <!-- ================= 4. GREEN TILE: Copa de vino ================= -->
-  <g filter="url(#tile-shadow)">
-    <rect x="670" y="15" width="190" height="170" rx="26" fill="url(#green-tile)" />
-    <rect x="670" y="15" width="190" height="170" rx="26" fill="url(#tile-gloss)" />
+  <!-- ================= 4. GREEN BADGE (Copa con Vino Verde) ================= -->
+  <g id="badge-green">
+    <rect x="745" y="0" width="218" height="218" rx="32" fill="url(#green-card-grad)" />
+    <rect x="745" y="0" width="218" height="218" rx="32" fill="url(#gloss-overlay)" />
 
-    <!-- Wine Glass -->
-    <g transform="translate(712, 42)">
-      <!-- Cup Bowl -->
-      <path d="M9 8 L97 8 C99 44, 94 82, 57 86 L49 86 C12 82, 7 44, 9 8 Z" fill="#FFFFFF" />
-      <!-- Stem -->
-      <rect x="49" y="86" width="8" height="36" fill="#FFFFFF" />
-      <!-- Base -->
-      <ellipse cx="53" cy="124" rx="34" ry="4.5" fill="#FFFFFF" />
+    <!-- Wine Glass Icon -->
+    <g id="wine-glass" transform="translate(795, 46)">
+      <!-- Outer White Glass Silhouette -->
+      <path
+        d="M 14 0 L 104 0 C 107 48, 100 92, 65 96 L 65 134 L 90 134 C 94 134, 96 136, 96 140 C 96 144, 94 146, 90 146 L 28 146 C 24 146, 22 144, 22 140 C 22 136, 24 134, 28 134 L 53 134 L 53 96 C 18 92, 11 48, 14 0 Z"
+        fill="#FFFFFF"
+      />
+      <!-- Inner Green Wine Liquid with Top Meniscus -->
+      <path
+        d="M 21 48 L 97 48 C 98 76, 92 90, 59 90 C 26 90, 20 76, 21 48 Z"
+        fill="url(#green-card-grad)"
+      />
     </g>
   </g>
 
-  <!-- ================= TYPOGRAPHY ================= -->
+  <!-- ================= OFFICIAL BRAND TYPOGRAPHY ================= -->
 
-  <!-- Top Line: "Asociación Cultural Gastronómica" -->
-  <g transform="translate(230, 245)">
-    <!-- A sociación -->
-    <text x="0" y="0" font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', sans-serif" font-size="56" font-weight="900" fill="#FFA400">A</text>
-    <text x="44" y="0" font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', sans-serif" font-size="46" font-weight="400" fill="#231F20">sociación</text>
+  <!-- Top Line: "Asociación Cultural Gastronómica" (with A, C, G in badge colors) -->
+  <g id="text-top-line" transform="translate(245, 282)">
+    <!-- A (Orange) + sociación (Black) -->
+    <text x="0" y="0" font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', Arial, sans-serif" font-size="68" font-weight="900" fill="#FF8C00">A</text>
+    <text x="54" y="0" font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', Arial, sans-serif" font-size="56" font-weight="400" fill="#000000">sociación</text>
 
-    <!-- C ultural -->
-    <text x="252" y="0" font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', sans-serif" font-size="56" font-weight="900" fill="#EB1C85">C</text>
-    <text x="294" y="0" font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', sans-serif" font-size="46" font-weight="400" fill="#231F20">ultural</text>
+    <!-- C (Magenta) + ultural (Black) -->
+    <text x="300" y="0" font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', Arial, sans-serif" font-size="68" font-weight="900" fill="#D81B60">C</text>
+    <text x="352" y="0" font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', Arial, sans-serif" font-size="56" font-weight="400" fill="#000000">ultural</text>
 
-    <!-- G astronómica -->
-    <text x="450" y="0" font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', sans-serif" font-size="56" font-weight="900" fill="#5EAA2B">G</text>
-    <text x="498" y="0" font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', sans-serif" font-size="46" font-weight="400" fill="#231F20">astronómica</text>
+    <!-- G (Green) + astronómica (Black) -->
+    <text x="540" y="0" font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', Arial, sans-serif" font-size="68" font-weight="900" fill="#689F38">G</text>
+    <text x="598" y="0" font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', Arial, sans-serif" font-size="56" font-weight="400" fill="#000000">astronómica</text>
   </g>
 
-  <!-- Middle Line: "erenjena - BOLAÑOS" (joins "dña. b" from blue tile) -->
-  <g transform="translate(222, 335)">
+  <!-- Middle Line: "erenjena - BOLAÑOS" (joins the "dña. b" blue badge on the left) -->
+  <g id="text-brand-line" transform="translate(230, 368)">
+    <!-- "erenjena" in Vibrant Cyan-Blue (Continues "dña. b") -->
     <text
       x="0"
       y="0"
-      font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', sans-serif"
-      font-size="78"
+      font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', Arial, sans-serif"
+      font-size="82"
       font-weight="900"
-      fill="#009FE3"
-      letter-spacing="-1.5"
+      fill="#00A0E3"
+      letter-spacing="-0.5"
     >
       erenjena
     </text>
+
+    <!-- " - " in Cyan-Blue -->
     <text
-      x="368"
+      x="375"
       y="0"
-      font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', sans-serif"
-      font-size="78"
+      font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', Arial, sans-serif"
+      font-size="82"
       font-weight="900"
-      fill="#008752"
-      letter-spacing="0.5"
+      fill="#00A0E3"
     >
-      - BOLAÑOS
+      -
+    </text>
+
+    <!-- "BOLAÑOS" in Forest Green -->
+    <text
+      x="425"
+      y="0"
+      font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', Arial, sans-serif"
+      font-size="82"
+      font-weight="900"
+      fill="#008A3B"
+      letter-spacing="1"
+    >
+      BOLAÑOS
     </text>
   </g>
 
-  <!-- Bottom Line: Email -->
-  <g transform="translate(225, 400)">
+  <!-- Bottom Line: Official Email Address -->
+  <g id="text-email" transform="translate(230, 452)">
     <text
       x="0"
       y="0"
-      font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', sans-serif"
-      font-size="34"
+      font-family="'Century Gothic', 'Tw Cen MT', 'Segoe UI', Arial, sans-serif"
+      font-size="38"
       font-weight="300"
-      fill="#3A3836"
-      letter-spacing="1"
+      fill="#000000"
+      letter-spacing="0.5"
     >
       donaberenjena@gmail.com
     </text>

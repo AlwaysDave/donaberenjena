@@ -6,6 +6,7 @@ import { Logo } from '../common/Logo';
 import { 
   Menu, 
   X, 
+  Home,
   Wine, 
   ChefHat, 
   Compass, 
@@ -43,7 +44,7 @@ export const Navbar: React.FC = () => {
   }, [location.pathname]);
 
   const navLinks = [
-    { label: 'Inicio', path: '/' },
+    { label: 'Inicio', path: '/', icon: Home },
     { label: 'Catas', path: '/catas', icon: Wine },
     { label: 'Cursos', path: '/cursos', icon: ChefHat },
     { label: 'Viajes', path: '/viajes', icon: Compass },
@@ -87,7 +88,7 @@ export const Navbar: React.FC = () => {
           <div className="flex items-center justify-between">
             {/* Logo area */}
             <Link to="/" className="flex items-center group shrink-0 my-auto" aria-label="Inicio - Asociación Cultural Gastronómica Doña Berenjena">
-              <Logo variant="default" theme="light" />
+              <Logo variant="combined" withText={true} theme="light" />
             </Link>
 
             {/* Desktop Navigation */}
@@ -148,10 +149,10 @@ export const Navbar: React.FC = () => {
                 id="btn-mobile-menu-toggle"
                 type="button"
                 onClick={() => setIsOpen(!isOpen)}
-                className="p-2 rounded-xl bg-[#FCFAF7] border border-[#EDE4D7] text-[#26201D] hover:bg-[#F6F1EA] transition-colors"
-                aria-label="Abrir menú"
+                className="p-2.5 rounded-xl bg-[#FCFAF7] border border-[#EDE4D7] text-[#26201D] hover:bg-[#F6F1EA] active:bg-[#EDE4D7] transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
+                aria-label={isOpen ? "Cerrar menú" : "Abrir menú"}
               >
-                {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+                {isOpen ? <X className="w-5 h-5 sm:w-6 sm:h-6" /> : <Menu className="w-5 h-5 sm:w-6 sm:h-6" />}
               </button>
             </div>
           </div>
@@ -174,7 +175,7 @@ export const Navbar: React.FC = () => {
                         : 'text-[#26201D] hover:bg-[#F6F1EA]'
                     }`}
                   >
-                    <IconComponent className="w-4 h-4" />
+                    {IconComponent && <IconComponent className="w-4 h-4" />}
                     <span>{link.label}</span>
                   </Link>
                 );
