@@ -742,7 +742,7 @@ export const ModoAvanzadoView: React.FC<ModoAvanzadoViewProps> = ({ initialTab, 
   return (
     <div className="space-y-8">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:hidden">
         <div>
           <span className="text-xs uppercase tracking-widest font-bold text-[#521849]">
             Panel de Dirección
@@ -787,14 +787,14 @@ export const ModoAvanzadoView: React.FC<ModoAvanzadoViewProps> = ({ initialTab, 
       </div>
 
       {notification && (
-        <div className="p-4 rounded-2xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold flex items-center gap-2 animate-fadeIn">
+        <div className="p-4 rounded-2xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold flex items-center gap-2 animate-fadeIn print:hidden">
           <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
           <span>{notification}</span>
         </div>
       )}
 
       {/* Tabs */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-[#EDE4D7] pb-3">
+      <div className="flex flex-wrap items-center gap-3 border-b border-[#EDE4D7] pb-3 print:hidden">
         <button
           type="button"
           onClick={() => setActiveTab('gestion')}

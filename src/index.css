@@ -16,6 +16,15 @@
   --color-vino-800: #4D1219;
   --color-vino-700: #681C26;
   --color-vino-600: #7E2430;
+
+  --color-wine-900: #290824;
+  --color-wine-800: #3E1037;
+  --color-wine-700: #521849;
+  --color-wine-600: #68205C;
+  --color-wine-500: #842A76;
+  --color-wine-200: #E2BCE0;
+  --color-wine-100: #F6EDF4;
+  --color-wine-50: #FCF7FB;
   
   --color-terracota-700: #9B3E26;
   --color-terracota-600: #B84E33;
@@ -74,5 +83,129 @@ h1, h2, h3, .font-serif-heading {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #B35338;
+}
+
+/* ========================================================================= */
+/* PRINT & PDF EXPORT STYLESHEET                                            */
+/* ========================================================================= */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 10mm 12mm 10mm;
+  }
+
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  html, body, #root {
+    background: #ffffff !important;
+    color: #191412 !important;
+    height: auto !important;
+    min-height: 100% !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 10pt !important;
+    line-height: 1.35 !important;
+  }
+
+  /* Hide app navigation, headers, footers, and modal control bars */
+  nav,
+  header,
+  aside,
+  footer,
+  .print\:hidden,
+  [data-print-hidden="true"] {
+    display: none !important;
+  }
+
+  /* Unfold modal containers for multi-page printing without clipping */
+  .report-print-backdrop {
+    position: static !important;
+    inset: auto !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    z-index: auto !important;
+    box-shadow: none !important;
+  }
+
+  .report-print-dialog {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+    display: block !important;
+    animation: none !important;
+  }
+
+  .report-print-content {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+  }
+
+  /* Page-break control utilities */
+  .print-page-break {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  .print-break-after-avoid {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+
+  .print-break-inside-avoid {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .print-break-inside-auto {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  /* Multi-page table repeat headers and row integrity */
+  table.report-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto !important;
+  }
+
+  table.report-table thead {
+    display: table-header-group !important;
+  }
+
+  table.report-table tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  table.report-table th,
+  table.report-table td {
+    padding: 4px 6px !important;
+    font-size: 8pt !important;
+  }
 }
 

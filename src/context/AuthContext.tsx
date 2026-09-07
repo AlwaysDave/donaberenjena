@@ -138,6 +138,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const switchRole = (newRole: AdminRole) => {
     if (!user) return;
+    if (user.baseRole === 'simple' && newRole === 'advanced') {
+      console.warn('Acceso denegado: un usuario con rol base "simple" no puede cambiar a "advanced".');
+      return;
+    }
     const updatedUser: AdminUser = {
       ...user,
       role: newRole

@@ -18,6 +18,8 @@ import {
   Layers,
   FileSpreadsheet,
   Printer,
+  Download,
+  Loader2,
   Edit2,
   HandCoins,
   DollarSign,
@@ -31,6 +33,7 @@ import {
 import { storage } from '../../services/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { exportAccountingToExcel } from '../../utils/accountingExport';
+import { exportReportToPdf } from '../../utils/pdfExport';
 import { formatDisplayDate, getActivityYear, sortActivitiesAscending } from '../../utils/dateUtils';
 import { Pagination } from '../common/Pagination';
 
@@ -85,6 +88,9 @@ export function AccountsManager() {
   // Report Modals
   const [showDetailedReport, setShowDetailedReport] = useState(false);
   const [showExecutiveReport, setShowExecutiveReport] = useState(false);
+  const [pageBreakPerActivity, setPageBreakPerActivity] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [pdfProgressText, setPdfProgressText] = useState('');
 
   // Form state for adding/editing expense
   const [isEditingExpense, setIsEditingExpense] = useState(false);
@@ -194,25 +200,20 @@ export function AccountsManager() {
     }> = {};
     
     filteredActivities.forEach(a => {
-      // Participantes activos: ignorando canceladas y lista de espera
-      const actActiveParticipants = participants.filter(
-        p => p.activityId === a.id && p.status !== 'cancelada' && p.status !== 'lista_de_espera'
+      // Participantes con asistencia confirmada (CON-01 / CON-02: solo status === 'asistio', 1 doc = 1 persona)
+      const actAsistioParticipants = participants.filter(
+        p => p.activityId === a.id && p.status === 'asistio'
       );
       
-      const asistentesFromParticipants = actActiveParticipants.reduce((sum, p) => sum + (p.spotsCount || 1), 0);
-      const asistentes = actActiveParticipants.length > 0 ? asistentesFromParticipants : (a.bookedSpots ?? 0);
+      const asistentes = actAsistioParticipants.length;
       const aforo = a.totalSpots || 0;
 
-      const numSocios = actActiveParticipants
-        .filter(p => p.isMember)
-        .reduce((sum, p) => sum + (p.spotsCount || 1), 0);
-      const numNoSocios = actActiveParticipants
-        .filter(p => !p.isMember)
-        .reduce((sum, p) => sum + (p.spotsCount || 1), 0);
+      const numSocios = actAsistioParticipants.filter(p => p.isMember).length;
+      const numNoSocios = actAsistioParticipants.filter(p => !p.isMember).length;
 
-      // Reservas
-      const reservasFacturadas = actActiveParticipants.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
-      const reservasCobradas = actActiveParticipants.reduce((sum, p) => sum + (p.paidAmount ?? 0), 0);
+      // Reservas (solo 'asistio')
+      const reservasFacturadas = actAsistioParticipants.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+      const reservasCobradas = actAsistioParticipants.reduce((sum, p) => sum + (p.paidAmount ?? 0), 0);
 
       // Patrocinios (distintos de cancelado)
       const actSponsorships = sponsorships.filter(s => s.activityId === a.id);
@@ -516,11 +517,54 @@ export function AccountsManager() {
     });
   };
 
-  // Activity participants and sponsorships for drilldown modal
+  // PDF Export Handlers
+  const handleDownloadDetailedPdf = async () => {
+    setIsExportingPdf(true);
+    const filename = `informe-contable-detallado-${selectedYear === 'all' ? 'todos' : selectedYear}.pdf`;
+    try {
+      await exportReportToPdf('printable-detailed-report', {
+        filename,
+        onProgress: (msg) => setPdfProgressText(msg)
+      });
+    } catch (err) {
+      console.error('Error al generar PDF detallado:', err);
+    } finally {
+      setIsExportingPdf(false);
+      setPdfProgressText('');
+    }
+  };
+
+  const handleDownloadExecutivePdf = async () => {
+    setIsExportingPdf(true);
+    const filename = `informe-contable-ejecutivo-${selectedYear === 'all' ? 'todos' : selectedYear}.pdf`;
+    try {
+      await exportReportToPdf('printable-executive-report', {
+        filename,
+        onProgress: (msg) => setPdfProgressText(msg)
+      });
+    } catch (err) {
+      console.error('Error al generar PDF ejecutivo:', err);
+    } finally {
+      setIsExportingPdf(false);
+      setPdfProgressText('');
+    }
+  };
+
+  const handleNativePrint = (fallbackFn: () => void) => {
+    try {
+      window.focus();
+      window.print();
+    } catch (err) {
+      console.warn('Native print failed, triggering direct PDF download:', err);
+      fallbackFn();
+    }
+  };
+
+  // Activity participants and sponsorships for drilldown modal (CON-01: solo 'asistio')
   const selectedActParticipants = useMemo(() => {
     if (!selectedActivity) return [];
     return participants
-      .filter(p => p.activityId === selectedActivity.id && p.status !== 'cancelada')
+      .filter(p => p.activityId === selectedActivity.id && p.status === 'asistio')
       .sort((a, b) => a.fullName.localeCompare(b.fullName));
   }, [selectedActivity, participants]);
 
@@ -540,7 +584,9 @@ export function AccountsManager() {
 
   return (
     <div className="space-y-6">
-      {/* TOP BAR */}
+      {/* Main Dashboard Content (Hidden in Print when a Report Modal is Open) */}
+      <div className={`space-y-6 ${showDetailedReport || showExecutiveReport ? 'print:hidden' : ''}`}>
+        {/* TOP BAR */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
         <div>
           <h2 className="text-2xl font-light text-wine-900 tracking-tight flex items-center gap-2.5">
@@ -572,20 +618,20 @@ export function AccountsManager() {
           {/* Action buttons */}
           <button
             onClick={() => setShowDetailedReport(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors shadow-2xs cursor-pointer"
-            title="Ver informe detallado para imprimir o guardar PDF"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-800 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl transition-colors shadow-2xs cursor-pointer hover:border-slate-400"
+            title="Ver informe detallado para descargar en PDF o imprimir"
           >
-            <FileText className="w-3.5 h-3.5 text-wine-600" />
-            <span>Informe detallado</span>
+            <FileText className="w-4 h-4 text-[#521849]" />
+            <span>Informe detallado (PDF)</span>
           </button>
 
           <button
             onClick={() => setShowExecutiveReport(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors shadow-2xs cursor-pointer"
-            title="Ver informe ejecutivo para imprimir o guardar PDF"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-800 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl transition-colors shadow-2xs cursor-pointer hover:border-slate-400"
+            title="Ver informe ejecutivo para descargar en PDF o imprimir"
           >
-            <Layers className="w-3.5 h-3.5 text-wine-600" />
-            <span>Informe ejecutivo</span>
+            <Layers className="w-4 h-4 text-[#521849]" />
+            <span>Informe ejecutivo (PDF)</span>
           </button>
 
           <button
@@ -1654,34 +1700,76 @@ export function AccountsManager() {
         </div>
       )}
 
+      </div> {/* End Main Dashboard Content */}
+
       {/* ========================================================================= */}
       {/* MODAL 4.1: INFORME DETALLADO (PRINT / PDF) */}
       {/* ========================================================================= */}
       {showDetailedReport && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="report-print-backdrop fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 print:p-0 print:m-0 print:bg-white print:static print:inset-auto print:block print:w-full print:h-auto print:max-h-none print:overflow-visible print:z-auto">
+          <div className="report-print-dialog bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 print:max-w-none print:w-full print:max-h-none print:h-auto print:overflow-visible print:border-none print:rounded-none print:shadow-none print:m-0 print:p-0 print:animate-none print:static">
             
             {/* Header / Controls */}
-            <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 print:hidden">
+            <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap justify-between items-center gap-3 bg-slate-50 print:hidden">
               <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-wine-600" />
-                <h3 className="text-base font-semibold text-slate-900">
-                  Informe Contable Detallado ({selectedYear === 'all' ? 'Todos los años' : selectedYear})
-                </h3>
+                <FileText className="w-5 h-5 text-[#521849]" />
+                <div>
+                  <h3 className="text-base font-semibold text-slate-900">
+                    Informe Contable Detallado ({selectedYear === 'all' ? 'Todos los años' : selectedYear})
+                  </h3>
+                  <span className="text-xs text-slate-500 block">
+                    Exportación a PDF con todas las páginas necesarias o impresión en A4
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <label className="inline-flex items-center gap-2 text-xs text-slate-700 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-2xs hover:bg-slate-50 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={pageBreakPerActivity}
+                    onChange={(e) => setPageBreakPerActivity(e.target.checked)}
+                    className="w-4 h-4 rounded text-[#521849] focus:ring-[#521849] border-slate-300 cursor-pointer"
+                  />
+                  <span className="font-medium">Salto de página por actividad</span>
+                </label>
+
+                {/* Primary Button: Direct PDF Download (works reliably in all browsers & iframes) */}
                 <button
                   type="button"
-                  onClick={() => window.print()}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-wine-700 hover:bg-wine-800 rounded-xl transition-colors cursor-pointer shadow-2xs"
+                  onClick={handleDownloadDetailedPdf}
+                  disabled={isExportingPdf}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#521849] hover:bg-[#3E1037] active:scale-98 rounded-xl transition-all cursor-pointer shadow-md disabled:opacity-60 disabled:cursor-not-allowed border border-[#3E1037]/30"
+                  title="Descargar archivo PDF completo a tu ordenador"
                 >
-                  <Printer className="w-4 h-4" />
-                  <span>Imprimir / Guardar como PDF</span>
+                  {isExportingPdf ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>{pdfProgressText || 'Generando PDF...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4" />
+                      <span>Descargar PDF (.pdf)</span>
+                    </>
+                  )}
                 </button>
+
+                {/* Secondary Button: Browser Native Print */}
+                <button
+                  type="button"
+                  onClick={() => handleNativePrint(handleDownloadDetailedPdf)}
+                  disabled={isExportingPdf}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 active:scale-98 rounded-xl transition-colors cursor-pointer shadow-2xs border border-slate-300"
+                  title="Abrir diálogo de impresión del navegador"
+                >
+                  <Printer className="w-4 h-4 text-slate-600" />
+                  <span>Imprimir</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setShowDetailedReport(false)}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-full cursor-pointer"
+                  className="p-2 text-slate-400 hover:text-slate-700 rounded-xl cursor-pointer hover:bg-slate-200 transition-colors"
                   aria-label="Cerrar informe"
                 >
                   <X className="w-5 h-5" />
@@ -1689,21 +1777,75 @@ export function AccountsManager() {
               </div>
             </div>
 
+            {/* Print & PDF Help Notice */}
+            <div className="px-6 py-2.5 bg-amber-50/90 border-b border-amber-200/70 text-[11px] text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 print:hidden">
+              <span className="flex items-center gap-1.5">
+                <span>💡</span>
+                <span>
+                  Pulsa <strong>"Descargar PDF"</strong> para guardar el archivo oficial con todas las páginas completas en tu equipo. También puedes usar <strong>"Imprimir"</strong> para enviar a tu impresora física.
+                </span>
+              </span>
+              {isExportingPdf && (
+                <span className="shrink-0 flex items-center gap-1 font-semibold text-[#521849] bg-white/90 px-2.5 py-0.5 rounded-lg border border-[#E2BCE0]">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>{pdfProgressText}</span>
+                </span>
+              )}
+            </div>
+
             {/* Printable Report Content */}
-            <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-white text-slate-800 print:p-0 print:overflow-visible">
+            <div id="printable-detailed-report" className="report-print-content flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 bg-white text-slate-800 print:p-0 print:overflow-visible print:h-auto print:max-h-none print:block">
               
-              {/* Report Title */}
-              <div className="border-b border-slate-200 pb-4">
-                <h1 className="text-2xl font-bold text-wine-900">Asociación Cultural Doña Berenjena</h1>
-                <h2 className="text-base font-medium text-slate-700 mt-0.5">
-                  Informe Contable Detallado · Ejercicio {selectedYear === 'all' ? 'Completo (Todos los años)' : selectedYear}
-                </h2>
-                <p className="text-xs text-slate-400 mt-1">Generado el {formatDate(new Date().toISOString())}</p>
+              {/* Official Document Header */}
+              <div className="border-b-2 border-slate-800 pb-4 print:break-after-avoid">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <span className="text-[11px] uppercase tracking-widest font-extrabold text-wine-800 block">
+                      Doña Berenjena · Asociación Cultural Gastronómica
+                    </span>
+                    <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mt-0.5">
+                      Informe Contable Detallado de Actividades
+                    </h1>
+                    <p className="text-xs text-slate-600 mt-1">
+                      Ejercicio: <strong>{selectedYear === 'all' ? 'Histórico Completo (Todos los años)' : `Año ${selectedYear}`}</strong> · 
+                      Emitido el {formatDate(new Date().toISOString())} · 
+                      {filteredActivities.length} actividades analizadas
+                    </p>
+                  </div>
+                  <div className="text-right text-[11px] text-slate-500 hidden sm:block print:block">
+                    <span className="font-semibold text-slate-700 block">Auditoría y Control Interno</span>
+                    <span>Formato Oficial A4</span>
+                  </div>
+                </div>
+
+                {/* Executive KPI Summary strip on Page 1 */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 text-xs print:grid-cols-4 print:gap-2">
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 print:p-2 print:bg-slate-50">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 block">Facturación Total</span>
+                    <span className="text-sm font-bold text-slate-900 mt-0.5 block">{formatCurrency(totals.ingresosFacturados)}</span>
+                    <span className="text-[10px] text-slate-500">Reservas + Patrocinios</span>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 print:p-2 print:bg-slate-50">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 block">Cobros Efectivos</span>
+                    <span className="text-sm font-bold text-emerald-700 mt-0.5 block">{formatCurrency(totals.ingresosCobrados)}</span>
+                    <span className="text-[10px] text-slate-500">Ingresos realizados</span>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 print:p-2 print:bg-slate-50">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 block">Gastos Totales</span>
+                    <span className="text-sm font-bold text-rose-700 mt-0.5 block">{formatCurrency(totals.gastos)}</span>
+                    <span className="text-[10px] text-slate-500">{expenses.length} partidas de gasto</span>
+                  </div>
+                  <div className={`p-3 rounded-xl border print:p-2 ${totals.balance >= 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-rose-50 border-rose-200 text-rose-900'}`}>
+                    <span className="text-[10px] uppercase font-bold block">Balance Neto</span>
+                    <span className="text-sm font-bold mt-0.5 block">{totals.balance >= 0 ? '+' : ''}{formatCurrency(totals.balance)}</span>
+                    <span className="text-[10px] opacity-80">Resultado consolidado</span>
+                  </div>
+                </div>
               </div>
 
               {/* Activities Loop */}
-              <div className="space-y-8">
-                {filteredActivities.map(act => {
+              <div className="space-y-6 print:space-y-4">
+                {filteredActivities.map((act, actIndex) => {
                   const fin = financesByActivity[act.id] || {
                     reservasFacturadas: 0,
                     reservasCobradas: 0,
@@ -1717,7 +1859,7 @@ export function AccountsManager() {
                   };
 
                   const actParticipants = participants
-                    .filter(p => p.activityId === act.id && p.status !== 'cancelada')
+                    .filter(p => p.activityId === act.id && p.status === 'asistio')
                     .sort((a, b) => a.fullName.localeCompare(b.fullName));
 
                   const actSponsorshipsList = sponsorships
@@ -1729,137 +1871,208 @@ export function AccountsManager() {
                     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
                   return (
-                    <div key={act.id} className="border border-slate-200 rounded-2xl p-5 space-y-4 break-inside-avoid">
+                    <div 
+                      key={act.id} 
+                      className={`report-activity-block border border-slate-300 rounded-xl p-4 sm:p-5 space-y-4 print:border-slate-300 print:rounded-lg print:p-3 print:mb-5 print:break-inside-auto ${pageBreakPerActivity && actIndex > 0 ? 'print-page-break' : ''}`}
+                    >
                       
                       {/* Activity Header */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2.5 print:break-after-avoid">
                         <div>
-                          <h3 className="text-base font-bold text-slate-900">{act.title}</h3>
-                          <div className="text-xs text-slate-500 flex items-center gap-2 mt-0.5">
-                            <span className="capitalize font-semibold text-wine-700">{act.type}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-400">#{actIndex + 1}</span>
+                            <h3 className="text-base font-bold text-slate-900">{act.title}</h3>
+                          </div>
+                          <div className="text-xs text-slate-600 flex flex-wrap items-center gap-2 mt-0.5">
+                            <span className="capitalize font-semibold text-wine-800">{act.type}</span>
                             <span>•</span>
                             <span>{formatDate(act.date)}</span>
                             <span>•</span>
                             <span className="capitalize">{act.status}</span>
+                            <span>•</span>
+                            <span>{actParticipants.length} asistentes confirmados (Aforo: {act.totalSpots})</span>
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap gap-2 text-xs">
-                          <span className="px-2 py-1 rounded bg-slate-100 text-slate-700">
-                            Ingresos cobrados: <strong>{formatCurrency(fin.ingresosCobrados)}</strong>
+                        <div className="flex flex-wrap gap-1.5 text-xs print:text-[10px]">
+                          <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                            Cobrado: <strong>{formatCurrency(fin.ingresosCobrados)}</strong>
                           </span>
-                          <span className="px-2 py-1 rounded bg-rose-50 text-rose-700">
+                          <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">
                             Gastos: <strong>{formatCurrency(fin.gastos)}</strong>
                           </span>
-                          <span className={`px-2 py-1 rounded font-bold ${fin.balance >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                          <span className={`px-2 py-0.5 rounded font-bold border ${fin.balance >= 0 ? 'bg-emerald-100 border-emerald-300 text-emerald-800' : 'bg-rose-100 border-rose-300 text-rose-800'}`}>
                             Balance: {fin.balance >= 0 ? '+' : ''}{formatCurrency(fin.balance)}
                           </span>
                         </div>
                       </div>
 
                       {/* 1. Reservas (Nombre y Apellido SOLAMENTE) */}
-                      <div>
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                          Reservas ({actParticipants.length} asistentes confirmados)
+                      <div className="space-y-1.5 print:break-inside-auto">
+                        <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-600 print:break-after-avoid">
+                          Reservas y Asistentes ({actParticipants.length} asistentes confirmados)
                         </h4>
                         {actParticipants.length === 0 ? (
-                          <p className="text-xs text-slate-400 italic">Sin reservas registradas</p>
+                          <p className="text-xs text-slate-400 italic">Sin reservas registradas para esta actividad.</p>
                         ) : (
-                          <table className="w-full text-xs text-left border-collapse border border-slate-200">
-                            <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-500">
-                              <tr>
-                                <th className="p-2 border-b border-slate-200">Asistente</th>
-                                <th className="p-2 border-b border-slate-200">Tarifa</th>
-                                <th className="p-2 border-b border-slate-200 text-right">Total</th>
-                                <th className="p-2 border-b border-slate-200 text-right">Cobrado</th>
-                                <th className="p-2 border-b border-slate-200 text-center">Estado</th>
-                                <th className="p-2 border-b border-slate-200">Método Pago</th>
+                          <table className="report-table w-full text-xs text-left border-collapse border border-slate-300 print:text-[9.5px]">
+                            <thead className="bg-slate-100 text-[10px] uppercase font-bold text-slate-700 print:bg-slate-100">
+                              <tr className="print:break-inside-avoid">
+                                <th className="p-2 border border-slate-300">Asistente</th>
+                                <th className="p-2 border border-slate-300">Tarifa</th>
+                                <th className="p-2 border border-slate-300 text-right">Facturado</th>
+                                <th className="p-2 border border-slate-300 text-right">Cobrado</th>
+                                <th className="p-2 border border-slate-300 text-right">Pendiente</th>
+                                <th className="p-2 border border-slate-300 text-center">Estado</th>
+                                <th className="p-2 border border-slate-300">Método</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100">
-                              {actParticipants.map(p => (
-                                <tr key={p.id}>
-                                  <td className="p-2 font-medium text-slate-900">{p.fullName}</td>
-                                  <td className="p-2">{p.isMember ? 'Socio' : 'General'}</td>
-                                  <td className="p-2 text-right">{formatCurrency(p.totalAmount || 0)}</td>
-                                  <td className="p-2 text-right text-emerald-700 font-semibold">{formatCurrency(p.paidAmount ?? 0)}</td>
-                                  <td className="p-2 text-center capitalize">{p.status}</td>
-                                  <td className="p-2 capitalize">{p.paymentMethod || 'No especificado'}</td>
-                                </tr>
-                              ))}
+                            <tbody>
+                              {actParticipants.map(p => {
+                                const total = p.totalAmount || 0;
+                                const cobrado = p.paidAmount ?? 0;
+                                const pendiente = Math.max(0, total - cobrado);
+                                return (
+                                  <tr key={p.id} className="print:break-inside-avoid hover:bg-slate-50/50">
+                                    <td className="p-2 border border-slate-200 font-medium text-slate-900">{p.fullName}</td>
+                                    <td className="p-2 border border-slate-200">{p.isMember ? 'Socio' : 'General'}</td>
+                                    <td className="p-2 border border-slate-200 text-right">{formatCurrency(total)}</td>
+                                    <td className="p-2 border border-slate-200 text-right text-emerald-700 font-semibold">{formatCurrency(cobrado)}</td>
+                                    <td className="p-2 border border-slate-200 text-right text-amber-700 font-medium">{pendiente > 0 ? formatCurrency(pendiente) : '-'}</td>
+                                    <td className="p-2 border border-slate-200 text-center capitalize">{p.status}</td>
+                                    <td className="p-2 border border-slate-200 capitalize">{p.paymentMethod || 'No especificado'}</td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
+                            <tfoot className="bg-slate-50 font-bold text-slate-800 text-[11px] print:bg-slate-100">
+                              <tr className="print:break-inside-avoid">
+                                <td colSpan={2} className="p-2 border border-slate-300 uppercase text-[10px]">
+                                  Subtotal Reservas ({actParticipants.length} asistentes)
+                                </td>
+                                <td className="p-2 border border-slate-300 text-right">{formatCurrency(fin.reservasFacturadas)}</td>
+                                <td className="p-2 border border-slate-300 text-right text-emerald-700">{formatCurrency(fin.reservasCobradas)}</td>
+                                <td className="p-2 border border-slate-300 text-right text-amber-700">
+                                  {formatCurrency(Math.max(0, fin.reservasFacturadas - fin.reservasCobradas))}
+                                </td>
+                                <td colSpan={2} className="p-2 border border-slate-300 text-slate-500 text-[10px] text-center font-normal">
+                                  {fin.reservasFacturadas === fin.reservasCobradas ? 'Al corriente de pago' : 'Pagos pendientes'}
+                                </td>
+                              </tr>
+                            </tfoot>
                           </table>
                         )}
                       </div>
 
                       {/* 2. Patrocinios */}
-                      <div>
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                      <div className="space-y-1.5 print:break-inside-auto">
+                        <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-600 print:break-after-avoid">
                           Patrocinios ({actSponsorshipsList.length})
                         </h4>
                         {actSponsorshipsList.length === 0 ? (
-                          <p className="text-xs text-slate-400 italic">Sin patrocinios asociados</p>
+                          <p className="text-xs text-slate-400 italic">Sin patrocinios asociados a esta actividad.</p>
                         ) : (
-                          <table className="w-full text-xs text-left border-collapse border border-slate-200">
-                            <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-500">
-                              <tr>
-                                <th className="p-2 border-b border-slate-200">Patrocinador</th>
-                                <th className="p-2 border-b border-slate-200">Concepto</th>
-                                <th className="p-2 border-b border-slate-200">Fecha</th>
-                                <th className="p-2 border-b border-slate-200 text-right">Comprometido</th>
-                                <th className="p-2 border-b border-slate-200 text-right">Cobrado</th>
-                                <th className="p-2 border-b border-slate-200 text-center">Estado</th>
-                                <th className="p-2 border-b border-slate-200">Notas</th>
+                          <table className="report-table w-full text-xs text-left border-collapse border border-slate-300 print:text-[9.5px]">
+                            <thead className="bg-slate-100 text-[10px] uppercase font-bold text-slate-700 print:bg-slate-100">
+                              <tr className="print:break-inside-avoid">
+                                <th className="p-2 border border-slate-300">Patrocinador</th>
+                                <th className="p-2 border border-slate-300">Concepto</th>
+                                <th className="p-2 border border-slate-300">Fecha</th>
+                                <th className="p-2 border border-slate-300 text-right">Comprometido</th>
+                                <th className="p-2 border border-slate-300 text-right">Cobrado</th>
+                                <th className="p-2 border border-slate-300 text-right">Pendiente</th>
+                                <th className="p-2 border border-slate-300 text-center">Estado</th>
+                                <th className="p-2 border border-slate-300">Notas</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100">
-                              {actSponsorshipsList.map(s => (
-                                <tr key={s.id}>
-                                  <td className="p-2 font-medium text-slate-900">{s.sponsorName}</td>
-                                  <td className="p-2">{s.concept}</td>
-                                  <td className="p-2">{formatDate(s.date)}</td>
-                                  <td className="p-2 text-right">{formatCurrency(s.amount)}</td>
-                                  <td className="p-2 text-right text-emerald-700 font-semibold">{formatCurrency(s.paidAmount)}</td>
-                                  <td className="p-2 text-center capitalize">{s.status}</td>
-                                  <td className="p-2 text-slate-500">{s.notes || '-'}</td>
-                                </tr>
-                              ))}
+                            <tbody>
+                              {actSponsorshipsList.map(s => {
+                                const pendiente = Math.max(0, s.amount - s.paidAmount);
+                                return (
+                                  <tr key={s.id} className="print:break-inside-avoid hover:bg-slate-50/50">
+                                    <td className="p-2 border border-slate-200 font-medium text-slate-900">{s.sponsorName}</td>
+                                    <td className="p-2 border border-slate-200">{s.concept}</td>
+                                    <td className="p-2 border border-slate-200">{formatDate(s.date)}</td>
+                                    <td className="p-2 border border-slate-200 text-right">{formatCurrency(s.amount)}</td>
+                                    <td className="p-2 border border-slate-200 text-right text-emerald-700 font-semibold">{formatCurrency(s.paidAmount)}</td>
+                                    <td className="p-2 border border-slate-200 text-right text-amber-700 font-medium">{pendiente > 0 ? formatCurrency(pendiente) : '-'}</td>
+                                    <td className="p-2 border border-slate-200 text-center capitalize">{s.status}</td>
+                                    <td className="p-2 border border-slate-200 text-slate-500">{s.notes || '-'}</td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
+                            <tfoot className="bg-slate-50 font-bold text-slate-800 text-[11px] print:bg-slate-100">
+                              <tr className="print:break-inside-avoid">
+                                <td colSpan={3} className="p-2 border border-slate-300 uppercase text-[10px]">
+                                  Subtotal Patrocinios ({actSponsorshipsList.length})
+                                </td>
+                                <td className="p-2 border border-slate-300 text-right">{formatCurrency(fin.patrociniosFacturados)}</td>
+                                <td className="p-2 border border-slate-300 text-right text-emerald-700">{formatCurrency(fin.patrociniosCobrados)}</td>
+                                <td className="p-2 border border-slate-300 text-right text-amber-700">
+                                  {formatCurrency(Math.max(0, fin.patrociniosFacturados - fin.patrociniosCobrados))}
+                                </td>
+                                <td colSpan={2} className="p-2 border border-slate-300"></td>
+                              </tr>
+                            </tfoot>
                           </table>
                         )}
                       </div>
 
                       {/* 3. Gastos (Sin imágenes) */}
-                      <div>
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                      <div className="space-y-1.5 print:break-inside-auto">
+                        <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-600 print:break-after-avoid">
                           Gastos Imputados ({actExpensesList.length})
                         </h4>
                         {actExpensesList.length === 0 ? (
-                          <p className="text-xs text-slate-400 italic">Sin gastos imputados</p>
+                          <p className="text-xs text-slate-400 italic">Sin gastos imputados a esta actividad.</p>
                         ) : (
-                          <table className="w-full text-xs text-left border-collapse border border-slate-200">
-                            <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-500">
-                              <tr>
-                                <th className="p-2 border-b border-slate-200">Concepto</th>
-                                <th className="p-2 border-b border-slate-200">Categoría</th>
-                                <th className="p-2 border-b border-slate-200">Fecha</th>
-                                <th className="p-2 border-b border-slate-200 text-right">Importe</th>
-                                <th className="p-2 border-b border-slate-200">Notas</th>
+                          <table className="report-table w-full text-xs text-left border-collapse border border-slate-300 print:text-[9.5px]">
+                            <thead className="bg-slate-100 text-[10px] uppercase font-bold text-slate-700 print:bg-slate-100">
+                              <tr className="print:break-inside-avoid">
+                                <th className="p-2 border border-slate-300">Concepto</th>
+                                <th className="p-2 border border-slate-300">Categoría</th>
+                                <th className="p-2 border border-slate-300">Fecha</th>
+                                <th className="p-2 border border-slate-300 text-right">Importe</th>
+                                <th className="p-2 border border-slate-300">Notas</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100">
+                            <tbody>
                               {actExpensesList.map(e => (
-                                <tr key={e.id}>
-                                  <td className="p-2 font-medium text-slate-900">{e.concept}</td>
-                                  <td className="p-2">{CATEGORY_LABELS[e.category] || e.category}</td>
-                                  <td className="p-2">{formatDate(e.date)}</td>
-                                  <td className="p-2 text-right text-rose-600 font-semibold">{formatCurrency(e.amount)}</td>
-                                  <td className="p-2 text-slate-500">{e.notes || '-'}</td>
+                                <tr key={e.id} className="print:break-inside-avoid hover:bg-slate-50/50">
+                                  <td className="p-2 border border-slate-200 font-medium text-slate-900">{e.concept}</td>
+                                  <td className="p-2 border border-slate-200">{CATEGORY_LABELS[e.category] || e.category}</td>
+                                  <td className="p-2 border border-slate-200">{formatDate(e.date)}</td>
+                                  <td className="p-2 border border-slate-200 text-right text-rose-700 font-semibold">{formatCurrency(e.amount)}</td>
+                                  <td className="p-2 border border-slate-200 text-slate-500">{e.notes || '-'}</td>
                                 </tr>
                               ))}
                             </tbody>
+                            <tfoot className="bg-slate-50 font-bold text-slate-800 text-[11px] print:bg-slate-100">
+                              <tr className="print:break-inside-avoid">
+                                <td colSpan={3} className="p-2 border border-slate-300 uppercase text-[10px]">
+                                  Subtotal Gastos ({actExpensesList.length} partidas)
+                                </td>
+                                <td className="p-2 border border-slate-300 text-right text-rose-700">{formatCurrency(fin.gastos)}</td>
+                                <td className="p-2 border border-slate-300"></td>
+                              </tr>
+                            </tfoot>
                           </table>
                         )}
+                      </div>
+
+                      {/* Activity Balance Strip */}
+                      <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex flex-wrap justify-between items-center text-xs print:bg-slate-50 print:p-2 print:break-inside-avoid">
+                        <span className="font-semibold text-slate-700">
+                          Resumen Financiero: <span className="font-normal text-slate-600">{act.title}</span>
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-slate-600">Total Cobrado: <strong className="text-slate-900">{formatCurrency(fin.ingresosCobrados)}</strong></span>
+                          <span className="text-slate-600">Total Gastos: <strong className="text-rose-700">{formatCurrency(fin.gastos)}</strong></span>
+                          <span className={`font-bold ${fin.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                            Resultado: {fin.balance >= 0 ? '+' : ''}{formatCurrency(fin.balance)}
+                          </span>
+                        </div>
                       </div>
 
                     </div>
@@ -1868,25 +2081,52 @@ export function AccountsManager() {
               </div>
 
               {/* Global Totals Footer */}
-              <div className="border-t-2 border-slate-300 pt-5 space-y-2 break-inside-avoid">
-                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Totales Globales del Período</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                    <span className="text-slate-500 block">Reservas Cobradas</span>
+              <div className="report-totals-footer border-t-2 border-slate-400 pt-6 space-y-4 print:break-inside-avoid">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                      Liquidación y Totales Globales del Ejercicio
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Totales acumulados correspondientes a {filteredActivities.length} actividades procesadas
+                    </p>
+                  </div>
+                  <span className="text-xs font-semibold px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg border border-slate-200">
+                    Ejercicio: {selectedYear === 'all' ? 'Todos los años' : selectedYear}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs print:grid-cols-4 print:gap-2">
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 print:p-2">
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Reservas Cobradas</span>
                     <span className="font-bold text-slate-900 text-sm mt-0.5 block">{formatCurrency(totals.reservasCobradas)}</span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">Facturado: {formatCurrency(totals.reservasFacturadas)}</span>
                   </div>
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                    <span className="text-slate-500 block">Patrocinios Cobrados</span>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 print:p-2">
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Patrocinios Cobrados</span>
                     <span className="font-bold text-slate-900 text-sm mt-0.5 block">{formatCurrency(totals.patrociniosCobrados)}</span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">Comprometido: {formatCurrency(totals.patrociniosFacturados)}</span>
                   </div>
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                    <span className="text-slate-500 block">Gastos Totales</span>
-                    <span className="font-bold text-rose-600 text-sm mt-0.5 block">{formatCurrency(totals.gastos)}</span>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 print:p-2">
+                    <span className="text-slate-500 block text-[10px] uppercase font-bold">Gastos Totales</span>
+                    <span className="font-bold text-rose-700 text-sm mt-0.5 block">{formatCurrency(totals.gastos)}</span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">{expenses.length} justificantes contables</span>
                   </div>
-                  <div className={`p-3 rounded-xl border font-bold ${totals.balance >= 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
-                    <span className="block text-[10px] uppercase">Balance Neto Final</span>
-                    <span className="text-sm mt-0.5 block">{totals.balance >= 0 ? '+' : ''}{formatCurrency(totals.balance)}</span>
+                  <div className={`p-3 rounded-xl border font-bold print:p-2 ${totals.balance >= 0 ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-rose-50 border-rose-300 text-rose-900'}`}>
+                    <span className="block text-[10px] uppercase">Balance Neto Consolidado</span>
+                    <span className="text-base font-extrabold mt-0.5 block">{totals.balance >= 0 ? '+' : ''}{formatCurrency(totals.balance)}</span>
+                    <span className="text-[10px] opacity-80 block font-normal mt-0.5">Cobros menos gastos</span>
                   </div>
+                </div>
+
+                {/* Audit Disclaimer footnote */}
+                <div className="pt-3 border-t border-slate-200 text-[10px] text-slate-500 flex flex-col sm:flex-row justify-between gap-2">
+                  <span>
+                    Documento contable oficial emitido por la Asociación Cultural Doña Berenjena. Contiene el desglose nominal de asistentes conforme a las disposiciones de protección de datos (sin exposición de datos de contacto).
+                  </span>
+                  <span className="shrink-0 font-medium text-slate-600">
+                    Generado: {new Date().toLocaleDateString('es-ES')} {new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
                 </div>
               </div>
 
@@ -1899,30 +2139,60 @@ export function AccountsManager() {
       {/* MODAL 4.2: INFORME EJECUTIVO (PRINT / PDF) */}
       {/* ========================================================================= */}
       {showExecutiveReport && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="report-print-backdrop fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 print:p-0 print:m-0 print:bg-white print:static print:inset-auto print:block print:w-full print:h-auto print:max-h-none print:overflow-visible print:z-auto">
+          <div className="report-print-dialog bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 print:max-w-none print:w-full print:max-h-none print:h-auto print:overflow-visible print:border-none print:rounded-none print:shadow-none print:m-0 print:p-0 print:animate-none print:static">
             
             {/* Header / Controls */}
-            <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 print:hidden">
+            <div className="px-6 py-4 border-b border-slate-200 flex flex-wrap justify-between items-center gap-3 bg-slate-50 print:hidden">
               <div className="flex items-center gap-2">
-                <Layers className="w-5 h-5 text-wine-600" />
-                <h3 className="text-base font-semibold text-slate-900">
-                  Informe Contable Ejecutivo ({selectedYear === 'all' ? 'Todos los años' : selectedYear})
-                </h3>
+                <Layers className="w-5 h-5 text-[#521849]" />
+                <div>
+                  <h3 className="text-base font-semibold text-slate-900">
+                    Informe Contable Ejecutivo ({selectedYear === 'all' ? 'Todos los años' : selectedYear})
+                  </h3>
+                  <span className="text-xs text-slate-500 block">
+                    Resumen consolidado de ingresos, patrocinios y costes en A4
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* Primary Button: Direct PDF Download */}
                 <button
                   type="button"
-                  onClick={() => window.print()}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-wine-700 hover:bg-wine-800 rounded-xl transition-colors cursor-pointer shadow-2xs"
+                  onClick={handleDownloadExecutivePdf}
+                  disabled={isExportingPdf}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#521849] hover:bg-[#3E1037] active:scale-98 rounded-xl transition-all cursor-pointer shadow-md disabled:opacity-60 disabled:cursor-not-allowed border border-[#3E1037]/30"
+                  title="Descargar archivo PDF ejecutivo a tu ordenador"
                 >
-                  <Printer className="w-4 h-4" />
-                  <span>Imprimir / Guardar como PDF</span>
+                  {isExportingPdf ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>{pdfProgressText || 'Generando PDF...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4" />
+                      <span>Descargar PDF (.pdf)</span>
+                    </>
+                  )}
                 </button>
+
+                {/* Secondary Button: Native Print */}
+                <button
+                  type="button"
+                  onClick={() => handleNativePrint(handleDownloadExecutivePdf)}
+                  disabled={isExportingPdf}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 active:scale-98 rounded-xl transition-colors cursor-pointer shadow-2xs border border-slate-300"
+                  title="Abrir diálogo de impresión del navegador"
+                >
+                  <Printer className="w-4 h-4 text-slate-600" />
+                  <span>Imprimir</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setShowExecutiveReport(false)}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-full cursor-pointer"
+                  className="p-2 text-slate-400 hover:text-slate-700 rounded-xl cursor-pointer hover:bg-slate-200 transition-colors"
                   aria-label="Cerrar informe"
                 >
                   <X className="w-5 h-5" />
@@ -1930,37 +2200,64 @@ export function AccountsManager() {
               </div>
             </div>
 
+            {/* Print & PDF Help Notice */}
+            <div className="px-6 py-2.5 bg-amber-50/90 border-b border-amber-200/70 text-[11px] text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 print:hidden">
+              <span className="flex items-center gap-1.5">
+                <span>💡</span>
+                <span>
+                  Pulsa <strong>"Descargar PDF"</strong> para obtener el informe ejecutivo listo para archivo contable o presentaciones.
+                </span>
+              </span>
+              {isExportingPdf && (
+                <span className="shrink-0 flex items-center gap-1 font-semibold text-[#521849] bg-white/90 px-2.5 py-0.5 rounded-lg border border-[#E2BCE0]">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>{pdfProgressText}</span>
+                </span>
+              )}
+            </div>
+
             {/* Printable Report Content */}
-            <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-white text-slate-800 print:p-0 print:overflow-visible">
+            <div id="printable-executive-report" className="report-print-content flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 bg-white text-slate-800 print:p-0 print:overflow-visible print:h-auto print:max-h-none print:block">
               
               {/* Report Title */}
-              <div className="border-b border-slate-200 pb-4">
-                <h1 className="text-2xl font-bold text-wine-900">Asociación Cultural Doña Berenjena</h1>
-                <h2 className="text-base font-medium text-slate-700 mt-0.5">
-                  Informe Ejecutivo de Cuentas · Ejercicio {selectedYear === 'all' ? 'Completo (Todos los años)' : selectedYear}
-                </h2>
-                <p className="text-xs text-slate-400 mt-1">
-                  Resumen financiero agregado sin datos personales · Generado el {formatDate(new Date().toISOString())}
-                </p>
+              <div className="border-b-2 border-slate-800 pb-4 print:break-after-avoid">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <span className="text-[11px] uppercase tracking-widest font-extrabold text-wine-800 block">
+                      Doña Berenjena · Asociación Cultural Gastronómica
+                    </span>
+                    <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mt-0.5">
+                      Informe Ejecutivo de Cuentas
+                    </h1>
+                    <p className="text-xs text-slate-600 mt-1">
+                      Ejercicio: <strong>{selectedYear === 'all' ? 'Histórico Completo (Todos los años)' : `Año ${selectedYear}`}</strong> · 
+                      Resumen financiero agregado sin datos personales · Generado el {formatDate(new Date().toISOString())}
+                    </p>
+                  </div>
+                  <div className="text-right text-[11px] text-slate-500 hidden sm:block print:block">
+                    <span className="font-semibold text-slate-700 block">Resumen de Dirección</span>
+                    <span>Formato Oficial A4</span>
+                  </div>
+                </div>
               </div>
 
               {/* Compact Table */}
-              <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase font-bold text-slate-600">
-                      <th className="p-3">Actividad</th>
-                      <th className="p-3">Tipo</th>
-                      <th className="p-3">Fecha</th>
-                      <th className="p-3 text-center">Nº Socios</th>
-                      <th className="p-3 text-center">Nº No Socios</th>
-                      <th className="p-3 text-right">Reservas Cobradas</th>
-                      <th className="p-3 text-right">Patrocinios Cobrados</th>
-                      <th className="p-3 text-right">Gastos</th>
-                      <th className="p-3 text-right">Balance Neto</th>
+              <div className="border border-slate-300 rounded-xl overflow-hidden shadow-2xs print:border-slate-300 print:rounded-none">
+                <table className="report-table w-full text-left text-xs border-collapse">
+                  <thead className="bg-slate-100 border-b border-slate-300 text-[10px] uppercase font-bold text-slate-700 print:bg-slate-100">
+                    <tr className="print:break-inside-avoid">
+                      <th className="p-2.5 border border-slate-300">Actividad</th>
+                      <th className="p-2.5 border border-slate-300">Tipo</th>
+                      <th className="p-2.5 border border-slate-300">Fecha</th>
+                      <th className="p-2.5 border border-slate-300 text-center">Nº Socios</th>
+                      <th className="p-2.5 border border-slate-300 text-center">Nº No Socios</th>
+                      <th className="p-2.5 border border-slate-300 text-right">Reservas Cobradas</th>
+                      <th className="p-2.5 border border-slate-300 text-right">Patrocinios Cobrados</th>
+                      <th className="p-2.5 border border-slate-300 text-right">Gastos</th>
+                      <th className="p-2.5 border border-slate-300 text-right">Balance Neto</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-200">
                     {filteredActivities.map(act => {
                       const fin = financesByActivity[act.id] || {
                         reservasFacturadas: 0,
@@ -1977,37 +2274,37 @@ export function AccountsManager() {
                       };
 
                       return (
-                        <tr key={act.id} className="hover:bg-slate-50/60 transition-colors">
-                          <td className="p-3 font-semibold text-slate-900">{act.title}</td>
-                          <td className="p-3 capitalize text-slate-600">{act.type}</td>
-                          <td className="p-3 text-slate-500">{formatDate(act.date)}</td>
-                          <td className="p-3 text-center font-medium">{fin.numSocios}</td>
-                          <td className="p-3 text-center font-medium">{fin.numNoSocios}</td>
-                          <td className="p-3 text-right font-medium text-slate-900">{formatCurrency(fin.reservasCobradas)}</td>
-                          <td className="p-3 text-right font-medium text-slate-900">{formatCurrency(fin.patrociniosCobrados)}</td>
-                          <td className="p-3 text-right font-medium text-rose-600">{formatCurrency(fin.gastos)}</td>
-                          <td className={`p-3 text-right font-bold ${fin.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                        <tr key={act.id} className="print:break-inside-avoid hover:bg-slate-50/60 transition-colors">
+                          <td className="p-2.5 border border-slate-200 font-semibold text-slate-900">{act.title}</td>
+                          <td className="p-2.5 border border-slate-200 capitalize text-slate-600">{act.type}</td>
+                          <td className="p-2.5 border border-slate-200 text-slate-500">{formatDate(act.date)}</td>
+                          <td className="p-2.5 border border-slate-200 text-center font-medium">{fin.numSocios}</td>
+                          <td className="p-2.5 border border-slate-200 text-center font-medium">{fin.numNoSocios}</td>
+                          <td className="p-2.5 border border-slate-200 text-right font-medium text-slate-900">{formatCurrency(fin.reservasCobradas)}</td>
+                          <td className="p-2.5 border border-slate-200 text-right font-medium text-slate-900">{formatCurrency(fin.patrociniosCobrados)}</td>
+                          <td className="p-2.5 border border-slate-200 text-right font-medium text-rose-700">{formatCurrency(fin.gastos)}</td>
+                          <td className={`p-2.5 border border-slate-200 text-right font-bold ${fin.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
                             {fin.balance >= 0 ? '+' : ''}{formatCurrency(fin.balance)}
                           </td>
                         </tr>
                       );
                     })}
                   </tbody>
-                  <tfoot className="bg-slate-50 border-t-2 border-slate-300 font-bold text-slate-900">
-                    <tr>
-                      <td colSpan={3} className="p-3 text-slate-700 uppercase tracking-wider text-[10px]">
+                  <tfoot className="bg-slate-100 border-t-2 border-slate-400 font-bold text-slate-900 print:bg-slate-100">
+                    <tr className="print:break-inside-avoid">
+                      <td colSpan={3} className="p-2.5 border border-slate-300 text-slate-700 uppercase tracking-wider text-[10px]">
                         Totales Globales ({filteredActivities.length} actividades)
                       </td>
-                      <td className="p-3 text-center">
+                      <td className="p-2.5 border border-slate-300 text-center">
                         {filteredActivities.reduce((sum, a) => sum + (financesByActivity[a.id]?.numSocios || 0), 0)}
                       </td>
-                      <td className="p-3 text-center">
+                      <td className="p-2.5 border border-slate-300 text-center">
                         {filteredActivities.reduce((sum, a) => sum + (financesByActivity[a.id]?.numNoSocios || 0), 0)}
                       </td>
-                      <td className="p-3 text-right">{formatCurrency(totals.reservasCobradas)}</td>
-                      <td className="p-3 text-right">{formatCurrency(totals.patrociniosCobrados)}</td>
-                      <td className="p-3 text-right text-rose-600">{formatCurrency(totals.gastos)}</td>
-                      <td className={`p-3 text-right text-sm ${totals.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      <td className="p-2.5 border border-slate-300 text-right">{formatCurrency(totals.reservasCobradas)}</td>
+                      <td className="p-2.5 border border-slate-300 text-right">{formatCurrency(totals.patrociniosCobrados)}</td>
+                      <td className="p-2.5 border border-slate-300 text-right text-rose-700">{formatCurrency(totals.gastos)}</td>
+                      <td className={`p-2.5 border border-slate-300 text-right text-sm ${totals.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
                         {totals.balance >= 0 ? '+' : ''}{formatCurrency(totals.balance)}
                       </td>
                     </tr>
@@ -2016,22 +2313,22 @@ export function AccountsManager() {
               </div>
 
               {/* Sub-totals by type breakdown */}
-              <div className="bg-[#FAF8F5] p-5 rounded-2xl border border-slate-200 space-y-3">
+              <div className="bg-[#FAF8F5] p-5 rounded-2xl border border-slate-200 space-y-3 print:bg-white print:border-slate-300 print:rounded-lg print:p-3 print:break-inside-avoid">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600">Subtotales por Tipo de Actividad</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                  <div className="p-3 bg-white rounded-xl border border-slate-200">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs print:grid-cols-3 print:gap-2">
+                  <div className="p-3 bg-white rounded-xl border border-slate-200 print:p-2 print:border-slate-300">
                     <span className="font-bold text-slate-800 block">Catas</span>
                     <span className={`font-semibold text-sm mt-1 block ${totals.typeBreakdown.cata >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
                       Balance: {totals.typeBreakdown.cata >= 0 ? '+' : ''}{formatCurrency(totals.typeBreakdown.cata)}
                     </span>
                   </div>
-                  <div className="p-3 bg-white rounded-xl border border-slate-200">
+                  <div className="p-3 bg-white rounded-xl border border-slate-200 print:p-2 print:border-slate-300">
                     <span className="font-bold text-slate-800 block">Cursos</span>
                     <span className={`font-semibold text-sm mt-1 block ${totals.typeBreakdown.curso >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
                       Balance: {totals.typeBreakdown.curso >= 0 ? '+' : ''}{formatCurrency(totals.typeBreakdown.curso)}
                     </span>
                   </div>
-                  <div className="p-3 bg-white rounded-xl border border-slate-200">
+                  <div className="p-3 bg-white rounded-xl border border-slate-200 print:p-2 print:border-slate-300">
                     <span className="font-bold text-slate-800 block">Viajes</span>
                     <span className={`font-semibold text-sm mt-1 block ${totals.typeBreakdown.viaje >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
                       Balance: {totals.typeBreakdown.viaje >= 0 ? '+' : ''}{formatCurrency(totals.typeBreakdown.viaje)}

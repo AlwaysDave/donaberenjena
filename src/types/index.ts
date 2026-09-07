@@ -25,6 +25,9 @@ export interface BaseActivity {
   participantIds?: string[];
   status: ActivityStatus;
   registrationStatus?: RegistrationStatus; // 'abierta' o 'cerrada'
+  reopenedAt?: string;
+  reopenedBy?: string;
+  reopenReason?: string;
   images: string[];
   documentPdf?: PdfDocument;
   location: string;
@@ -273,6 +276,9 @@ export interface Participant {
   cancellationRefund?: number;
   attendedAt?: string;
   attendedBy?: string;
+  correctedAt?: string;
+  correctedBy?: string;
+  correctionReason?: string;
   spotsCount?: number;
   totalAmount: number;
   paidAmount?: number;
@@ -280,6 +286,36 @@ export interface Participant {
   registeredAt: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface AdvancedAttendanceCorrectionParams {
+  participantId: string;
+  activityId: string;
+  targetStatus: CanonicalParticipantStatus;
+  correctionReason: string;
+  actor: string;
+  cancellationData?: {
+    reason?: string;
+    justified?: boolean;
+    kind?: CancellationKind;
+    refundAmount?: number;
+  };
+  paymentData?: {
+    paidAmount?: number;
+  };
+  attendanceData?: {
+    attendedAt?: string;
+    attendedBy?: string;
+  };
+}
+
+export interface AdvancedCorrectionResult {
+  success: boolean;
+  error?: string;
+  updatedParticipant?: Partial<Participant>;
+  updatedActivity?: Partial<Activity>;
+  spotsDelta?: number;
+  willReopen?: boolean;
 }
 
 export interface ContactMessage {

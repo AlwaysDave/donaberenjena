@@ -15,9 +15,9 @@ import {
   Unsubscribe 
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { Activity, AdminRole, WebMetric, Participant, Member, AdminNotification, Expense, Sponsorship, ContactMessage, ParticipantStatus } from '../types';
+import { Activity, AdminRole, WebMetric, Participant, Member, AdminNotification, Expense, Sponsorship, ContactMessage, ParticipantStatus, AdvancedAttendanceCorrectionParams, AdvancedCorrectionResult } from '../types';
 import { sortActivitiesAscending } from '../utils/dateUtils';
-import { validateAndPrepareTransition, isActivityConcluded, checkAttendanceSheetComplete } from './participantTransitions';
+import { validateAndPrepareTransition, isActivityConcluded, checkAttendanceSheetComplete, validateAndPrepareAdvancedCorrection } from './participantTransitions';
 import { normalizeParticipantRecord } from './participantMigration';
 
 const ACTIVITIES_COLLECTION = 'activities';
@@ -679,6 +679,7 @@ export async function executeParticipantTransitionFirestore({
     reason: string;
     justified: boolean;
     kind: 'cancelacion_usuario' | 'no_presentado';
+    refundAmount?: number;
   };
   _testHooks?: {
     afterRead?: (participant: Participant, activity: Activity) => Promise<void>;
@@ -741,6 +742,91 @@ export async function executeParticipantTransitionFirestore({
       success: true,
       updatedParticipant: transition.updatedParticipant,
       spotsDelta: transition.spotsDelta
+    };
+  });
+}
+
+/**
+ * Single transactional service for advanced attendance correction (T-04B).
+ * Reads participant and activity within the transaction,
+ * calculates strict spot delta from canonical occupancy before and after,
+ * reopens activity to 'proxima' if a pending status is introduced into a 'celebrada' activity,
+ * and writes all changes to participant and activity in that same transaction.
+ */
+export async function executeAdvancedAttendanceCorrectionFirestore({
+  participantId,
+  activityId,
+  targetStatus,
+  correctionReason,
+  actor = 'Dirección / Administración',
+  cancellationData,
+  paymentData,
+  attendanceData,
+  _testHooks
+}: AdvancedAttendanceCorrectionParams & {
+  _testHooks?: {
+    afterRead?: (participant: Participant, activity: Activity) => Promise<void>;
+    beforeCommit?: () => Promise<void>;
+  };
+}): Promise<AdvancedCorrectionResult> {
+  if (!db) throw new Error('Firestore is not initialized');
+
+  const partRef = doc(db, PARTICIPANTS_COLLECTION, participantId);
+  const actRef = doc(db, ACTIVITIES_COLLECTION, activityId);
+
+  return await runTransaction(db, async (transaction) => {
+    const partSnap = await transaction.get(partRef as any);
+    if (!partSnap.exists()) {
+      return { success: false, error: 'Participante no encontrado.' };
+    }
+    const actSnap = await transaction.get(actRef as any);
+    if (!actSnap.exists()) {
+      return { success: false, error: 'Actividad no encontrada.' };
+    }
+
+    const partData = typeof partSnap.data === 'function' ? partSnap.data() : partSnap.data;
+    const actData = typeof actSnap.data === 'function' ? actSnap.data() : actSnap.data;
+
+    const participant = { ...(partData as any), id: partSnap.id } as Participant;
+    const activity = { ...(actData as any), id: actSnap.id } as Activity;
+
+    if (_testHooks?.afterRead) {
+      await _testHooks.afterRead(participant, activity);
+    }
+
+    const validation = validateAndPrepareAdvancedCorrection({
+      participant,
+      activity,
+      targetStatus,
+      correctionReason,
+      actor,
+      cancellationData,
+      paymentData,
+      attendanceData
+    });
+
+    if (!validation.allowed) {
+      return { success: false, error: validation.error };
+    }
+
+    const cleanPartUpdates = sanitizeForFirestore(validation.updatedParticipant || {});
+    transaction.update(partRef as any, cleanPartUpdates);
+
+    if (validation.activityUpdates) {
+      const cleanActUpdates = sanitizeForFirestore(validation.activityUpdates);
+      transaction.update(actRef as any, cleanActUpdates);
+    }
+
+    if (_testHooks?.beforeCommit) {
+      await _testHooks.beforeCommit();
+    }
+
+    return {
+      success: true,
+      updatedParticipant: validation.updatedParticipant,
+      updatedActivity: validation.activityUpdates,
+      spotsDelta: validation.spotsDelta,
+      willReopen: validation.willReopen
     };
   });
 }

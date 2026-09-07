@@ -208,17 +208,17 @@ export function computeOperationalMetrics(params: {
   const activeMembersTotal = members.filter(m => m.active).length;
   const newMembersInPeriod = members.filter(m => isDateInRange(m.createdAt, start, end)).length;
 
-  // 5. Financials in period (Formula exactly matching AccountsManager)
+  // 5. Financials in period (Formula exactly matching AccountsManager, CON-01: solo 'asistio')
   // Reservations from period activities
   let reservasFacturadas = 0;
   let reservasCobradas = 0;
 
   periodActivities.forEach(a => {
-    const actActiveParticipants = participants.filter(
-      p => p.activityId === a.id && p.status !== 'cancelada' && p.status !== 'lista_de_espera'
+    const actAsistioParticipants = participants.filter(
+      p => p.activityId === a.id && p.status === 'asistio'
     );
-    reservasFacturadas += actActiveParticipants.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
-    reservasCobradas += actActiveParticipants.reduce((sum, p) => sum + (p.paidAmount ?? 0), 0);
+    reservasFacturadas += actAsistioParticipants.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+    reservasCobradas += actAsistioParticipants.reduce((sum, p) => sum + (p.paidAmount ?? 0), 0);
   });
 
   // Sponsorships in period

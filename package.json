@@ -1,7 +1,7 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "0.10.0",
+  "version": "0.12.0",
   "type": "module",
   "engines": {
     "node": "22.x"
@@ -17,8 +17,10 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test:fase1": "tsx scripts/run-fase1-tests.ts",
-    "test:attendance-close:emulator": "firebase emulators:exec --only firestore,auth --project test-project \"tsx scripts/run-emulator-tests.ts\""
+    "test:fase1": "tsx scripts/run-fase1-tests.ts && tsx scripts/run-fase1-t06-tests.ts",
+    "test:attendance-close:emulator": "firebase emulators:exec --only firestore,auth --project test-project \"tsx scripts/run-emulator-tests.ts\"",
+    "test:checkin-status:emulator": "firebase emulators:exec --only firestore,auth --project test-project \"tsx scripts/run-checkin-tests.ts\"",
+    "test:fase4b:emulator": "firebase emulators:exec --only firestore,auth --project test-project \"tsx scripts/run-fase4b-tests.ts\""
   },
   "dependencies": {
     "@google/genai": "^2.18.0",
@@ -28,6 +30,9 @@
     "express": "^5.2.1",
     "firebase": "^12.18.0",
     "firebase-admin": "^14.3.0",
+    "html2canvas": "^1.4.1",
+    "html2canvas-pro": "^2.4.2",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "multer": "^2.2.0",

@@ -67,7 +67,11 @@ export function getStoredAdminSession(): AdminUser | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_ADMIN_SESSION);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.baseRole === 'simple') {
+        parsed.role = 'simple';
+      }
+      return parsed;
     }
   } catch (e) {
     console.error('Error reading admin session', e);

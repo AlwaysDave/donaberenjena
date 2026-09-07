@@ -14,8 +14,37 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
+    function getAdminDoc() {
+      return get(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
     function isAdmin() {
       return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isAdvancedAdmin() {
+      return isAdmin() && 
+        (getAdminDoc().data.role == 'advanced' || 
+         getAdminDoc().data.role == 'super_admin' || 
+         getAdminDoc().data.role == 'admin');
+    }
+
+    function isSimpleAdmin() {
+      return isAdmin() && getAdminDoc().data.role == 'simple';
+    }
+
+    // Door check-in permissions for simple admin on proxima activities
+    function isAllowedSimpleDoorTransition() {
+      return isSimpleAdmin() &&
+        request.resource.data.activityId == resource.data.activityId &&
+        (resource.data.status == 'pendiente_pago' || resource.data.status == 'pagada') &&
+        (
+          request.resource.data.status == 'asistio' ||
+          (request.resource.data.status == 'cancelada' && request.resource.data.cancellationKind == 'no_presentado')
+        ) &&
+        !('correctedAt' in request.resource.data) &&
+        !('correctionReason' in request.resource.data) &&
+        get(/databases/$(database)/documents/activities/$(resource.data.activityId)).data.status == 'proxima';
     }
 
     // Validates contact form submission with anti-spam check
@@ -35,20 +64,23 @@ service cloud.firestore {
 
     // =========================================================================
     // 1. ACTIVITIES COLLECTION
-    // Public read for catalog exploration; write restricted strictly to verified Admins
+    // Public read for catalog exploration; write restricted strictly to Advanced Admins
     // =========================================================================
     match /activities/{activityId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdvancedAdmin();
     }
 
     // =========================================================================
     // 2. PARTICIPANTS COLLECTION (PII PROTECTED)
-    // All read and write operations restricted strictly to authenticated Admins.
-    // Public reservations are handled via the /api/reserve backend endpoint.
+    // Read allowed for any authenticated Admin.
+    // Create/Delete restricted to Advanced Admins.
+    // Update allowed to Advanced Admins OR Simple Admins for allowed door transitions.
     // =========================================================================
     match /participants/{participantId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      allow create, delete: if isAdvancedAdmin();
+      allow update: if isAdvancedAdmin() || isAllowedSimpleDoorTransition();
     }
 
     // =========================================================================
@@ -78,7 +110,8 @@ service cloud.firestore {
     // Strictly read & write for authenticated administrators only
     // =========================================================================
     match /members/{memberId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      allow write: if isAdvancedAdmin();
     }
 
     // =========================================================================
@@ -91,18 +124,20 @@ service cloud.firestore {
 
     // =========================================================================
     // 7. EXPENSES COLLECTION
-    // Financial data, strictly for authenticated administrators only
+    // Financial data, strictly for authenticated advanced administrators only
     // =========================================================================
     match /expenses/{expenseId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      allow write: if isAdvancedAdmin();
     }
 
     // =========================================================================
     // 8. SPONSORSHIPS COLLECTION
-    // Financial data, strictly for authenticated administrators only
+    // Financial data, strictly for authenticated advanced administrators only
     // =========================================================================
     match /sponsorships/{sponsorshipId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      allow write: if isAdvancedAdmin();
     }
 
     // =========================================================================

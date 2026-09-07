@@ -45,7 +45,7 @@ function calculateColumnWidths(data: any[]): { wch: number }[] {
   return Object.values(colWidths).map(w => ({ wch: Math.min(Math.max(w, 12), 48) }));
 }
 
-export function exportAccountingToExcel(options: ExportAccountingOptions): void {
+export function generateAccountingWorkbook(options: ExportAccountingOptions): XLSX.WorkBook {
   const { year, activities, participants, sponsorships, expenses, financesByActivity } = options;
   const wb = XLSX.utils.book_new();
 
@@ -179,13 +179,13 @@ export function exportAccountingToExcel(options: ExportAccountingOptions): void 
   XLSX.utils.book_append_sheet(wb, wsActividades, 'Actividades');
 
   // -------------------------------------------------------------
-  // 3. HOJA: RESERVAS
+  // 3. HOJA: RESERVAS (CON-01 / CON-02: solo 'asistio', 1 doc = 1 persona)
   // -------------------------------------------------------------
   const activityMap = new Map<string, Activity>(activities.map(a => [a.id, a]));
   const filteredActivityIds = new Set(activities.map(a => a.id));
 
   const validParticipants = participants.filter(
-    p => filteredActivityIds.has(p.activityId) && p.status !== 'cancelada'
+    p => filteredActivityIds.has(p.activityId) && p.status === 'asistio'
   );
 
   const reservasRows = validParticipants.map(p => {
@@ -203,7 +203,7 @@ export function exportAccountingToExcel(options: ExportAccountingOptions): void 
       'Teléfono': p.phone || '',
       'Condición': p.isMember ? 'Socio' : 'General',
       'Nº Socio': p.membershipNumber || '',
-      'Plazas': p.spotsCount || 1,
+      'Plazas': 1,
       'Total Facturado (€)': Number(total.toFixed(2)),
       'Importe Cobrado (€)': Number(paid.toFixed(2)),
       'Pendiente (€)': Number(pending.toFixed(2)),
@@ -294,9 +294,11 @@ export function exportAccountingToExcel(options: ExportAccountingOptions): void 
   }
   XLSX.utils.book_append_sheet(wb, wsGastos, 'Gastos');
 
-  // -------------------------------------------------------------
-  // DESCARGA DE ARCHIVO
-  // -------------------------------------------------------------
-  const fileName = `contabilidad-dona-berenjena-${year === 'all' ? 'todos-los-anos' : year}.xlsx`;
+  return wb;
+}
+
+export function exportAccountingToExcel(options: ExportAccountingOptions): void {
+  const wb = generateAccountingWorkbook(options);
+  const fileName = `contabilidad-dona-berenjena-${options.year === 'all' ? 'todos-los-anos' : options.year}.xlsx`;
   XLSX.writeFile(wb, fileName);
 }

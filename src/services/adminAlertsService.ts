@@ -1,5 +1,5 @@
 import { Activity, Participant, Member, ContactMessage } from '../types';
-import { isActivityConcluded, isActivityTodayOrPast } from './participantTransitions';
+import { isActivityConcluded } from './participantTransitions';
 
 export type AlertSeverity = 'important' | 'attention' | 'info';
 

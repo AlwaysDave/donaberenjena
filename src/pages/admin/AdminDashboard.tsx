@@ -60,12 +60,13 @@ export const AdminDashboard: React.FC = () => {
     return null;
   }
 
-  const currentRole = user.role;
+  const isAdvancedAdmin = user.baseRole === 'advanced';
+  const effectiveRole = isAdvancedAdmin ? (user.role || 'advanced') : 'simple';
 
   return (
     <div className="min-h-screen bg-[#FBF9F5] pb-20">
       {/* Top Admin Bar */}
-      <div className="bg-[#290824] text-white border-b border-[#3E1037] px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
+      <div className="bg-[#290824] text-white border-b border-[#3E1037] px-4 sm:px-6 lg:px-8 py-3 sm:py-4 print:hidden">
         {/* MOBILE VIEW (< sm) */}
         <div className="sm:hidden flex flex-col gap-2.5">
           {/* Mobile Row 1: Brand & User Identity */}
@@ -76,7 +77,7 @@ export const AdminDashboard: React.FC = () => {
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="font-bold text-sm text-white tracking-tight leading-none">Doña Berenjena</span>
                   <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#842A76] text-white font-semibold uppercase">
-                    {user.baseRole === 'advanced' ? 'Admin' : 'Coord'}
+                    {isAdvancedAdmin ? 'Admin' : 'Coord'}
                   </span>
                 </div>
                 <p className="text-[11px] text-[#DFD3C2] mt-0.5 truncate max-w-[220px]">
@@ -86,35 +87,37 @@ export const AdminDashboard: React.FC = () => {
             </Link>
           </div>
 
-          {/* Mobile Row 2: Full-width Segmented Mode Switcher */}
-          <div className="grid grid-cols-2 p-1 rounded-xl bg-[#191412] border border-[#3D3430] w-full gap-1">
-            <button
-              id="btn-switch-to-simple-mobile"
-              type="button"
-              onClick={() => switchRole('simple')}
-              className={`min-h-[42px] flex items-center justify-center gap-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                currentRole === 'simple'
-                  ? 'bg-[#C96043] text-white shadow-xs'
-                  : 'text-[#DFD3C2] active:text-white'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Modo Sencillo</span>
-            </button>
-            <button
-              id="btn-switch-to-advanced-mobile"
-              type="button"
-              onClick={() => switchRole('advanced')}
-              className={`min-h-[42px] flex items-center justify-center gap-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                currentRole === 'advanced'
-                  ? 'bg-[#521849] text-white shadow-xs'
-                  : 'text-[#DFD3C2] active:text-white'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Modo Avanzado</span>
-            </button>
-          </div>
+          {/* Mobile Row 2: Full-width Segmented Mode Switcher (Only for Advanced Admins) */}
+          {isAdvancedAdmin && (
+            <div className="grid grid-cols-2 p-1 rounded-xl bg-[#191412] border border-[#3D3430] w-full gap-1">
+              <button
+                id="btn-switch-to-simple-mobile"
+                type="button"
+                onClick={() => switchRole('simple')}
+                className={`min-h-[42px] flex items-center justify-center gap-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  effectiveRole === 'simple'
+                    ? 'bg-[#C96043] text-white shadow-xs'
+                    : 'text-[#DFD3C2] active:text-white'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Modo Sencillo</span>
+              </button>
+              <button
+                id="btn-switch-to-advanced-mobile"
+                type="button"
+                onClick={() => switchRole('advanced')}
+                className={`min-h-[42px] flex items-center justify-center gap-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  effectiveRole === 'advanced'
+                    ? 'bg-[#521849] text-white shadow-xs'
+                    : 'text-[#DFD3C2] active:text-white'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Modo Avanzado</span>
+              </button>
+            </div>
+          )}
 
           {/* Mobile Row 3: Dedicated Full-Width Action Buttons (Avisos, Web Pública, Salir) */}
           <div className="grid grid-cols-3 gap-2 w-full pt-0.5">
@@ -162,7 +165,7 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           {/* Mobile Row 4: Mockup Toggle if in advanced mode */}
-          {currentRole === 'advanced' && (
+          {effectiveRole === 'advanced' && (
             <div className="flex items-center justify-between pt-1 border-t border-white/10 text-xs">
               <span className="text-[11px] text-[#DFD3C2]">Datos de prueba:</span>
               <button
@@ -208,7 +211,7 @@ export const AdminDashboard: React.FC = () => {
 
           {/* Mode Switcher and Controls */}
           <div className="flex flex-wrap items-center gap-3">
-            {currentRole === 'advanced' && (
+            {effectiveRole === 'advanced' && (
               <button
                 type="button"
                 onClick={toggleMockData}
@@ -229,35 +232,37 @@ export const AdminDashboard: React.FC = () => {
               </button>
             )}
 
-            {/* Any logged in admin can switch freely between simple and advanced views */}
-            <div className="inline-flex p-1 rounded-xl bg-[#191412] border border-[#3D3430]">
-              <button
-                id="btn-switch-to-simple"
-                type="button"
-                onClick={() => switchRole('simple')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  currentRole === 'simple'
-                    ? 'bg-[#C96043] text-white shadow-xs'
-                    : 'text-[#DFD3C2] hover:text-white'
-                }`}
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Modo Sencillo</span>
-              </button>
-              <button
-                id="btn-switch-to-advanced"
-                type="button"
-                onClick={() => switchRole('advanced')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  currentRole === 'advanced'
-                    ? 'bg-[#521849] text-white shadow-xs'
-                    : 'text-[#DFD3C2] hover:text-white'
-                }`}
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span>Modo Avanzado</span>
-              </button>
-            </div>
+            {/* Mode Switcher: Only for Advanced Admins */}
+            {isAdvancedAdmin && (
+              <div className="inline-flex p-1 rounded-xl bg-[#191412] border border-[#3D3430]">
+                <button
+                  id="btn-switch-to-simple"
+                  type="button"
+                  onClick={() => switchRole('simple')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    effectiveRole === 'simple'
+                      ? 'bg-[#C96043] text-white shadow-xs'
+                      : 'text-[#DFD3C2] hover:text-white'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Modo Sencillo</span>
+                </button>
+                <button
+                  id="btn-switch-to-advanced"
+                  type="button"
+                  onClick={() => switchRole('advanced')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    effectiveRole === 'advanced'
+                      ? 'bg-[#521849] text-white shadow-xs'
+                      : 'text-[#DFD3C2] hover:text-white'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Modo Avanzado</span>
+                </button>
+              </div>
+            )}
 
             {/* Notification Bell Button */}
             <button
@@ -301,7 +306,7 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Disconnection Warning if not connected */}
       {!isConnected && (
-        <div className="bg-rose-50 border-b border-rose-200 px-4 py-2.5">
+        <div className="bg-rose-50 border-b border-rose-200 px-4 py-2.5 print:hidden">
           <div className="max-w-7xl mx-auto flex items-center justify-between text-xs text-rose-900">
             <div className="flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
@@ -320,17 +325,21 @@ export const AdminDashboard: React.FC = () => {
             onClose={() => setShowNotificationsDrawer(false)} 
             onNavigateTab={() => {
               setShowNotificationsDrawer(false);
-              if (currentRole !== 'advanced') {
+              if (isAdvancedAdmin && effectiveRole !== 'advanced') {
                 switchRole('advanced');
               }
             }}
           />
-        ) : currentRole === 'simple' ? (
+        ) : effectiveRole === 'simple' ? (
           <ModoSencilloView 
-            onNavigateToAttendance={(actId) => {
-              setTargetAttendanceActivityId(actId);
-              switchRole('advanced');
-            }}
+            onNavigateToAttendance={
+              isAdvancedAdmin 
+                ? (actId) => {
+                    setTargetAttendanceActivityId(actId);
+                    switchRole('advanced');
+                  }
+                : undefined
+            }
           />
         ) : (
           <ModoAvanzadoView 

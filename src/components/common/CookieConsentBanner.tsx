@@ -72,7 +72,7 @@ export const CookieConsentBanner: React.FC = () => {
       id="cookie-consent-banner"
       role="region"
       aria-label="Consentimiento de cookies"
-      className="fixed bottom-0 inset-x-0 z-50 p-4 sm:p-6 pointer-events-none"
+      className="fixed bottom-0 inset-x-0 z-50 p-4 sm:p-6 pointer-events-none print:hidden"
     >
       <div className="max-w-4xl mx-auto bg-white/95 backdrop-blur-md border border-[#EDE4D7] rounded-2xl shadow-xl p-5 sm:p-6 pointer-events-auto transition-all animate-in fade-in slide-in-from-bottom-4 duration-300">
         {!showDetails ? (

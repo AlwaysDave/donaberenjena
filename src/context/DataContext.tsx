@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Activity, AdminNotification, CataActivity, CursoActivity, Member, Participant, ParticipantStatus, ReservationFailureKind, ReservationFormData, ReservationResult, ViajeActivity, WebMetric, Expense, Sponsorship, ContactMessage } from '../types';
+import { Activity, AdminNotification, CataActivity, CursoActivity, Member, Participant, ParticipantStatus, ReservationFailureKind, ReservationFormData, ReservationResult, ViajeActivity, WebMetric, Expense, Sponsorship, ContactMessage, AdvancedAttendanceCorrectionParams, AdvancedCorrectionResult } from '../types';
 import { useAuth } from './AuthContext';
 import { db, isFirebaseConfigured } from '../services/firebase';
 import { INITIAL_PARTICIPANTS } from '../data/mockData';
@@ -15,6 +15,7 @@ import {
   deleteParticipantFirestore,
   addManualParticipantFirestore,
   executeParticipantTransitionFirestore,
+  executeAdvancedAttendanceCorrectionFirestore,
   closeActivityAsCelebratedFirestore,
   executeAdministrativeMigrationFirestore,
   subscribeToMembersFirestore,
@@ -38,7 +39,7 @@ import {
   updateContactMessageFirestore,
   deleteContactMessageFirestore
 } from '../services/firestoreService';
-import { validateAndPrepareTransition, isActivityConcluded, checkAttendanceSheetComplete } from '../services/participantTransitions';
+import { validateAndPrepareTransition, isActivityConcluded, checkAttendanceSheetComplete, validateAndPrepareAdvancedCorrection } from '../services/participantTransitions';
 import { normalizeParticipantRecord } from '../services/participantMigration';
 import { validateIdempotencyKey, classifyReservationFailure } from '../services/reservationTransaction';
 
@@ -78,8 +79,12 @@ interface DataContextType {
       reason: string;
       justified: boolean;
       kind: 'cancelacion_usuario' | 'no_presentado';
+      refundAmount?: number;
     };
   }) => Promise<{ success: boolean; error?: string; updatedParticipant?: Partial<Participant> }>;
+  executeAdvancedAttendanceCorrection: (
+    params: AdvancedAttendanceCorrectionParams
+  ) => Promise<AdvancedCorrectionResult>;
   closeActivityAsCelebrated: (activityId: string, actor?: string) => Promise<{
     success: boolean;
     alreadyClosed?: boolean;
@@ -949,6 +954,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       reason: string;
       justified: boolean;
       kind: 'cancelacion_usuario' | 'no_presentado';
+      refundAmount?: number;
     };
   }): Promise<{ success: boolean; error?: string; updatedParticipant?: Partial<Participant> }> => {
     const currentParticipants = useMockData ? demoParticipants : participants;
@@ -1011,6 +1017,77 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setActivities(prev => prev.map(a => a.id === activityId ? { ...a, bookedSpots: Math.max(0, a.bookedSpots + spotsDelta) } : a));
     }
     return { success: true, updatedParticipant: updates };
+  };
+
+  const executeAdvancedAttendanceCorrection = async (
+    params: AdvancedAttendanceCorrectionParams
+  ): Promise<AdvancedCorrectionResult> => {
+    const currentParticipants = useMockData ? demoParticipants : participants;
+    const currentActivities = useMockData ? demoActivities : activities;
+
+    const participant = currentParticipants.find(p => p.id === params.participantId);
+    const activity = currentActivities.find(a => a.id === params.activityId);
+
+    if (!participant) {
+      return { success: false, error: 'Participante no encontrado.' };
+    }
+    if (!activity) {
+      return { success: false, error: 'Actividad no encontrada.' };
+    }
+
+    const validation = validateAndPrepareAdvancedCorrection({
+      participant,
+      activity,
+      targetStatus: params.targetStatus,
+      correctionReason: params.correctionReason,
+      actor: params.actor,
+      cancellationData: params.cancellationData,
+      paymentData: params.paymentData,
+      attendanceData: params.attendanceData
+    });
+
+    if (!validation.allowed) {
+      return { success: false, error: validation.error };
+    }
+
+    const partUpdates = validation.updatedParticipant || {};
+    const actUpdates = validation.activityUpdates || {};
+
+    if (useMockData) {
+      setDemoParticipants(prev => prev.map(p => p.id === params.participantId ? { ...p, ...partUpdates } : p));
+      setDemoActivities(prev => prev.map(a => a.id === params.activityId ? { ...a, ...actUpdates } : a));
+      return {
+        success: true,
+        updatedParticipant: partUpdates,
+        updatedActivity: actUpdates,
+        spotsDelta: validation.spotsDelta,
+        willReopen: validation.willReopen
+      };
+    }
+
+    if (isFirebaseConfigured() && db) {
+      try {
+        const res = await executeAdvancedAttendanceCorrectionFirestore(params);
+        if (res.success) {
+          setParticipants(prev => prev.map(p => p.id === params.participantId ? { ...p, ...partUpdates } : p));
+          setActivities(prev => prev.map(a => a.id === params.activityId ? { ...a, ...actUpdates } : a));
+        }
+        return res;
+      } catch (err: any) {
+        console.error('Error executing Firestore advanced correction transaction:', err);
+        return { success: false, error: err.message || 'Error al persistir la corrección en la base de datos.' };
+      }
+    }
+
+    setParticipants(prev => prev.map(p => p.id === params.participantId ? { ...p, ...partUpdates } : p));
+    setActivities(prev => prev.map(a => a.id === params.activityId ? { ...a, ...actUpdates } : a));
+    return {
+      success: true,
+      updatedParticipant: partUpdates,
+      updatedActivity: actUpdates,
+      spotsDelta: validation.spotsDelta,
+      willReopen: validation.willReopen
+    };
   };
 
   const closeActivityAsCelebrated = async (
@@ -1602,6 +1679,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       deleteParticipant,
       markAttendance,
       executeParticipantTransition,
+      executeAdvancedAttendanceCorrection,
       closeActivityAsCelebrated,
       executeAdministrativeMigration,
       incrementViews,

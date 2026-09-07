@@ -25,15 +25,17 @@ import {
   ArrowRight, 
   RefreshCw, 
   ShieldCheck, 
+  ShieldAlert,
   HelpCircle,
   CreditCard,
   UserX
 } from 'lucide-react';
+import { AdvancedAttendanceCorrectionModal } from './AdvancedAttendanceCorrectionModal';
 import { sortActivitiesAscending } from '../../utils/dateUtils';
 import { Pagination } from '../common/Pagination';
 import { 
   isActivityConcluded, 
-  isActivityTodayOrPast, 
+  canResolveAttendance,
   validateAndPrepareTransition,
   checkAttendanceSheetComplete
 } from '../../services/participantTransitions';
@@ -105,6 +107,16 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
   const [migrationSimulation, setMigrationSimulation] = useState<MigrationSimulationResult | null>(null);
   const [isApplyingMigration, setIsApplyingMigration] = useState<boolean>(false);
   const [migrationSuccessMsg, setMigrationSuccessMsg] = useState<string | null>(null);
+
+  // Advanced Attendance Correction State (Modo Avanzado)
+  const isAdvancedAdmin = user?.baseRole === 'advanced';
+  const [correctionModalParticipant, setCorrectionModalParticipant] = useState<Participant | null>(null);
+  const [correctionSuccessMsg, setCorrectionSuccessMsg] = useState<string | null>(null);
+
+  const correctionActivity = useMemo(() => {
+    if (!correctionModalParticipant) return null;
+    return activities.find(a => a.id === correctionModalParticipant.activityId) || null;
+  }, [correctionModalParticipant, activities]);
 
   // Form State (Only personal and administrative data, NO direct arbitrary status manipulation)
   const [formData, setFormData] = useState<{
@@ -330,19 +342,14 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       cancellationData: {
         reason: cancellationReasonInput.trim(),
         justified: cancellationIsJustified,
-        kind: 'cancelacion_usuario'
+        kind: 'cancelacion_usuario',
+        refundAmount: parsedRefund
       }
     });
 
     if (!res.success) {
       setCancellationError(res.error || 'No se pudo cancelar la inscripción.');
       return;
-    }
-
-    if (parsedRefund !== undefined) {
-      await updateParticipant(cancellationModalParticipant.id, {
-        refundAmount: parsedRefund
-      });
     }
 
     setCancellationModalParticipant(null);
@@ -367,6 +374,13 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
 
   // Action: Check-in / Asistió (pendiente_pago / pagada -> asistio)
   const handleCheckIn = async (p: Participant) => {
+    const act = activities.find(a => a.id === p.activityId);
+    const check = canResolveAttendance(act);
+    if (!check.allowed) {
+      alert(check.error || 'No se puede registrar asistencia en esta actividad.');
+      return;
+    }
+
     const res = await executeParticipantTransition({
       participantId: p.id,
       activityId: p.activityId,
@@ -654,6 +668,25 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
             type="button" 
             onClick={() => setCloseCelebratedSuccessMsg(null)}
             className="p-1 rounded-lg text-emerald-700 hover:bg-emerald-100/60 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {correctionSuccessMsg && (
+        <div 
+          id="banner-correction-sheet-success"
+          className="bg-purple-50 border border-purple-300 text-[#521849] px-5 py-3.5 rounded-2xl flex items-center justify-between gap-3 shadow-xs animate-fadeIn"
+        >
+          <div className="flex items-center gap-2.5">
+            <CheckCircle className="w-5 h-5 text-purple-700 shrink-0" />
+            <span className="text-xs sm:text-sm font-semibold">{correctionSuccessMsg}</span>
+          </div>
+          <button 
+            type="button" 
+            onClick={() => setCorrectionSuccessMsg(null)}
+            className="p-1 rounded-lg text-purple-700 hover:bg-purple-100/60 cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -1064,7 +1097,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
             <tbody className="divide-y divide-[#EDE4D7]">
               {paginatedParticipants.map((p) => {
                 const act = activities.find(a => a.id === p.activityId);
-                const isTodayOrPast = act ? isActivityTodayOrPast(act) : true;
+                const canResolve = act ? canResolveAttendance(act).allowed : false;
                 const isConcluded = act ? isActivityConcluded(act) : false;
                 const hasAvailableSpots = act ? act.bookedSpots < act.totalSpots : false;
 
@@ -1215,6 +1248,22 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                           </div>
                         )}
 
+                        {/* Histórico de Corrección Avanzada de Hoja de Sala */}
+                        {p.correctedAt && (
+                          <div className="p-1.5 rounded-lg bg-purple-50 border border-purple-200 text-[9px] text-[#521849] space-y-0.5 max-w-[220px]">
+                            <div className="flex items-center gap-1 font-bold">
+                              <ShieldAlert className="w-3 h-3 text-[#521849]" />
+                              <span>Corregido ({new Date(p.correctedAt).toLocaleDateString('es-ES')})</span>
+                            </div>
+                            {p.correctionReason && (
+                              <p className="line-clamp-2 italic text-[#521849]/90" title={p.correctionReason}>
+                                «{p.correctionReason}»
+                              </p>
+                            )}
+                            {p.correctedBy && <div className="text-[8px] text-[#521849]/70">• {p.correctedBy}</div>}
+                          </div>
+                        )}
+
                         {p.paymentMethod && p.status !== 'cancelada' && p.status !== 'lista_de_espera' && (
                           <div className="text-[10px] text-[#574B45] font-medium flex items-center gap-1">
                             <span>Método:</span>
@@ -1270,8 +1319,8 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                         </button>
                       )}
 
-                      {/* Caso 3: Check-in / Asistió (Disponible para pendiente_pago y pagada si es hoy o pasado) */}
-                      {(p.status === 'pendiente_pago' || p.status === 'pagada') && isTodayOrPast && (
+                      {/* Caso 3: Check-in / Asistió (Disponible para pendiente_pago y pagada si la actividad es proxima) */}
+                      {(p.status === 'pendiente_pago' || p.status === 'pagada') && canResolve && (
                         <button
                           type="button"
                           onClick={() => handleCheckIn(p)}
@@ -1291,6 +1340,19 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                           title="Gestionar Cancelación (requiere motivo obligatorio)"
                         >
                           <XCircle className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+
+                      {/* Caso 5: Corrección Avanzada de Hoja de Sala (Exclusivo Modo Avanzado) */}
+                      {isAdvancedAdmin && (
+                        <button
+                          type="button"
+                          id={`btn-advanced-correct-sheet-${p.id}`}
+                          onClick={() => setCorrectionModalParticipant(p)}
+                          className="p-1.5 rounded-lg border border-purple-300 bg-purple-50 text-[#521849] hover:bg-purple-100 cursor-pointer"
+                          title="Corregir hoja de sala (Acción administrativa avanzada)"
+                        >
+                          <ShieldAlert className="w-3.5 h-3.5" />
                         </button>
                       )}
 
@@ -1927,6 +1989,20 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODAL: CORRECCIÓN AVANZADA DE HOJA DE SALA (EXCLUSIVO MODO AVANZADO) */}
+      {isAdvancedAdmin && (
+        <AdvancedAttendanceCorrectionModal
+          isOpen={!!correctionModalParticipant}
+          onClose={() => setCorrectionModalParticipant(null)}
+          participant={correctionModalParticipant}
+          activity={correctionActivity}
+          onSuccess={(msg) => {
+            setCorrectionSuccessMsg(msg);
+            setTimeout(() => setCorrectionSuccessMsg(null), 7000);
+          }}
+        />
       )}
     </div>
   );

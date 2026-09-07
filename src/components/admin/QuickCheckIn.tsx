@@ -8,14 +8,12 @@ import {
   Search, 
   Phone, 
   Mail, 
-  AlertCircle,
   Clock,
   XCircle,
-  Clock3,
   ArrowLeft
 } from 'lucide-react';
 import { sortActivitiesAscending } from '../../utils/dateUtils';
-import { hasActivityStarted, isActivityConcluded } from '../../services/participantTransitions';
+import { canResolveAttendance } from '../../services/participantTransitions';
 
 interface QuickCheckInProps {
   initialActivityId?: string;
@@ -38,9 +36,8 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId, o
   const [transitioningId, setTransitioningId] = useState<string | null>(null);
 
   const currentActivity = activities.find(a => a.id === selectedActivityId);
-  const activityStarted = currentActivity ? hasActivityStarted(currentActivity) : false;
-  const activityConcluded = currentActivity ? isActivityConcluded(currentActivity) : false;
-  const isCheckInWindowActive = activityStarted && !activityConcluded;
+  const attendanceResolution = canResolveAttendance(currentActivity);
+  const canResolve = attendanceResolution.allowed;
 
   const activityParticipants = useMemo(() => {
     if (!selectedActivityId) return [];
@@ -83,12 +80,9 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId, o
 
   // Mark as Asistió (from pendiente_pago or pagada)
   const handleMarkAttended = async (p: Participant) => {
-    if (!activityStarted) {
-      alert(`El registro de check-in solo está permitido una vez iniciada la actividad (inicio: ${currentActivity?.time || 'hora fijada'}).`);
-      return;
-    }
-    if (activityConcluded) {
-      alert('La actividad ya ha finalizado. No se permiten nuevos check-in una vez concluida.');
+    const check = canResolveAttendance(currentActivity);
+    if (!check.allowed) {
+      alert(check.error || 'No se puede registrar asistencia en esta actividad.');
       return;
     }
 
@@ -114,12 +108,9 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId, o
 
   // Mark as No presentado (Cancelada por no presentado)
   const handleMarkNoShow = async (p: Participant) => {
-    if (!activityStarted) {
-      alert(`Las acciones de puerta solo están permitidas una vez iniciada la actividad (inicio: ${currentActivity?.time || 'hora fijada'}).`);
-      return;
-    }
-    if (activityConcluded) {
-      alert('La actividad ya ha finalizado. Usa el Cierre de Asistencia en Control de Asistencia.');
+    const check = canResolveAttendance(currentActivity);
+    if (!check.allowed) {
+      alert(check.error || 'No se puede marcar como no presentado en esta actividad.');
       return;
     }
 
@@ -231,22 +222,17 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId, o
                 </div>
               </div>
 
-              {/* Timing Badge */}
+              {/* Resolution Status Badge */}
               <div className="flex items-center gap-2">
-                {!activityStarted ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold">
-                    <Clock3 className="w-4 h-4 text-amber-600" />
-                    <span>Pendiente de inicio ({currentActivity.time || 'hora fijada'})</span>
-                  </span>
-                ) : activityConcluded ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100 border border-stone-300 text-stone-700 text-xs font-semibold">
-                    <CheckCircle2 className="w-4 h-4 text-stone-600" />
-                    <span>Actividad finalizada</span>
+                {canResolve ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-semibold">
+                    <UserCheck className="w-4 h-4 text-emerald-600" />
+                    <span>Control de Asistencia Abierto</span>
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-semibold animate-pulse">
-                    <UserCheck className="w-4 h-4 text-emerald-600" />
-                    <span>Puerta Abierta (Check-in Activo)</span>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100 border border-stone-300 text-stone-700 text-xs font-semibold">
+                    <CheckCircle2 className="w-4 h-4 text-stone-600" />
+                    <span>Actividad Cerrada (Solo consulta)</span>
                   </span>
                 )}
               </div>
@@ -296,21 +282,12 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId, o
           />
         </div>
 
-        {/* Timing Warning if before start or concluded */}
-        {!activityStarted && (
-          <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-900 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-            <span>
-              Los botones de <strong>Asistió</strong> y <strong>No presentado</strong> se habilitarán cuando comience la actividad a las {currentActivity?.time || 'la hora prevista'}.
-            </span>
-          </div>
-        )}
-
-        {activityConcluded && (
+        {/* Warning if concluded */}
+        {!canResolve && (
           <div className="p-3.5 rounded-xl bg-stone-100 border border-stone-300 text-stone-700 text-xs flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-stone-600 shrink-0" />
             <span>
-              La actividad ha finalizado. Las acciones de puerta están cerradas. Si quedan reservas pendientes, realiza el Cierre de Asistencia en Control de Asistencia.
+              {attendanceResolution.error || 'La actividad está celebrada. La hoja de asistencia está cerrada para modificaciones in situ.'}
             </span>
           </div>
         )}
@@ -330,7 +307,7 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId, o
               const isAttended = p.status === 'asistio';
               const isCancelled = p.status === 'cancelada';
               const isNoShow = isCancelled && p.cancellationKind === 'no_presentado';
-              const isActionable = (p.status === 'pendiente_pago' || p.status === 'pagada') && isCheckInWindowActive;
+              const isActionable = (p.status === 'pendiente_pago' || p.status === 'pagada') && canResolve;
               const isTransitioning = transitioningId === p.id;
 
               return (
