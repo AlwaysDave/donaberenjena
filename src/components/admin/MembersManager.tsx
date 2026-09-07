@@ -140,8 +140,8 @@ export const MembersManager: React.FC = () => {
       return false;
     });
 
-    // Real attendances only (status === 'asistio' or attended === true, never cancelada or no_asistio)
-    const attendedList = memberParticipations.filter(p => (p.status === 'asistio' || p.attended === true) && p.status !== 'cancelada' && p.status !== 'no_asistio');
+    // Real attendances only: status === 'asistio'
+    const attendedList = memberParticipations.filter(p => p.status === 'asistio');
     const totalAttendances = attendedList.length;
 
     const cataAttendances = attendedList.filter(p => {
@@ -159,9 +159,9 @@ export const MembersManager: React.FC = () => {
       return p.activityType === 'viaje' || act?.type === 'viaje';
     }).length;
 
-    const totalCancelled = memberParticipations.filter(p => p.status === 'cancelada').length;
-    const totalNoShows = memberParticipations.filter(p => p.status === 'no_asistio').length;
-    const totalJustified = memberParticipations.filter(p => p.justified).length;
+    const totalCancelled = memberParticipations.filter(p => p.status === 'cancelada' && p.cancellationKind !== 'no_presentado').length;
+    const totalNoShows = memberParticipations.filter(p => p.status === 'cancelada' && p.cancellationKind === 'no_presentado').length;
+    const totalJustified = memberParticipations.filter(p => p.status === 'cancelada' && p.cancellationJustified === true).length;
 
     // Sort newest first (reverse chronological)
     const sortedParticipations = [...memberParticipations].sort((a, b) => {
@@ -1128,9 +1128,9 @@ export const MembersManager: React.FC = () => {
                 ) : (
                   history.sortedParticipations.map((p) => {
                     const act = activities.find(a => a.id === p.activityId);
-                    const isAttended = (p.status === 'asistio' || p.attended === true) && p.status !== 'cancelada' && p.status !== 'no_asistio';
-                    const isCancelled = p.status === 'cancelada';
-                    const isNoShow = p.status === 'no_asistio';
+                    const isAttended = p.status === 'asistio';
+                    const isCancelled = p.status === 'cancelada' && p.cancellationKind !== 'no_presentado';
+                    const isNoShow = p.status === 'cancelada' && p.cancellationKind === 'no_presentado';
                     const actType = p.activityType || act?.type || 'cata';
 
                     return (

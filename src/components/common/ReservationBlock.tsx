@@ -4,6 +4,10 @@ import { useData } from '../../context/DataContext';
 import { Users, CreditCard, ShieldCheck, CheckCircle2, ChevronRight, HelpCircle, X, Sparkles, UserCheck, UserPlus } from 'lucide-react';
 import { trackRegistrationStarted } from '../../utils/analyticsTracker';
 import { trackGASignUp, trackGAPurchase } from '../../utils/googleAnalytics';
+import {
+  createNewReservationAttemptKey,
+  processReservationLifecycleTransition
+} from '../../services/reservationTransaction';
 
 interface ReservationBlockProps {
   activity: Activity;
@@ -20,7 +24,16 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
   const { reserveSpots } = useData();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showHowToReserve, setShowHowToReserve] = useState(false);
-  
+
+  const [cryptoError, setCryptoError] = useState<string | null>(null);
+  const [attemptIdempotencyKey, setAttemptIdempotencyKey] = useState<string | null>(() => {
+    const init = createNewReservationAttemptKey();
+    if (init.error) {
+      return null;
+    }
+    return init.key;
+  });
+  const [isCompleted, setIsCompleted] = useState(false);
   const [numSpots, setNumSpots] = useState(1);
   const [titularData, setTitularData] = useState<{
     fullName: string;
@@ -68,6 +81,45 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
   const isCelebrated = activity.status === 'celebrada';
   const isRegistrationClosed = activity.registrationStatus === 'cerrada' || isCelebrated;
 
+  const openModal = () => {
+    trackRegistrationStarted(activity.id);
+    trackGASignUp({ id: activity.id, title: activity.title, type: activity.type });
+    
+    // AC-02 & AC-01: Reset form state and completion status
+    setIsCompleted(false);
+    setStatusMessage(null);
+    setNumSpots(1);
+    setTitularData({
+      fullName: '',
+      email: '',
+      phone: '',
+      isMember: false,
+      membershipNumber: '',
+      turn: '',
+      notes: '',
+      paymentMethod: 'bizum'
+    });
+    setCompanions([
+      { fullName: '', isMember: false, membershipNumber: '' },
+      { fullName: '', isMember: false, membershipNumber: '' },
+      { fullName: '', isMember: false, membershipNumber: '' },
+      { fullName: '', isMember: false, membershipNumber: '' },
+      { fullName: '', isMember: false, membershipNumber: '' },
+    ]);
+
+    // AC-02: Create fresh new key L != K before first submission of new reservation attempt
+    const newAttempt = createNewReservationAttemptKey();
+    if (newAttempt.error) {
+      setCryptoError(newAttempt.error);
+      setAttemptIdempotencyKey(null);
+    } else {
+      setCryptoError(null);
+      setAttemptIdempotencyKey(newAttempt.key);
+    }
+
+    setIsModalOpen(true);
+  };
+
   // Calculate total price based on member status of each attendee
   const titularPrice = titularData.isMember ? priceMember : priceNonMember;
   let companionTotal = 0;
@@ -90,6 +142,21 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // AC-01: Strict guard against double submissions while in progress or already completed
+    if (isSubmitting || isCompleted) {
+      return;
+    }
+
+    // AC-06: Strict guard if environment lacks secure crypto
+    if (!attemptIdempotencyKey || cryptoError) {
+      setStatusMessage({
+        type: 'error',
+        text: cryptoError || 'No se puede iniciar la reserva porque no se dispone de un generador criptográfico seguro en este entorno.'
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     setStatusMessage(null);
 
@@ -124,16 +191,25 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
       turn: titularData.turn || undefined,
       notes: titularData.notes.trim() || undefined,
       paymentMethod: titularData.paymentMethod,
-      attendees: attendeesPayload
+      attendees: attendeesPayload,
+      idempotencyKey: attemptIdempotencyKey
     };
 
     const result = await reserveSpots(activity.id, numSpots, reservationPayload);
     setIsSubmitting(false);
 
-    if (result.success) {
+    // Pure lifecycle state transition
+    const transition = processReservationLifecycleTransition(attemptIdempotencyKey, result);
+
+    if (transition.isCompleted) {
+      // AC-01: Form enters finished state until closed; submit button cannot execute reserveSpots again
+      setIsCompleted(true);
+      setAttemptIdempotencyKey(null);
+      setStatusMessage({ type: 'success', text: result.message });
+
       // Dispatches GA4 purchase event strictly AFTER server confirmation with zero PII
       trackGAPurchase({
-        transactionId: (result as any).reservationId || `res_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        transactionId: result.groupId || `res_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         activityId: activity.id,
         activityTitle: activity.title,
         activityType: activity.type,
@@ -141,30 +217,22 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
         totalPrice: calculatedTotalPrice
       });
 
-      setStatusMessage({ type: 'success', text: result.message });
+      // Auto-close modal after 3 seconds without re-enabling submission
       setTimeout(() => {
         setIsModalOpen(false);
-        setStatusMessage(null);
-        setNumSpots(1);
-        setTitularData({
-          fullName: '',
-          email: '',
-          phone: '',
-          isMember: false,
-          membershipNumber: '',
-          turn: '',
-          notes: '',
-          paymentMethod: 'bizum'
-        });
-        setCompanions([
-          { fullName: '', isMember: false, membershipNumber: '' },
-          { fullName: '', isMember: false, membershipNumber: '' },
-          { fullName: '', isMember: false, membershipNumber: '' },
-          { fullName: '', isMember: false, membershipNumber: '' },
-          { fullName: '', isMember: false, membershipNumber: '' },
-        ]);
-      }, 2500);
+      }, 3000);
     } else {
+      if (transition.action === 'renewed_for_corrected_attempt') {
+        // AC-04: Definitive error -> replace key with new one
+        setAttemptIdempotencyKey(transition.nextKey);
+      } else if (transition.action === 'retained_for_retry') {
+        // AC-03: Retryable error -> retain exact same key
+        setAttemptIdempotencyKey(transition.nextKey);
+      } else if (transition.action === 'crypto_unavailable') {
+        // AC-06
+        setAttemptIdempotencyKey(null);
+        setCryptoError(transition.errorMessage || 'Entorno criptográfico no disponible');
+      }
       setStatusMessage({ type: 'error', text: result.message });
     }
   };
@@ -266,11 +334,7 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
           <button
             id="btn-waiting-list"
             type="button"
-            onClick={() => {
-              trackRegistrationStarted(activity.id);
-              trackGASignUp({ id: activity.id, title: activity.title, type: activity.type });
-              setIsModalOpen(true);
-            }}
+            onClick={openModal}
             className="w-full py-3.5 px-4 rounded-xl bg-[#EDE4D7] text-[#26201D] font-medium text-sm hover:bg-[#DFD3C2] transition-colors cursor-pointer text-center"
           >
             Apuntarse a lista de espera
@@ -279,11 +343,7 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
           <button
             id="btn-open-reservation-modal"
             type="button"
-            onClick={() => {
-              trackRegistrationStarted(activity.id);
-              trackGASignUp({ id: activity.id, title: activity.title, type: activity.type });
-              setIsModalOpen(true);
-            }}
+            onClick={openModal}
             className="w-full py-3.5 px-4 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white font-semibold text-sm tracking-wide transition-all duration-200 shadow-xs hover:shadow-md cursor-pointer flex items-center justify-center gap-2"
           >
             <span>Reservar plaza</span>
@@ -375,47 +435,60 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
 
             {/* Scrollable Modal Body */}
             <div className="p-5 sm:p-6 overflow-y-auto space-y-5">
-              {statusMessage ? (
-                <div
-                  className={`p-4 rounded-xl mb-4 text-sm ${
-                    statusMessage.type === 'success'
-                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                      : 'bg-rose-50 text-rose-800 border border-rose-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 font-medium">
-                    {statusMessage.type === 'success' ? (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                    ) : (
-                      <HelpCircle className="w-5 h-5 text-rose-600" />
-                    )}
-                    <span>{statusMessage.text}</span>
-                  </div>
+              {isCompleted || statusMessage?.type === 'success' ? (
+                <div className="p-6 rounded-2xl bg-emerald-50 text-emerald-900 border border-emerald-200 text-center space-y-3 my-2 animate-fadeIn">
+                  <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto" />
+                  <h4 className="text-lg font-bold">¡Solicitud procesada!</h4>
+                  <p className="text-sm font-medium">{statusMessage?.text || 'Reserva procesada con éxito'}</p>
+                  <p className="text-xs text-emerald-700">Esta ventana se cerrará automáticamente en unos segundos.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsModalOpen(false);
+                      setStatusMessage(null);
+                    }}
+                    className="mt-3 px-6 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-sm cursor-pointer transition-colors"
+                  >
+                    Aceptar y cerrar
+                  </button>
                 </div>
               ) : (
-                <form onSubmit={handleSubmit} className="space-y-5">
-                  {/* 1. Selector de Plazas */}
-                  <div className="p-4 rounded-xl bg-[#FCFAF7] border border-[#EDE4D7]">
-                    <label className="block text-xs font-bold text-[#26201D] mb-1">
-                      Número de plazas que deseas reservar *
-                    </label>
-                  <select
-                    id="select-reserva-plazas"
-                    value={numSpots}
-                    onChange={(e) => setNumSpots(Number(e.target.value))}
-                    className="w-full px-3.5 py-2.5 rounded-lg border border-[#EDE4D7] bg-white text-sm font-semibold text-[#26201D] focus:outline-none focus:border-[#521849]"
-                  >
-                    {[1, 2, 3, 4, 5, 6].map((num) => (
-                      <option
-                        key={num}
-                        value={num}
-                        disabled={num > availableSpots && !isSoldOut}
+                <>
+                  {statusMessage?.type === 'error' && (
+                    <div className="p-4 rounded-xl bg-rose-50 text-rose-800 border border-rose-200 text-sm mb-4 animate-fadeIn">
+                      <div className="flex items-start gap-2.5">
+                        <HelpCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                        <div className="space-y-0.5">
+                          <span className="font-bold block">No se pudo completar la solicitud:</span>
+                          <span>{statusMessage.text}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSubmit} className="space-y-5">
+                    {/* 1. Selector de Plazas */}
+                    <div className="p-4 rounded-xl bg-[#FCFAF7] border border-[#EDE4D7]">
+                      <label className="block text-xs font-bold text-[#26201D] mb-1">
+                        Número de plazas que deseas reservar *
+                      </label>
+                      <select
+                        id="select-reserva-plazas"
+                        value={numSpots}
+                        onChange={(e) => setNumSpots(Number(e.target.value))}
+                        className="w-full px-3.5 py-2.5 rounded-lg border border-[#EDE4D7] bg-white text-sm font-semibold text-[#26201D] focus:outline-none focus:border-[#521849]"
                       >
-                        {num} {num === 1 ? 'plaza (Titular)' : `plazas (Titular + ${num - 1} acompañante${num > 2 ? 's' : ''})`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                        {[1, 2, 3, 4, 5, 6].map((num) => (
+                          <option
+                            key={num}
+                            value={num}
+                            disabled={num > availableSpots && !isSoldOut}
+                          >
+                            {num} {num === 1 ? 'plaza (Titular)' : `plazas (Titular + ${num - 1} acompañante${num > 2 ? 's' : ''})`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
                 {/* 2. Plaza 1 (Titular) */}
                 <div className="p-4 rounded-xl bg-white border border-[#EDE4D7] space-y-3.5 shadow-2xs">
@@ -659,6 +732,8 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
                   >
                     {isSubmitting ? (
                       <span>Procesando solicitud...</span>
+                    ) : statusMessage?.type === 'error' ? (
+                      <span>Reintentar Solicitud de Reserva ({numSpots} {numSpots === 1 ? 'plaza' : 'plazas'})</span>
                     ) : (
                       <span>Confirmar Solicitud de Reserva ({numSpots} {numSpots === 1 ? 'plaza' : 'plazas'})</span>
                     )}
@@ -668,7 +743,8 @@ export const ReservationBlock: React.FC<ReservationBlockProps> = ({
                   </p>
                 </div>
               </form>
-            )}
+            </>
+          )}
             </div>
           </div>
         </div>

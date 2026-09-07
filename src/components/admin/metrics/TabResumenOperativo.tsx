@@ -107,7 +107,7 @@ export const TabResumenOperativo: React.FC<TabResumenOperativoProps> = ({
               <span className="text-xs text-[#574B45]">de {totalCapacity} totales</span>
             </div>
             <p className="text-[11px] text-[#574B45] mt-2">
-              Suma de reservas individuales y grupales confirmadas.
+              Suma de reservas individuales y grupales que ocupan plaza.
             </p>
           </div>
 

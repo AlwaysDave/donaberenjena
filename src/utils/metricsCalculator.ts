@@ -88,20 +88,18 @@ export function isDateInRange(dateValue: string | Date | number | undefined | nu
 
 /**
  * Single, pure reader adapter for participants status
- * Maps existing status & legacy boolean attended without altering raw data
+ * Strictly uses the 5 canonical statuses and structured cancellation metadata
  */
 export function interpretParticipantStatus(p: Participant) {
   const isCancelled = p.status === 'cancelada';
   const isWaitingList = p.status === 'lista_de_espera';
-  const occupiesSpot = !isCancelled && !isWaitingList;
+  const occupiesSpot = p.status === 'pendiente_pago' || p.status === 'pagada' || p.status === 'asistio';
 
-  // Attended: status 'asistio' OR legacy attended: true (if not cancelled or no_asistio)
-  const isAttended = (p.status === 'asistio' || p.attended === true) && !isCancelled && p.status !== 'no_asistio';
-  const isNoShow = p.status === 'no_asistio';
+  const isAttended = p.status === 'asistio';
+  const isNoShow = p.status === 'cancelada' && p.cancellationKind === 'no_presentado';
   const isPendingPayment = p.status === 'pendiente_pago';
-  const isConfirmed = p.status === 'confirmada' || isAttended;
-
-  const isJustified = !!p.justified;
+  const isPaid = p.status === 'pagada';
+  const isJustified = p.status === 'cancelada' && p.cancellationJustified === true;
 
   return {
     occupiesSpot,
@@ -110,7 +108,7 @@ export function interpretParticipantStatus(p: Participant) {
     isCancelled,
     isWaitingList,
     isPendingPayment,
-    isConfirmed,
+    isPaid,
     isJustified,
     spots: p.spotsCount || 1,
     billedAmount: occupiesSpot ? (p.totalAmount || 0) : 0,

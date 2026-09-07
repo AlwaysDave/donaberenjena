@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Activity, AdminNotification, CataActivity, CursoActivity, Member, Participant, ParticipantStatus, ReservationFormData, ViajeActivity, WebMetric, Expense, Sponsorship, ContactMessage } from '../types';
+import { Activity, AdminNotification, CataActivity, CursoActivity, Member, Participant, ParticipantStatus, ReservationFailureKind, ReservationFormData, ReservationResult, ViajeActivity, WebMetric, Expense, Sponsorship, ContactMessage } from '../types';
 import { useAuth } from './AuthContext';
 import { db, isFirebaseConfigured } from '../services/firebase';
 import { INITIAL_PARTICIPANTS } from '../data/mockData';
@@ -11,22 +11,21 @@ import {
   saveActivityFirestore,
   updateActivityFirestore,
   deleteActivityFirestore,
-  saveParticipantFirestore,
   updateParticipantFirestore,
   deleteParticipantFirestore,
-  createReservationWithParticipantsFirestore,
-  adjustActivitySpotsFirestore,
+  addManualParticipantFirestore,
   executeParticipantTransitionFirestore,
-  executeBulkAttendanceCloseFirestore,
+  closeActivityAsCelebratedFirestore,
+  executeAdministrativeMigrationFirestore,
   subscribeToMembersFirestore,
   saveMemberFirestore,
   updateMemberFirestore,
   deleteMemberFirestore,
   subscribeToAdminNotificationsFirestore,
-  subscribeToExpensesFirestore,
   saveExpenseFirestore,
   updateExpenseFirestore,
   deleteExpenseFirestore,
+  subscribeToExpensesFirestore,
   subscribeToSponsorshipsFirestore,
   saveSponsorshipFirestore,
   updateSponsorshipFirestore,
@@ -39,7 +38,9 @@ import {
   updateContactMessageFirestore,
   deleteContactMessageFirestore
 } from '../services/firestoreService';
-import { validateAndPrepareTransition, prepareAttendanceClose } from '../services/participantTransitions';
+import { validateAndPrepareTransition, isActivityConcluded, checkAttendanceSheetComplete } from '../services/participantTransitions';
+import { normalizeParticipantRecord } from '../services/participantMigration';
+import { validateIdempotencyKey, classifyReservationFailure } from '../services/reservationTransaction';
 
 interface DataContextType {
   activities: Activity[];
@@ -63,7 +64,7 @@ interface DataContextType {
   updateActivity: (activity: Activity) => Promise<void>;
   deleteActivity: (id: string) => Promise<void>;
   quickUpdateActivity: (id: string, updates: Partial<Activity>) => Promise<void>;
-  reserveSpots: (id: string, spots: number, reservationData: ReservationFormData) => Promise<{ success: boolean; message: string; groupId?: string }>;
+  reserveSpots: (id: string, spots: number, reservationData: ReservationFormData) => Promise<ReservationResult>;
   addManualParticipant: (participantData: Omit<Participant, 'id' | 'registeredAt'> & { id?: string }) => Promise<{ success: boolean; message: string }>;
   updateParticipant: (id: string, updates: Partial<Participant>) => Promise<void>;
   deleteParticipant: (id: string, activityId: string, _legacySpots?: number) => Promise<void>;
@@ -79,7 +80,21 @@ interface DataContextType {
       kind: 'cancelacion_usuario' | 'no_presentado';
     };
   }) => Promise<{ success: boolean; error?: string; updatedParticipant?: Partial<Participant> }>;
-  closeActivityAttendance: (activityId: string, actor?: string) => Promise<{ success: boolean; affectedCount: number; error?: string }>;
+  closeActivityAsCelebrated: (activityId: string, actor?: string) => Promise<{
+    success: boolean;
+    alreadyClosed?: boolean;
+    blockedByPendingSheet?: boolean;
+    pendingCount?: number;
+    pendingParticipantIds?: string[];
+    error?: string;
+    message?: string;
+  }>;
+  executeAdministrativeMigration: (actor?: string) => Promise<{
+    success: boolean;
+    migratedCount: number;
+    results: Array<{ id: string; success: boolean; previousStatus: string; targetStatus: string; error?: string }>;
+    error?: string;
+  }>;
   incrementViews: (id: string) => void;
   // Member management
   addMember: (memberData: Omit<Member, 'id' | 'createdAt'> & { id?: string }) => Promise<{ success: boolean; message: string }>;
@@ -125,6 +140,15 @@ function normalizeText(str: string): string {
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
+
+const mockIdempotencyStore = new Map<string, {
+  success: boolean;
+  message: string;
+  groupId: string;
+  status: ParticipantStatus;
+  participants: Participant[];
+  bookedSpots: number;
+}>();
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
@@ -361,6 +385,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateActivity = async (updated: Activity) => {
+    const list = useMockData ? demoActivities : activities;
+    const current = list.find(a => a.id === updated.id);
+    if (current && current.status === 'celebrada' && updated.status !== 'celebrada') {
+      throw new Error('Una actividad celebrada no puede ser reabierta como próxima.');
+    }
+    if (current && current.status !== 'celebrada' && updated.status === 'celebrada') {
+      throw new Error('El cierre a estado celebrada solo puede realizarse a través del cierre central transaccional (closeActivityAsCelebrated).');
+    }
+
     if (useMockData) {
       setDemoActivities(prev => prev.map(a => a.id === updated.id ? updated : a));
       return;
@@ -376,6 +409,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const quickUpdateActivity = async (id: string, updates: Partial<Activity>) => {
+    const list = useMockData ? demoActivities : activities;
+    const current = list.find(a => a.id === id);
+    if (current && current.status === 'celebrada' && updates.status && updates.status !== 'celebrada') {
+      throw new Error('Una actividad celebrada no puede ser reabierta como próxima.');
+    }
+    if (current && current.status !== 'celebrada' && updates.status === 'celebrada') {
+      throw new Error('El cierre a estado celebrada solo puede realizarse a través del cierre central transaccional (closeActivityAsCelebrated).');
+    }
+
     if (useMockData) {
       setDemoActivities(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
       return;
@@ -407,130 +449,200 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const reserveSpots = async (id: string, requestedSpots: number, reservationData: ReservationFormData) => {
+  const reserveSpots = async (id: string, requestedSpots: number, reservationData: ReservationFormData): Promise<ReservationResult> => {
+    // RES-01 & AC-04: Validate idempotency key strictly. Never invent a fallback key for callers that omit it.
+    const keyValidation = validateIdempotencyKey(reservationData.idempotencyKey);
+    if (!keyValidation.valid) {
+      return {
+        success: false,
+        message: keyValidation.error || 'Se requiere una clave de idempotencia válida para procesar la reserva.',
+        failureKind: 'definitive',
+        httpStatus: 400
+      };
+    }
+    const idempotencyKey = keyValidation.key;
+
     const activity = displayActivities.find(a => a.id === id);
     if (!activity) {
-      return { success: false, message: 'La actividad solicitada no existe o no está disponible.' };
-    }
-
-    if (activity.status === 'celebrada') {
-      return { success: false, message: 'Esta actividad ya ha sido celebrada y no admite nuevas reservas.' };
-    }
-
-    if (activity.registrationStatus === 'cerrada') {
-      return { success: false, message: 'Las inscripciones para esta actividad se encuentran actualmente cerradas.' };
-    }
-
-    const available = Math.max(0, activity.totalSpots - activity.bookedSpots);
-    if (requestedSpots > available) {
-      return { 
-        success: false, 
-        message: available === 0 
-          ? 'Lo sentimos, el aforo para esta actividad está completo.' 
-          : `Lo sentimos, solo quedan ${available} plaza(s) disponibles.` 
+      return {
+        success: false,
+        message: 'La actividad solicitada no existe o no está disponible.',
+        failureKind: 'definitive',
+        httpStatus: 404
       };
     }
 
+    if (activity.status === 'celebrada') {
+      return {
+        success: false,
+        message: 'Esta actividad ya ha sido celebrada y no admite nuevas reservas.',
+        failureKind: 'definitive',
+        httpStatus: 400
+      };
+    }
+
+    if (activity.registrationStatus === 'cerrada') {
+      return {
+        success: false,
+        message: 'Las inscripciones para esta actividad se encuentran actualmente cerradas.',
+        failureKind: 'definitive',
+        httpStatus: 400
+      };
+    }
+
+    // Never reject in browser because local aforo looks full. Dispatch to server / atomic handler.
     // Try calling server-side atomic endpoint if not in pure mock mode
     if (!useMockData && isFirebaseConfigured()) {
       try {
         const response = await fetch('/api/reserve', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': idempotencyKey
+          },
           body: JSON.stringify({
             activityId: id,
             spots: requestedSpots,
-            reservationData
+            idempotencyKey,
+            reservationData: {
+              ...reservationData,
+              idempotencyKey
+            }
           })
         });
 
-        const result = await response.json();
-        if (!response.ok || !result.success) {
+        let result: any = null;
+        try {
+          result = await response.json();
+        } catch {
+          result = {};
+        }
+
+        if (!response.ok || !result?.success) {
+          const failureKind = classifyReservationFailure(response.status);
           return {
             success: false,
-            message: result.error || 'No se pudo completar la reserva. Por favor, inténtalo de nuevo.'
+            message: result?.error || 'No se pudo completar la reserva. Por favor, inténtalo de nuevo.',
+            failureKind,
+            httpStatus: response.status
           };
         }
 
-        // On successful server transaction, sync local memory state immediately
+        // Build local memory state strictly from server response with deduplication
         const serverGroupId = result.groupId || `grp-${Date.now()}`;
+        const returnedStatus: ParticipantStatus = result.status === 'lista_de_espera' ? 'lista_de_espera' : 'pendiente_pago';
         const nowIso = new Date().toISOString();
         const priceMember = activity.priceMember;
         const priceNonMember = activity.priceNonMember;
         const turnText = reservationData.turn || (activity.time ? `Turno (${activity.time})` : undefined);
 
-        const newParticipants: Participant[] = [];
-        const isTitularMember = reservationData.isMember ?? (reservationData.attendees?.[0]?.isMember ?? false);
-        const titularPrice = isTitularMember ? priceMember : priceNonMember;
-
-        newParticipants.push({
-          id: `part-${Date.now()}-0-${Math.random().toString(36).substring(2, 6)}`,
-          activityId: activity.id,
-          activityTitle: activity.title,
-          activityDate: activity.date,
-          activityType: activity.type,
-          fullName: reservationData.fullName.trim(),
-          email: reservationData.email.trim(),
-          phone: reservationData.phone.trim(),
-          isMember: isTitularMember,
-          groupId: serverGroupId,
-          turn: turnText,
-          membershipNumber: reservationData.membershipNumber?.trim() || undefined,
-          notes: reservationData.notes?.trim() || undefined,
-          status: 'confirmada',
-          totalAmount: titularPrice,
-          paidAmount: 0,
-          paymentMethod: reservationData.paymentMethod || 'bizum',
-          registeredAt: nowIso,
-          updatedAt: nowIso
-        });
-
-        for (let i = 1; i < requestedSpots; i++) {
-          const compData = reservationData.attendees?.[i];
-          const isCompMember = !!compData?.isMember;
-          const compPrice = isCompMember ? priceMember : priceNonMember;
+        let newParticipants: Participant[] = [];
+        if (Array.isArray(result.participants) && result.participants.length > 0) {
+          newParticipants = result.participants;
+        } else {
+          const isTitularMember = reservationData.isMember ?? (reservationData.attendees?.[0]?.isMember ?? false);
+          const titularPrice = isTitularMember ? priceMember : priceNonMember;
 
           newParticipants.push({
-            id: `part-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
+            id: `part-${Date.now()}-0-${Math.random().toString(36).substring(2, 6)}`,
             activityId: activity.id,
             activityTitle: activity.title,
             activityDate: activity.date,
             activityType: activity.type,
-            fullName: compData?.fullName?.trim() || `Acompañante ${i} (${reservationData.fullName.trim()})`,
-            email: compData?.email?.trim() || '',
-            phone: compData?.phone?.trim() || '',
-            isMember: isCompMember,
+            fullName: reservationData.fullName.trim(),
+            email: reservationData.email.trim(),
+            phone: reservationData.phone.trim(),
+            isMember: isTitularMember,
             groupId: serverGroupId,
             turn: turnText,
-            membershipNumber: compData?.membershipNumber?.trim() || undefined,
-            notes: compData?.notes?.trim() || undefined,
-            status: 'confirmada',
-            totalAmount: compPrice,
+            membershipNumber: reservationData.membershipNumber?.trim() || undefined,
+            notes: reservationData.notes?.trim() || undefined,
+            status: returnedStatus,
+            totalAmount: titularPrice,
             paidAmount: 0,
             paymentMethod: reservationData.paymentMethod || 'bizum',
             registeredAt: nowIso,
             updatedAt: nowIso
           });
+
+          for (let i = 1; i < requestedSpots; i++) {
+            const compData = reservationData.attendees?.[i];
+            const isCompMember = !!compData?.isMember;
+            const compPrice = isCompMember ? priceMember : priceNonMember;
+
+            newParticipants.push({
+              id: `part-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
+              activityId: activity.id,
+              activityTitle: activity.title,
+              activityDate: activity.date,
+              activityType: activity.type,
+              fullName: compData?.fullName?.trim() || `Acompañante ${i} (${reservationData.fullName.trim()})`,
+              email: compData?.email?.trim() || '',
+              phone: compData?.phone?.trim() || '',
+              isMember: isCompMember,
+              groupId: serverGroupId,
+              turn: turnText,
+              membershipNumber: compData?.membershipNumber?.trim() || undefined,
+              notes: compData?.notes?.trim() || undefined,
+              status: returnedStatus,
+              totalAmount: compPrice,
+              paidAmount: 0,
+              paymentMethod: reservationData.paymentMethod || 'bizum',
+              registeredAt: nowIso,
+              updatedAt: nowIso
+            });
+          }
         }
 
-        setParticipants(prev => [...newParticipants, ...prev]);
-        setActivities(prev => prev.map(a => a.id === id ? { ...a, bookedSpots: a.bookedSpots + requestedSpots } : a));
+        // Deduplicate in case of server replay
+        setParticipants(prev => {
+          const existingIds = new Set(prev.map(p => p.id));
+          const toAdd = newParticipants.filter(p => !existingIds.has(p.id));
+          if (toAdd.length === 0) return prev;
+          return [...toAdd, ...prev];
+        });
+
+        if (typeof result.bookedSpots === 'number') {
+          setActivities(prev => prev.map(a => a.id === id ? { ...a, bookedSpots: result.bookedSpots } : a));
+        } else if (returnedStatus === 'pendiente_pago') {
+          setActivities(prev => prev.map(a => a.id === id ? { ...a, bookedSpots: a.bookedSpots + requestedSpots } : a));
+        }
+
+        const message = returnedStatus === 'lista_de_espera'
+          ? `Solicitud de ${requestedSpots} plaza(s) registrada en lista de espera para ${reservationData.fullName}.`
+          : `Reserva de ${requestedSpots} plaza(s) registrada correctamente para ${reservationData.fullName}.`;
 
         return {
           success: true,
-          message: result.message || `¡Plazas reservadas con éxito para ${reservationData.fullName}! En breve recibirás las instrucciones de abono.`,
-          groupId: serverGroupId
+          message,
+          groupId: serverGroupId,
+          status: returnedStatus,
+          participants: newParticipants,
+          bookedSpots: typeof result.bookedSpots === 'number' ? result.bookedSpots : undefined
         };
       } catch (networkErr: any) {
         console.error('Error invoking /api/reserve:', networkErr);
         return {
           success: false,
-          message: 'Error de conexión al tramitar la reserva. Por favor, comprueba tu red e inténtalo de nuevo.'
+          message: 'Error de conexión al tramitar la reserva. Puedes reintentar la operación.',
+          failureKind: 'retryable'
         };
       }
     }
 
     // Local / Mock Mode Atomic Reservation Flow
+    if (mockIdempotencyStore.has(idempotencyKey)) {
+      const cached = mockIdempotencyStore.get(idempotencyKey)!;
+      return {
+        success: cached.success,
+        message: cached.message,
+        groupId: cached.groupId,
+        status: cached.status,
+        participants: cached.participants,
+        bookedSpots: cached.bookedSpots
+      };
+    }
+
     const groupId = typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID()
       : `grp-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
@@ -543,6 +655,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const availableSpots = Math.max(0, activity.totalSpots - activity.bookedSpots);
     const hasEnoughCapacity = availableSpots >= requestedSpots;
     const assignedStatus: ParticipantStatus = hasEnoughCapacity ? 'pendiente_pago' : 'lista_de_espera';
+    const resultingBookedSpots = hasEnoughCapacity ? activity.bookedSpots + requestedSpots : activity.bookedSpots;
 
     const newParticipants: Participant[] = [];
 
@@ -604,10 +717,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // Local state commit
-    setParticipants(prev => [...newParticipants, ...prev]);
+    setParticipants(prev => {
+      const existingIds = new Set(prev.map(p => p.id));
+      const toAdd = newParticipants.filter(p => !existingIds.has(p.id));
+      if (toAdd.length === 0) return prev;
+      return [...toAdd, ...prev];
+    });
+
     if (hasEnoughCapacity) {
-      setActivities(prev => prev.map(a => a.id === id ? { ...a, bookedSpots: a.bookedSpots + requestedSpots } : a));
+      setActivities(prev => prev.map(a => a.id === id ? { ...a, bookedSpots: resultingBookedSpots } : a));
     }
+
+    const mockMessage = assignedStatus === 'lista_de_espera'
+      ? `Solicitud de ${requestedSpots} plaza(s) registrada en lista de espera para ${reservationData.fullName}.`
+      : `Reserva de ${requestedSpots} plaza(s) registrada correctamente para ${reservationData.fullName}.`;
+
+    mockIdempotencyStore.set(idempotencyKey, {
+      success: true,
+      message: mockMessage,
+      groupId,
+      status: assignedStatus,
+      participants: newParticipants,
+      bookedSpots: resultingBookedSpots
+    });
 
     // Contrast check against members census
     const activeCensus = displayMembers;
@@ -657,81 +789,67 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return { 
       success: true, 
-      message: hasEnoughCapacity 
-        ? `Reserva de ${requestedSpots} plaza${requestedSpots > 1 ? 's' : ''} confirmada con éxito para ${reservationData.fullName}.` 
-        : `Solicitud registrada en lista de espera correctamente para ${reservationData.fullName}.`,
-      groupId
+      message: mockMessage,
+      groupId,
+      status: assignedStatus,
+      participants: newParticipants,
+      bookedSpots: resultingBookedSpots
     };
   };
 
-  const addManualParticipant = async (participantData: Omit<Participant, 'id' | 'registeredAt'> & { id?: string }) => {
-    const activity = activities.find(a => a.id === participantData.activityId);
+  const addManualParticipant = async (participantData: Omit<Participant, 'id' | 'status' | 'registeredAt'> & { id?: string }) => {
+    const activity = displayActivities.find(a => a.id === participantData.activityId);
+    if (!activity) {
+      return { success: false, message: 'Actividad no encontrada.' };
+    }
+    if (activity.status === 'celebrada') {
+      return { success: false, message: 'No se pueden añadir participantes a una actividad ya celebrada.' };
+    }
+
     const nowIso = new Date().toISOString();
     const newId = participantData.id || `part-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const groupId = participantData.groupId || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `grp-manual-${Date.now()}`);
+    const groupId = participantData.groupId || `grp-manual-${Date.now()}`;
+    const hasSpot = activity.bookedSpots < activity.totalSpots;
+    const assignedStatus: ParticipantStatus = hasSpot ? 'pendiente_pago' : 'lista_de_espera';
 
     const newParticipant: Participant = {
       ...participantData,
       id: newId,
       groupId,
       isMember: !!participantData.isMember,
+      status: assignedStatus,
       registeredAt: nowIso,
       updatedAt: nowIso
     };
 
-    const isConsumingSpot = participantData.status !== 'cancelada' && participantData.status !== 'lista_de_espera';
-
-    // Optimistic update
-    if (useMockData) {
+    if (useMockData || !isFirebaseConfigured() || !db) {
       setDemoParticipants(prev => [newParticipant, ...prev]);
-      if (activity && isConsumingSpot) {
+      if (hasSpot) {
         setDemoActivities(prev => prev.map(a => a.id === participantData.activityId ? { ...a, bookedSpots: a.bookedSpots + 1 } : a));
       }
-      return { success: true, message: 'Asistente añadido en modo demo.' };
-    }
-
-    setParticipants(prev => [newParticipant, ...prev]);
-    if (activity && isConsumingSpot) {
-      setActivities(prev => prev.map(a => a.id === participantData.activityId ? { ...a, bookedSpots: a.bookedSpots + 1 } : a));
-    }
-
-    // Member contrast check
-    const normalizedName = normalizeText(newParticipant.fullName);
-    const matchedMember = displayMembers.find(m => {
-      if (newParticipant.email && m.email && m.email.toLowerCase().trim() === newParticipant.email.toLowerCase().trim()) return true;
-      return normalizeText(m.fullName) === normalizedName;
-    });
-
-    if (newParticipant.isMember && (!matchedMember || !matchedMember.active)) {
-      const notif: AdminNotification = {
-        id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-        type: 'socio_mismatch',
-        severity: 'attention',
-        title: 'Discrepancia de Socio (Manual)',
-        dedupeKey: `socio_mismatch_manual_${newParticipant.activityId}_${newParticipant.id}`,
-        message: `Aviso manual: "${newParticipant.fullName}" se añadió como SOCIO pero no figura en el censo activo de socios.`,
-        activityId: newParticipant.activityId,
-        participantId: newParticipant.id,
-        read: false,
-        createdAt: nowIso
+      return {
+        success: true,
+        message: hasSpot
+          ? 'Asistente añadido con plaza (pendiente de pago).'
+          : 'Aforo completo: asistente añadido a lista de espera.'
       };
-      setAdminNotifications(prev => [notif, ...prev]);
-      if (!useMockData && isFirebaseConfigured() && db) {
-        saveAdminNotificationFirestore(notif).catch(e => console.warn('Could not save notification:', e));
-      }
     }
 
     try {
-      if (!useMockData && isFirebaseConfigured() && db) {
-        await saveParticipantFirestore(newParticipant);
-        if (isConsumingSpot) {
-          await adjustActivitySpotsFirestore(participantData.activityId, 1);
-        }
+      const created = await addManualParticipantFirestore(participantData);
+      setParticipants(prev => [created, ...prev]);
+      if (created.status === 'pendiente_pago') {
+        setActivities(prev => prev.map(a => a.id === participantData.activityId ? { ...a, bookedSpots: a.bookedSpots + 1 } : a));
       }
-      return { success: true, message: 'Asistente añadido y plazas actualizadas correctamente.' };
+      return {
+        success: true,
+        message: created.status === 'pendiente_pago'
+          ? 'Asistente añadido con plaza (pendiente de pago).'
+          : 'Aforo completo: asistente añadido a lista de espera.'
+      };
     } catch (err: any) {
-      console.error('Error saving manual participant:', err);
-      return { success: true, message: 'Asistente registrado localmente.' };
+      console.error('Error in addManualParticipant:', err);
+      return { success: false, message: err?.message || 'Error al añadir asistente.' };
     }
   };
 
@@ -740,75 +858,53 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const old = list.find(p => p.id === id);
     if (!old) return;
 
-    // Handle spot delta if cancellation or waiting list status changed
-    const wasOccupying = old.status !== 'cancelada' && old.status !== 'lista_de_espera';
-    const willOccupy = updates.status 
-      ? (updates.status !== 'cancelada' && updates.status !== 'lista_de_espera')
-      : wasOccupying;
+    // Security rule: updateParticipant CANNOT modify status or spotsCount.
+    // Transitions that affect status or aforo must be executed via executeParticipantTransition.
+    const {
+      status: _s,
+      spotsCount: _sc,
+      ...safeUpdates
+    } = updates as any;
 
-    let spotsDelta = 0;
-    if (wasOccupying && !willOccupy) {
-      spotsDelta = -1;
-    } else if (!wasOccupying && willOccupy) {
-      spotsDelta = 1;
-    }
-
-    const updatedObj = { ...old, ...updates, updatedAt: new Date().toISOString() };
+    const updatedObj = { ...old, ...safeUpdates, updatedAt: new Date().toISOString() };
 
     if (useMockData) {
       setDemoParticipants(prev => prev.map(p => p.id === id ? updatedObj : p));
-      if (spotsDelta !== 0 && old.activityId) {
-        setDemoActivities(prev => prev.map(a => a.id === old.activityId ? { ...a, bookedSpots: Math.max(0, a.bookedSpots + spotsDelta) } : a));
-      }
       return;
     }
 
-    // Optimistic update
     setParticipants(prev => prev.map(p => p.id === id ? updatedObj : p));
-    if (spotsDelta !== 0 && old.activityId) {
-      setActivities(prev => prev.map(a => a.id === old.activityId ? { ...a, bookedSpots: Math.max(0, a.bookedSpots + spotsDelta) } : a));
-    }
 
     try {
-      if (!useMockData && isFirebaseConfigured() && db) {
-        await updateParticipantFirestore(id, updates);
-        if (spotsDelta !== 0 && old.activityId) {
-          await adjustActivitySpotsFirestore(old.activityId, spotsDelta);
-        }
+      if (isFirebaseConfigured() && db) {
+        await updateParticipantFirestore(id, safeUpdates);
       }
     } catch (err) {
       console.error('Error updating participant in Firestore:', err);
+      // Rollback
+      setParticipants(prev => prev.map(p => p.id === id ? old : p));
     }
   };
 
-  const deleteParticipant = async (id: string, activityId: string, _legacySpots?: number) => {
+  const deleteParticipant = async (id: string) => {
     const list = useMockData ? demoParticipants : participants;
     const target = list.find(p => p.id === id);
-    const shouldRefundSpots = target && target.status !== 'cancelada' && target.status !== 'lista_de_espera';
+    if (!target) return;
 
     if (useMockData) {
       setDemoParticipants(prev => prev.filter(p => p.id !== id));
-      if (shouldRefundSpots && activityId) {
-        setDemoActivities(prev => prev.map(a => a.id === activityId ? { ...a, bookedSpots: Math.max(0, a.bookedSpots - 1) } : a));
-      }
       return;
     }
 
-    // Optimistic update
     setParticipants(prev => prev.filter(p => p.id !== id));
-    if (shouldRefundSpots && activityId) {
-      setActivities(prev => prev.map(a => a.id === activityId ? { ...a, bookedSpots: Math.max(0, a.bookedSpots - 1) } : a));
-    }
 
     try {
-      if (!useMockData && isFirebaseConfigured() && db) {
+      if (isFirebaseConfigured() && db) {
         await deleteParticipantFirestore(id);
-        if (shouldRefundSpots && activityId) {
-          await adjustActivitySpotsFirestore(activityId, -1);
-        }
       }
     } catch (err) {
       console.error('Error deleting participant from Firestore:', err);
+      setParticipants(prev => [...prev, target]);
     }
   };
 
@@ -888,12 +984,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: true, updatedParticipant: updates };
     }
 
-    // Optimistic local state update
-    setParticipants(prev => prev.map(p => p.id === participantId ? { ...p, ...updates } : p));
-    if (spotsDelta !== 0 && activityId) {
-      setActivities(prev => prev.map(a => a.id === activityId ? { ...a, bookedSpots: Math.max(0, a.bookedSpots + spotsDelta) } : a));
-    }
-
     if (isFirebaseConfigured() && db) {
       try {
         const res = await executeParticipantTransitionFirestore({
@@ -903,69 +993,190 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           actor,
           cancellationData
         });
+        if (res.success) {
+          setParticipants(prev => prev.map(p => p.id === participantId ? { ...p, ...updates } : p));
+          if (spotsDelta !== 0 && activityId) {
+            setActivities(prev => prev.map(a => a.id === activityId ? { ...a, bookedSpots: Math.max(0, a.bookedSpots + spotsDelta) } : a));
+          }
+        }
         return res;
       } catch (err: any) {
         console.error('Error executing Firestore transition transaction:', err);
-        // Rollback
-        setParticipants(prev => prev.map(p => p.id === participantId ? participant : p));
-        if (spotsDelta !== 0 && activityId && activity) {
-          setActivities(prev => prev.map(a => a.id === activityId ? { ...a, bookedSpots: activity.bookedSpots } : a));
-        }
         return { success: false, error: err.message || 'Error al persistir la transición en la base de datos.' };
       }
     }
 
+    setParticipants(prev => prev.map(p => p.id === participantId ? { ...p, ...updates } : p));
+    if (spotsDelta !== 0 && activityId) {
+      setActivities(prev => prev.map(a => a.id === activityId ? { ...a, bookedSpots: Math.max(0, a.bookedSpots + spotsDelta) } : a));
+    }
     return { success: true, updatedParticipant: updates };
   };
 
-  const closeActivityAttendance = async (
+  const closeActivityAsCelebrated = async (
     activityId: string,
     actor: string = 'Administración'
-  ): Promise<{ success: boolean; affectedCount: number; error?: string }> => {
-    const currentParticipants = useMockData ? demoParticipants : participants;
+  ): Promise<{
+    success: boolean;
+    alreadyClosed?: boolean;
+    blockedByPendingSheet?: boolean;
+    pendingCount?: number;
+    pendingParticipantIds?: string[];
+    error?: string;
+    message?: string;
+  }> => {
     const currentActivities = useMockData ? demoActivities : activities;
+    const currentParticipants = useMockData ? demoParticipants : participants;
     const activity = currentActivities.find(a => a.id === activityId);
 
     if (!activity) {
-      return { success: false, affectedCount: 0, error: 'Actividad no encontrada.' };
+      return { success: false, error: 'Actividad no encontrada.' };
     }
 
-    const { affectedCount, updatedParticipants } = prepareAttendanceClose(currentParticipants, activity, actor);
-    if (affectedCount === 0) {
-      return { success: true, affectedCount: 0 };
+    if (activity.status === 'celebrada') {
+      return {
+        success: true,
+        alreadyClosed: true,
+        message: 'La actividad ya estaba cerrada como celebrada.'
+      };
     }
-
-    const updateMap = new Map(updatedParticipants.map(u => [u.id, u.updates]));
 
     if (useMockData) {
-      setDemoParticipants(prev => prev.map(p => {
-        const u = updateMap.get(p.id);
-        return u ? { ...p, ...u } : p;
-      }));
-      return { success: true, affectedCount };
+      const sheetStatus = checkAttendanceSheetComplete(currentParticipants, activityId);
+      if (!sheetStatus.isComplete) {
+        return {
+          success: false,
+          blockedByPendingSheet: true,
+          pendingCount: sheetStatus.pendingCount,
+          pendingParticipantIds: sheetStatus.pendingParticipantIds,
+          error: 'Para cerrar la actividad debes completar la hoja de asistencia.'
+        };
+      }
+      setDemoActivities(prev => prev.map(a => a.id === activityId ? { ...a, status: 'celebrada', registrationStatus: 'cerrada' } : a));
+      return { success: true, message: 'Actividad cerrada y marcada como celebrada correctamente.' };
     }
-
-    // Optimistic local update
-    setParticipants(prev => prev.map(p => {
-      const u = updateMap.get(p.id);
-      return u ? { ...p, ...u } : p;
-    }));
 
     if (isFirebaseConfigured() && db) {
       try {
-        const res = await executeBulkAttendanceCloseFirestore(currentParticipants, activity, actor);
+        const res = await closeActivityAsCelebratedFirestore(activityId, actor);
+        if (res.success && !res.alreadyClosed) {
+          setActivities(prev => prev.map(a => a.id === activityId ? { ...a, status: 'celebrada', registrationStatus: 'cerrada' } : a));
+        }
         return res;
       } catch (err: any) {
-        console.error('Error executing bulk attendance close:', err);
-        return { success: false, affectedCount: 0, error: err.message || 'Error al cerrar asistencias en el servidor.' };
+        console.error('Error closing activity as celebrated in Firestore:', err);
+        return { success: false, error: err.message || 'Error al cerrar la actividad en el servidor.' };
       }
     }
 
-    return { success: true, affectedCount };
+    // Local state fallback if no Firestore
+    const sheetStatus = checkAttendanceSheetComplete(currentParticipants, activityId);
+    if (!sheetStatus.isComplete) {
+      return {
+        success: false,
+        blockedByPendingSheet: true,
+        pendingCount: sheetStatus.pendingCount,
+        pendingParticipantIds: sheetStatus.pendingParticipantIds,
+        error: 'Para cerrar la actividad debes completar la hoja de asistencia.'
+      };
+    }
+    setActivities(prev => prev.map(a => a.id === activityId ? { ...a, status: 'celebrada', registrationStatus: 'cerrada' } : a));
+    return { success: true, message: 'Actividad cerrada y marcada como celebrada correctamente.' };
   };
 
-  // Member Management Functions (Prompt 4)
+  const executeAdministrativeMigration = async (
+    actor: string = 'Migración Administrativa'
+  ): Promise<{
+    success: boolean;
+    migratedCount: number;
+    results: Array<{ id: string; success: boolean; previousStatus: string; targetStatus: string; error?: string }>;
+    error?: string;
+  }> => {
+    const currentParticipants = useMockData ? demoParticipants : participants;
+
+    if (useMockData) {
+      const results: Array<{ id: string; success: boolean; previousStatus: string; targetStatus: string }> = [];
+      let migratedCount = 0;
+      const updatedList = currentParticipants.map(p => {
+        const rawStatus = (p.status as string) || '';
+        const norm = normalizeParticipantRecord(p, actor);
+        if (norm.needsMigration) {
+          migratedCount++;
+        }
+        results.push({
+          id: p.id,
+          success: true,
+          previousStatus: rawStatus,
+          targetStatus: norm.targetStatus
+        });
+        return norm.cleanRecord;
+      });
+
+      setDemoParticipants(updatedList);
+      return { success: true, migratedCount, results };
+    }
+
+    if (isFirebaseConfigured() && db) {
+      try {
+        const res = await executeAdministrativeMigrationFirestore(currentParticipants, actor);
+        if (res.success || res.migratedCount > 0) {
+          const successIds = new Set(res.results.filter(r => r.success).map(r => r.id));
+          setParticipants(prev => prev.map(p => {
+            if (successIds.has(p.id)) {
+              return normalizeParticipantRecord(p, actor).cleanRecord;
+            }
+            return p;
+          }));
+        }
+        return res;
+      } catch (err: any) {
+        console.error('Error in executeAdministrativeMigration:', err);
+        return {
+          success: false,
+          migratedCount: 0,
+          results: [],
+          error: err.message || 'Error al ejecutar la normalización canónica en Firestore.'
+        };
+      }
+    }
+
+    // Fallback without active Firestore
+    const results: Array<{ id: string; success: boolean; previousStatus: string; targetStatus: string }> = [];
+    let migratedCount = 0;
+    const updatedList = currentParticipants.map(p => {
+      const rawStatus = (p.status as string) || '';
+      const norm = normalizeParticipantRecord(p, actor);
+      if (norm.needsMigration) {
+        migratedCount++;
+      }
+      results.push({
+        id: p.id,
+        success: true,
+        previousStatus: rawStatus,
+        targetStatus: norm.targetStatus
+      });
+      return norm.cleanRecord;
+    });
+
+    setParticipants(updatedList);
+    return { success: true, migratedCount, results };
+  };
+
+  // Member Management Functions (Prompt 4 & Bloque 7)
   const addMember = async (memberData: Omit<Member, 'id' | 'createdAt'> & { id?: string }) => {
+    const memNum = (memberData.membershipNumber || '').trim();
+    const currentMemberList = useMockData ? demoMembers : members;
+
+    // Validate unique membership number when provided
+    if (memNum) {
+      const isDuplicate = currentMemberList.some(
+        m => m.active && (m.membershipNumber || '').trim().toLowerCase() === memNum.toLowerCase()
+      );
+      if (isDuplicate) {
+        throw new Error(`El número de socio «${memNum}» ya está asignado a otro socio activo en el Censo.`);
+      }
+    }
+
     const nowIso = new Date().toISOString();
     const id = memberData.id || `mem-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
     const newMember: Member = {
@@ -980,17 +1191,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: true, message: 'Socio registrado en modo demo.' };
     }
 
-    setMembers(prev => [...prev, newMember]);
-
-    try {
-      if (!useMockData && isFirebaseConfigured() && db) {
+    if (!useMockData && isFirebaseConfigured() && db) {
+      try {
         await saveMemberFirestore(newMember);
+        setMembers(prev => [...prev, newMember]);
+        return { success: true, message: 'Socio registrado correctamente en el Censo.' };
+      } catch (err: any) {
+        console.error('Error saving member to Firestore:', err);
+        throw new Error(`Error al persistir el socio en la base de datos: ${err.message || err}`);
       }
-      return { success: true, message: 'Socio registrado correctamente.' };
-    } catch (err: any) {
-      console.error('Error saving member to Firestore:', err);
-      return { success: true, message: 'Socio guardado localmente.' };
     }
+
+    setMembers(prev => [...prev, newMember]);
+    return { success: true, message: 'Socio guardado localmente.' };
   };
 
   const updateMember = async (id: string, updates: Partial<Member>) => {
@@ -1389,7 +1602,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       deleteParticipant,
       markAttendance,
       executeParticipantTransition,
-      closeActivityAttendance,
+      closeActivityAsCelebrated,
+      executeAdministrativeMigration,
       incrementViews,
       addMember,
       updateMember,

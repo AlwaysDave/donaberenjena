@@ -5,7 +5,6 @@ import { Participant, PaymentMethod, ParticipantStatus } from '../../types';
 import { 
   Users, 
   Plus, 
-  Trash2, 
   Edit3, 
   X, 
   Check, 
@@ -35,9 +34,11 @@ import { Pagination } from '../common/Pagination';
 import { 
   isActivityConcluded, 
   isActivityTodayOrPast, 
-  validateAndPrepareTransition 
+  validateAndPrepareTransition,
+  checkAttendanceSheetComplete
 } from '../../services/participantTransitions';
 import { simulateParticipantMigration, MigrationSimulationResult } from '../../services/participantMigration';
+import { IncompleteAttendanceModal } from './IncompleteAttendanceModal';
 
 interface ParticipantsManagerProps {
   initialActivityId?: string;
@@ -55,7 +56,9 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     participants, 
     addManualParticipant, 
     updateParticipant, 
-    deleteParticipant 
+    executeParticipantTransition,
+    closeActivityAsCelebrated,
+    executeAdministrativeMigration
   } = useData();
   const { user } = useAuth();
 
@@ -80,7 +83,6 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
   // Modals & Tools State
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingParticipant, setEditingParticipant] = useState<Participant | null>(null);
-  const [participantToDelete, setParticipantToDelete] = useState<Participant | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
   const [copiedNotification, setCopiedNotification] = useState<string | null>(null);
   const [showWorkflowDiagram, setShowWorkflowDiagram] = useState<boolean>(false);
@@ -92,10 +94,11 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
   const [cancellationRefundInput, setCancellationRefundInput] = useState<string>('');
   const [cancellationError, setCancellationError] = useState<string | null>(null);
 
-  // Close Attendance Modal State (Bloque 5)
-  const [isCloseAttendanceModalOpen, setIsCloseAttendanceModalOpen] = useState<boolean>(false);
-  const [closingAttendanceActivityId, setClosingAttendanceActivityId] = useState<string | null>(null);
-  const [isClosingAttendanceLoading, setIsClosingAttendanceLoading] = useState<boolean>(false);
+  // Incomplete Attendance Modal & Close State (T-03)
+  const [isIncompleteModalOpen, setIsIncompleteModalOpen] = useState<boolean>(false);
+  const [incompleteModalData, setIncompleteModalData] = useState<{ activityId: string; title: string; pendingCount: number } | null>(null);
+  const [isClosingActivityLoading, setIsClosingActivityLoading] = useState<boolean>(false);
+  const [closeCelebratedSuccessMsg, setCloseCelebratedSuccessMsg] = useState<string | null>(null);
 
   // Data Migration Simulation & Execution State (Bloque 5)
   const [isMigrationModalOpen, setIsMigrationModalOpen] = useState<boolean>(false);
@@ -220,7 +223,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     
     // 5 canonical counts
     const pendingPaymentCount = relevant.filter(p => p.status === 'pendiente_pago').length;
-    const paidCount = relevant.filter(p => p.status === 'pagada' || p.status === 'confirmada').length;
+    const paidCount = relevant.filter(p => p.status === 'pagada').length;
     const attendedCount = relevant.filter(p => p.status === 'asistio').length;
     const cancelledCount = relevant.filter(p => p.status === 'cancelada').length;
     const cancelledJustifiedCount = relevant.filter(p => p.status === 'cancelada' && p.cancellationJustified === true).length;
@@ -319,11 +322,10 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       parsedRefund = num;
     }
 
-    const activity = activities.find(a => a.id === cancellationModalParticipant.activityId);
-    const transition = validateAndPrepareTransition({
-      participant: cancellationModalParticipant,
+    const res = await executeParticipantTransition({
+      participantId: cancellationModalParticipant.id,
+      activityId: cancellationModalParticipant.activityId,
       targetStatus: 'cancelada',
-      activity,
       actor: user?.name || user?.email || 'Secretaría / Administración',
       cancellationData: {
         reason: cancellationReasonInput.trim(),
@@ -332,15 +334,16 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       }
     });
 
-    if (!transition.allowed) {
-      setCancellationError(transition.error || 'No se pudo cancelar la inscripción.');
+    if (!res.success) {
+      setCancellationError(res.error || 'No se pudo cancelar la inscripción.');
       return;
     }
 
-    await updateParticipant(cancellationModalParticipant.id, {
-      ...transition.updatedParticipant,
-      refundAmount: parsedRefund
-    });
+    if (parsedRefund !== undefined) {
+      await updateParticipant(cancellationModalParticipant.id, {
+        refundAmount: parsedRefund
+      });
+    }
 
     setCancellationModalParticipant(null);
     setCancellationReasonInput('');
@@ -350,38 +353,30 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
 
   // Action: Confirm Payment (pendiente_pago -> pagada)
   const handleConfirmPayment = async (p: Participant) => {
-    const activity = activities.find(a => a.id === p.activityId);
-    const transition = validateAndPrepareTransition({
-      participant: p,
+    const res = await executeParticipantTransition({
+      participantId: p.id,
+      activityId: p.activityId,
       targetStatus: 'pagada',
-      activity,
       actor: user?.name || user?.email || 'Administración'
     });
 
-    if (!transition.allowed) {
-      alert(transition.error);
-      return;
+    if (!res.success) {
+      alert(res.error || 'No se pudo confirmar el cobro.');
     }
-
-    await updateParticipant(p.id, transition.updatedParticipant || { status: 'pagada' });
   };
 
   // Action: Check-in / Asistió (pendiente_pago / pagada -> asistio)
   const handleCheckIn = async (p: Participant) => {
-    const activity = activities.find(a => a.id === p.activityId);
-    const transition = validateAndPrepareTransition({
-      participant: p,
+    const res = await executeParticipantTransition({
+      participantId: p.id,
+      activityId: p.activityId,
       targetStatus: 'asistio',
-      activity,
       actor: user?.name || user?.email || 'Puerta / Check-in'
     });
 
-    if (!transition.allowed) {
-      alert(transition.error);
-      return;
+    if (!res.success) {
+      alert(res.error || 'No se pudo registrar la asistencia.');
     }
-
-    await updateParticipant(p.id, transition.updatedParticipant || { status: 'asistio', attended: true });
   };
 
   // Action: Promote from Waitlist (lista_de_espera -> pendiente_pago)
@@ -399,61 +394,65 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       return;
     }
 
-    const transition = validateAndPrepareTransition({
-      participant: p,
+    const res = await executeParticipantTransition({
+      participantId: p.id,
+      activityId: p.activityId,
       targetStatus: 'pendiente_pago',
-      activity,
       actor: user?.name || user?.email || 'Administración'
     });
 
-    if (!transition.allowed) {
-      alert(transition.error);
-      return;
+    if (!res.success) {
+      alert(res.error || 'No se pudo promocionar al participante.');
     }
-
-    await updateParticipant(p.id, transition.updatedParticipant || { status: 'pendiente_pago' });
   };
 
-  // Action: Close Activity Attendance (Batch non-checked-in to cancelada / no_presentado)
-  const handleOpenCloseAttendanceModal = (activityId: string) => {
+  // Action: Mark Activity as Celebrated (T-03)
+  const handleRequestCloseActivity = async (activityId: string) => {
     const act = activities.find(a => a.id === activityId);
     if (!act) return;
 
-    if (!isActivityTodayOrPast(act)) {
-      alert('No es posible cerrar la asistencia de una actividad que aún no se ha celebrado (fecha futura).');
+    if (act.status === 'celebrada') {
+      alert('La actividad ya está marcada como celebrada.');
       return;
     }
 
-    setClosingAttendanceActivityId(activityId);
-    setIsCloseAttendanceModalOpen(true);
-  };
+    const sheetStatus = checkAttendanceSheetComplete(participants, activityId);
 
-  const handleConfirmCloseAttendance = async () => {
-    if (!closingAttendanceActivityId) return;
-    setIsClosingAttendanceLoading(true);
+    if (!sheetStatus.isComplete) {
+      setIncompleteModalData({
+        activityId: act.id,
+        title: act.title,
+        pendingCount: sheetStatus.pendingCount
+      });
+      setIsIncompleteModalOpen(true);
+      return;
+    }
 
+    setIsClosingActivityLoading(true);
     try {
-      const actParts = participants.filter(p => p.activityId === closingAttendanceActivityId);
-      const pendingToCheckIn = actParts.filter(p => p.status === 'pendiente_pago' || p.status === 'pagada' || p.status === 'confirmada');
-
-      for (const p of pendingToCheckIn) {
-        await updateParticipant(p.id, {
-          status: 'cancelada',
-          cancellationReason: 'No presentado',
-          cancellationJustified: false,
-          cancellationKind: 'no_presentado',
-          cancelledAt: new Date().toISOString(),
-          cancelledBy: 'Cierre de Asistencia'
+      const res = await closeActivityAsCelebrated(activityId, user?.name || user?.email || 'Administración');
+      if (res.success) {
+        if (res.alreadyClosed) {
+          alert('La actividad ya estaba cerrada como celebrada.');
+        } else {
+          setCloseCelebratedSuccessMsg(`La actividad «${act.title}» se ha marcado como CELEBRADA correctamente.`);
+          setTimeout(() => setCloseCelebratedSuccessMsg(null), 5000);
+        }
+      } else if (res.blockedByPendingSheet) {
+        setIncompleteModalData({
+          activityId: act.id,
+          title: act.title,
+          pendingCount: res.pendingCount || 1
         });
+        setIsIncompleteModalOpen(true);
+      } else {
+        alert(res.error || 'Error al cerrar la actividad.');
       }
-
-      setIsCloseAttendanceModalOpen(false);
-      setClosingAttendanceActivityId(null);
-    } catch (err) {
-      console.error('Error closing attendance:', err);
-      alert('Ocurrió un error al cerrar la asistencia.');
+    } catch (err: any) {
+      console.error('Error closing activity as celebrated:', err);
+      alert('Ocurrió un error al marcar la actividad como celebrada: ' + (err.message || err));
     } finally {
-      setIsClosingAttendanceLoading(false);
+      setIsClosingActivityLoading(false);
     }
   };
 
@@ -518,13 +517,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
   };
 
   // Confirm delete
-  const handleConfirmDelete = async () => {
-    if (!participantToDelete) return;
-    await deleteParticipant(participantToDelete.id, participantToDelete.activityId);
-    setParticipantToDelete(null);
-  };
-
-  // Data Migration Simulation & Application Tool (Bloque 5)
+  // Data Migration Simulation & Application Tool (Bloque 4 & Bloque 5)
   const handleOpenMigrationTool = () => {
     const sim = simulateParticipantMigration(participants, activities);
     setMigrationSimulation(sim);
@@ -537,16 +530,20 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     setIsApplyingMigration(true);
 
     try {
-      for (const item of migrationSimulation.itemsToMigrate) {
-        await updateParticipant(item.id, item.changes);
+      const actor = user?.name || user?.email || 'Migración Administrativa';
+      const res = await executeAdministrativeMigration(actor);
+      
+      if (res.success || res.migratedCount > 0) {
+        setMigrationSuccessMsg(`¡Normalización completada! Se han actualizado ${res.migratedCount} registros al modelo canónico de 5 estados.`);
+        // Refresh simulation
+        const refreshedSim = simulateParticipantMigration(participants, activities);
+        setMigrationSimulation(refreshedSim);
+      } else {
+        alert(res.error || 'Hubo un problema al aplicar la normalización canónica.');
       }
-      setMigrationSuccessMsg(`¡Normalización completada con éxito! Se han actualizado ${migrationSimulation.itemsToMigrate.length} registros al modelo canónico.`);
-      // Refresh simulation
-      const refreshedSim = simulateParticipantMigration(participants, activities);
-      setMigrationSimulation(refreshedSim);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error applying migration:', err);
-      alert('Hubo un problema al aplicar la normalización.');
+      alert(err.message || 'Hubo un problema al aplicar la normalización.');
     } finally {
       setIsApplyingMigration(false);
     }
@@ -644,6 +641,25 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
 
   return (
     <div className="space-y-6">
+      {closeCelebratedSuccessMsg && (
+        <div 
+          id="banner-close-celebrada-success"
+          className="bg-emerald-50 border border-emerald-300 text-emerald-900 px-5 py-3.5 rounded-2xl flex items-center justify-between gap-3 shadow-xs animate-fadeIn"
+        >
+          <div className="flex items-center gap-2.5">
+            <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span className="text-xs sm:text-sm font-semibold">{closeCelebratedSuccessMsg}</span>
+          </div>
+          <button 
+            type="button" 
+            onClick={() => setCloseCelebratedSuccessMsg(null)}
+            className="p-1 rounded-lg text-emerald-700 hover:bg-emerald-100/60 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Top Filter and Actions Bar */}
       <div className="bg-white rounded-3xl border border-[#EDE4D7] p-5 sm:p-6 shadow-xs space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -678,22 +694,28 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
               <span>+ Nueva Inscripción Manual</span>
             </button>
 
-            {/* Cierre de Asistencia Button (Visible when specific activity is filtered) */}
-            {currentActivity && (
+            {/* Marcar como Celebrada Button (Visible when specific activity is filtered) */}
+            {currentActivity && currentActivity.status !== 'celebrada' && (
               <button
                 id="btn-close-attendance"
                 type="button"
-                onClick={() => handleOpenCloseAttendanceModal(currentActivity.id)}
-                className={`px-3.5 py-2.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                  isActivityTodayOrPast(currentActivity)
-                    ? 'border-purple-300 bg-purple-50 hover:bg-purple-100 text-purple-900 shadow-2xs'
-                    : 'border-stone-200 bg-stone-100 text-stone-400 cursor-not-allowed'
-                }`}
-                title={isActivityTodayOrPast(currentActivity) ? 'Cerrar asistencia de la actividad' : 'Bloqueado: La actividad es futura'}
+                disabled={isClosingActivityLoading}
+                onClick={() => handleRequestCloseActivity(currentActivity.id)}
+                className="px-3.5 py-2.5 rounded-xl border border-[#521849]/30 bg-[#521849]/5 hover:bg-[#521849]/10 text-[#521849] text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs disabled:opacity-50"
+                title="Marcar como celebrada la actividad"
               >
-                <UserX className="w-4 h-4 text-purple-700" />
-                <span>Cerrar Asistencia</span>
+                <CheckCircle className="w-4 h-4 text-[#521849]" />
+                <span>Marcar como celebrada</span>
               </button>
+            )}
+            {currentActivity && currentActivity.status === 'celebrada' && (
+              <div 
+                id="badge-activity-celebrada"
+                className="px-3 py-2 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-900 text-xs font-semibold flex items-center gap-1.5"
+              >
+                <CheckCircle className="w-4 h-4 text-emerald-600" />
+                <span>Actividad Celebrada</span>
+              </div>
             )}
 
             <button
@@ -965,7 +987,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
             <span className="text-xl sm:text-2xl font-bold font-serif text-blue-950">
               {metrics.paidCount}
             </span>
-            <span className="text-[11px] text-blue-800">confirmadas</span>
+            <span className="text-[11px] text-blue-800">pagadas</span>
           </div>
           <p className="text-[10px] text-blue-700 mt-1 truncate">
             Abono registrado
@@ -1142,7 +1164,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                         <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                           p.status === 'pendiente_pago'
                             ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                            : p.status === 'pagada' || p.status === 'confirmada'
+                            : p.status === 'pagada'
                             ? 'bg-blue-100 text-blue-800 border border-blue-200'
                             : p.status === 'asistio'
                             ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
@@ -1151,13 +1173,13 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                             : 'bg-rose-100 text-rose-800 border border-rose-200'
                         }`}>
                           {p.status === 'pendiente_pago' && <Clock className="w-3 h-3 text-amber-600" />}
-                          {(p.status === 'pagada' || p.status === 'confirmada') && <CreditCard className="w-3 h-3 text-blue-600" />}
+                          {p.status === 'pagada' && <CreditCard className="w-3 h-3 text-blue-600" />}
                           {p.status === 'asistio' && <CheckCircle className="w-3 h-3 text-emerald-600" />}
                           {p.status === 'lista_de_espera' && <Clock className="w-3 h-3 text-amber-600" />}
                           {p.status === 'cancelada' && <XCircle className="w-3 h-3 text-rose-600" />}
                           <span>
                             {p.status === 'pendiente_pago' ? 'Pendiente Pago' :
-                             p.status === 'pagada' || p.status === 'confirmada' ? 'Pagada' :
+                             p.status === 'pagada' ? 'Pagada' :
                              p.status === 'asistio' ? 'Asistió' :
                              p.status === 'lista_de_espera' ? 'Lista de Espera' : 'Cancelada'}
                           </span>
@@ -1249,7 +1271,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                       )}
 
                       {/* Caso 3: Check-in / Asistió (Disponible para pendiente_pago y pagada si es hoy o pasado) */}
-                      {(p.status === 'pendiente_pago' || p.status === 'pagada' || p.status === 'confirmada') && isTodayOrPast && (
+                      {(p.status === 'pendiente_pago' || p.status === 'pagada') && isTodayOrPast && (
                         <button
                           type="button"
                           onClick={() => handleCheckIn(p)}
@@ -1260,13 +1282,13 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                         </button>
                       )}
 
-                      {/* Caso 4: Gestionar Cancelación (Solo para pendiente_pago y pagada) */}
-                      {(p.status === 'pendiente_pago' || p.status === 'pagada' || p.status === 'confirmada') && (
+                      {/* Caso 4: Gestionar Cancelación (Para cualquier estado no cancelado) */}
+                      {p.status !== 'cancelada' && (
                         <button
                           type="button"
                           onClick={() => handleOpenCancellationModal(p)}
                           className="p-1.5 rounded-lg border border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 cursor-pointer"
-                          title="Gestionar Cancelación (Libera 1 plaza con motivo obligatorio)"
+                          title="Gestionar Cancelación (requiere motivo obligatorio)"
                         >
                           <XCircle className="w-3.5 h-3.5" />
                         </button>
@@ -1280,16 +1302,6 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                         title="Editar Datos del Asistente"
                       >
                         <Edit3 className="w-3.5 h-3.5" />
-                      </button>
-
-                      {/* Eliminar Registro */}
-                      <button
-                        type="button"
-                        onClick={() => setParticipantToDelete(p)}
-                        className="p-1.5 rounded-lg border border-[#EDE4D7] text-[#9B3E26] hover:bg-rose-50 cursor-pointer"
-                        title="Eliminar Registro"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </td>
                   </tr>
@@ -1678,80 +1690,22 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
         </div>
       )}
 
-      {/* MODAL: CIERRE DE ASISTENCIA DE ACTIVIDAD (Bloque 5) */}
-      {isCloseAttendanceModalOpen && closingAttendanceActivityId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
-          <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-[#EDE4D7] animate-scaleUp">
-            {(() => {
-              const act = activities.find(a => a.id === closingAttendanceActivityId);
-              const actParts = participants.filter(p => p.activityId === closingAttendanceActivityId);
-              const pendingCount = actParts.filter(p => p.status === 'pendiente_pago' || p.status === 'pagada' || p.status === 'confirmada').length;
-
-              return (
-                <div>
-                  <div className="flex items-center gap-3 pb-3 border-b border-[#EDE4D7]">
-                    <div className="p-2.5 rounded-2xl bg-purple-100 text-purple-800">
-                      <UserX className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-bold font-serif text-[#26201D]">
-                        Cierre de Asistencia de Sala
-                      </h3>
-                      <p className="text-xs text-[#574B45]">
-                        {act?.title}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="py-4 space-y-3 text-xs text-[#574B45]">
-                    <p>
-                      Al cerrar la asistencia de esta actividad celebrada:
-                    </p>
-                    <div className="p-3 rounded-2xl bg-purple-50 border border-purple-200 text-purple-950 font-medium">
-                      <strong>{pendingCount} persona{pendingCount !== 1 ? 's' : ''}</strong> con reserva que no realizaron check-in pasarán automáticamente a:
-                      <div className="mt-1 text-xs font-bold text-rose-800 bg-white p-2 rounded-xl border border-purple-200">
-                        • Estado: Cancelada (Injustificada)<br />
-                        • Motivo: «No presentado»
-                      </div>
-                    </div>
-                    <p className="text-[11px] text-[#8C7E77]">
-                      Esta acción consolida el histórico de faltas de asistencia y no puede revertirse masivamente.
-                    </p>
-                  </div>
-
-                  <div className="pt-3 flex items-center justify-end gap-2 border-t border-[#EDE4D7]">
-                    <button
-                      type="button"
-                      disabled={isClosingAttendanceLoading}
-                      onClick={() => {
-                        setIsCloseAttendanceModalOpen(false);
-                        setClosingAttendanceActivityId(null);
-                      }}
-                      className="px-4 py-2 rounded-xl border border-[#EDE4D7] bg-white text-[#574B45] text-xs font-semibold hover:bg-[#F6F1EA] cursor-pointer"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isClosingAttendanceLoading || pendingCount === 0}
-                      onClick={handleConfirmCloseAttendance}
-                      className="px-5 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                    >
-                      {isClosingAttendanceLoading ? (
-                        <span>Cerrando...</span>
-                      ) : (
-                        <>
-                          <Check className="w-4 h-4" />
-                          <span>Confirmar Cierre ({pendingCount} afectados)</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        </div>
+      {/* MODAL: HOJA DE ASISTENCIA INCOMPLETA (T-03) */}
+      {isIncompleteModalOpen && incompleteModalData && (
+        <IncompleteAttendanceModal
+          isOpen={isIncompleteModalOpen}
+          onClose={() => {
+            setIsIncompleteModalOpen(false);
+            setIncompleteModalData(null);
+          }}
+          activityId={incompleteModalData.activityId}
+          activityTitle={incompleteModalData.title}
+          pendingCount={incompleteModalData.pendingCount}
+          onGoToAttendance={(actId) => {
+            setSelectedActivityId(actId);
+            setStatusFilter('all');
+          }}
+        />
       )}
 
       {/* MODAL: AUDITORÍA Y NORMALIZACIÓN DE ESTADOS (Bloque 5) */}
@@ -1863,36 +1817,6 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                 </div>
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: CONFIRMAR ELIMINACIÓN */}
-      {participantToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
-          <div className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-[#EDE4D7] animate-scaleUp">
-            <h3 className="text-lg font-bold font-serif text-[#26201D]">
-              ¿Eliminar inscripción de {participantToDelete.fullName}?
-            </h3>
-            <p className="text-xs text-[#574B45] mt-2">
-              Se eliminará el registro de este asistente para la actividad <strong>{participantToDelete.activityTitle}</strong> y se liberará el aforo correspondiente.
-            </p>
-            <div className="mt-6 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setParticipantToDelete(null)}
-                className="px-4 py-2 rounded-xl border border-[#EDE4D7] text-xs font-semibold text-[#574B45] hover:bg-[#F6F1EA] cursor-pointer"
-              >
-                Volver
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmDelete}
-                className="px-4 py-2 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-semibold shadow-xs cursor-pointer"
-              >
-                Sí, eliminar inscripción
-              </button>
-            </div>
           </div>
         </div>
       )}

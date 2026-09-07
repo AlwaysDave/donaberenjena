@@ -4,21 +4,34 @@ import { getFirestore, Firestore } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 import { AdminUser } from '../types';
 
-// Firebase configuration loaded directly from environment variables (.env)
+// Firebase configuration loaded safely from environment variables (client or node)
+function getEnvVar(key: string): string | undefined {
+  if (typeof import.meta !== 'undefined' && (import.meta as any).env?.[key]) {
+    return (import.meta as any).env[key];
+  }
+  if (typeof process !== 'undefined' && process.env?.[key]) {
+    return process.env[key];
+  }
+  return undefined;
+}
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+  apiKey: getEnvVar('VITE_FIREBASE_API_KEY') || getEnvVar('FIREBASE_API_KEY') || (typeof process !== 'undefined' && process.env?.FIRESTORE_EMULATOR_HOST ? 'test-api-key' : ''),
+  authDomain: getEnvVar('VITE_FIREBASE_AUTH_DOMAIN') || '',
+  projectId: getEnvVar('VITE_FIREBASE_PROJECT_ID') || getEnvVar('FIREBASE_PROJECT_ID') || (typeof process !== 'undefined' && process.env?.FIRESTORE_EMULATOR_HOST ? 'test-project' : ''),
+  storageBucket: getEnvVar('VITE_FIREBASE_STORAGE_BUCKET') || '',
+  messagingSenderId: getEnvVar('VITE_FIREBASE_MESSAGING_SENDER_ID') || '',
+  appId: getEnvVar('VITE_FIREBASE_APP_ID') || '',
+  measurementId: getEnvVar('VITE_FIREBASE_MEASUREMENT_ID') || ''
 };
 
 // Check if Firebase environment variables are provided
 export function isFirebaseConfigured(): boolean {
-  const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
-  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+  if (typeof process !== 'undefined' && process.env?.FIRESTORE_EMULATOR_HOST) {
+    return true;
+  }
+  const apiKey = getEnvVar('VITE_FIREBASE_API_KEY') || getEnvVar('FIREBASE_API_KEY');
+  const projectId = getEnvVar('VITE_FIREBASE_PROJECT_ID') || getEnvVar('FIREBASE_PROJECT_ID');
   return Boolean(apiKey && apiKey.length > 5 && projectId && projectId.length > 2);
 }
 
@@ -40,6 +53,10 @@ if (isFirebaseConfigured()) {
   } catch (err) {
     console.error("Firebase initialization error:", err);
   }
+}
+
+export function setCustomFirestore(customDb: Firestore) {
+  db = customDb;
 }
 
 export { app, auth, db, storage };

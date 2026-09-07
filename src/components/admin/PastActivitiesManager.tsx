@@ -71,10 +71,10 @@ export const PastActivitiesManager: React.FC<PastActivitiesManagerProps> = ({ on
     const activitiesData = filteredActivities.map(act => {
       const actParticipants = participants.filter(p => p.activityId === act.id);
       
-      // Categorías de asistentes (solo status === 'asistio' o attended === true)
-      const attendedList = actParticipants.filter(p => (p.status === 'asistio' || p.attended === true) && p.status !== 'cancelada' && p.status !== 'no_asistio');
-      const noShowList = actParticipants.filter(p => p.status === 'no_asistio');
-      const cancelledList = actParticipants.filter(p => p.status === 'cancelada');
+      // Categorías de asistentes canónicas (solo status === 'asistio', no_presentado como cancelada)
+      const attendedList = actParticipants.filter(p => p.status === 'asistio');
+      const noShowList = actParticipants.filter(p => p.status === 'cancelada' && p.cancellationKind === 'no_presentado');
+      const cancelledList = actParticipants.filter(p => p.status === 'cancelada' && p.cancellationKind !== 'no_presentado');
 
       // Asistentes reales totales
       const totalAttended = attendedList.length;

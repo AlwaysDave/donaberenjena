@@ -6,6 +6,9 @@ import {
   updateDoc, 
   deleteDoc, 
   getDoc,
+  getDocs,
+  query,
+  where,
   increment,
   runTransaction,
   writeBatch,
@@ -14,7 +17,8 @@ import {
 import { db } from './firebase';
 import { Activity, AdminRole, WebMetric, Participant, Member, AdminNotification, Expense, Sponsorship, ContactMessage, ParticipantStatus } from '../types';
 import { sortActivitiesAscending } from '../utils/dateUtils';
-import { validateAndPrepareTransition, prepareAttendanceClose } from './participantTransitions';
+import { validateAndPrepareTransition, isActivityConcluded, checkAttendanceSheetComplete } from './participantTransitions';
+import { normalizeParticipantRecord } from './participantMigration';
 
 const ACTIVITIES_COLLECTION = 'activities';
 const METRICS_COLLECTION = 'metrics';
@@ -148,6 +152,16 @@ export function subscribeToMetricsFirestore(
 export async function saveActivityFirestore(activity: Activity): Promise<void> {
   if (!db) throw new Error('Firestore is not initialized');
   const activityDocRef = doc(db, ACTIVITIES_COLLECTION, activity.id);
+  const snap = await getDoc(activityDocRef);
+  if (snap.exists()) {
+    const current = snap.data() as Activity;
+    if (current.status === 'celebrada' && activity.status !== 'celebrada') {
+      throw new Error('Una actividad celebrada no puede ser reabierta como próxima.');
+    }
+    if (current.status !== 'celebrada' && activity.status === 'celebrada') {
+      throw new Error('El cierre a estado celebrada solo puede realizarse a través del cierre central transaccional (closeActivityAsCelebrated).');
+    }
+  }
   const cleanData = sanitizeForFirestore(activity);
   await setDoc(activityDocRef, cleanData);
 }
@@ -158,6 +172,18 @@ export async function saveActivityFirestore(activity: Activity): Promise<void> {
 export async function updateActivityFirestore(id: string, updates: Partial<Activity>): Promise<void> {
   if (!db) throw new Error('Firestore is not initialized');
   const activityDocRef = doc(db, ACTIVITIES_COLLECTION, id);
+  if (updates.status !== undefined) {
+    const snap = await getDoc(activityDocRef);
+    if (snap.exists()) {
+      const current = snap.data() as Activity;
+      if (current.status === 'celebrada' && updates.status !== 'celebrada') {
+        throw new Error('Una actividad celebrada no puede ser reabierta como próxima.');
+      }
+      if (current.status !== 'celebrada' && updates.status === 'celebrada') {
+        throw new Error('El cierre a estado celebrada solo puede realizarse a través del cierre central transaccional (closeActivityAsCelebrated).');
+      }
+    }
+  }
   const cleanUpdates = sanitizeForFirestore(updates);
   await updateDoc(activityDocRef, {
     ...cleanUpdates,
@@ -172,18 +198,6 @@ export async function deleteActivityFirestore(id: string): Promise<void> {
   if (!db) throw new Error('Firestore is not initialized');
   const activityDocRef = doc(db, ACTIVITIES_COLLECTION, id);
   await deleteDoc(activityDocRef);
-}
-
-/**
- * Atomic reservation increment for public visitors
- */
-export async function reserveSpotsFirestore(id: string, spotsCount: number): Promise<void> {
-  if (!db) throw new Error('Firestore is not initialized');
-  const activityDocRef = doc(db, ACTIVITIES_COLLECTION, id);
-  await updateDoc(activityDocRef, {
-    bookedSpots: increment(spotsCount),
-    updatedAt: new Date().toISOString().split('T')[0]
-  });
 }
 
 /**
@@ -220,25 +234,98 @@ export function subscribeToParticipantsFirestore(
 }
 
 /**
- * Save or create a Participant document
- */
-export async function saveParticipantFirestore(participant: Participant): Promise<void> {
-  if (!db) throw new Error('Firestore is not initialized');
-  const participantDocRef = doc(db, PARTICIPANTS_COLLECTION, participant.id);
-  const cleanData = sanitizeForFirestore(participant);
-  await setDoc(participantDocRef, cleanData);
-}
-
-/**
- * Update partial fields of a Participant document
+ * Update partial non-sensitive fields of a Participant document.
+ * Cannot change status, attendance, cancellation, or capacity.
  */
 export async function updateParticipantFirestore(id: string, updates: Partial<Participant>): Promise<void> {
   if (!db) throw new Error('Firestore is not initialized');
   const participantDocRef = doc(db, PARTICIPANTS_COLLECTION, id);
-  const cleanUpdates = sanitizeForFirestore(updates);
+  // Strip status and spotsCount to prevent non-transactional state/aforo desynchronization
+  const {
+    status: _s,
+    spotsCount: _sc,
+    ...safeUpdates
+  } = updates as any;
+
+  const cleanUpdates = sanitizeForFirestore(safeUpdates);
+  if (Object.keys(cleanUpdates).length === 0) return;
+
   await updateDoc(participantDocRef, {
     ...cleanUpdates,
     updatedAt: new Date().toISOString()
+  });
+}
+
+/**
+ * Add a participant manually via an atomic transaction.
+ * Checks capacity: assigns 'pendiente_pago' and increments bookedSpots if capacity available,
+ * or assigns 'lista_de_espera' without modifying bookedSpots if capacity is full.
+ */
+export async function addManualParticipantFirestore(
+  participantData: Omit<Participant, 'id' | 'status' | 'registeredAt'> & { id?: string },
+  _testHooks?: {
+    afterActivityRead?: (activity: Activity) => Promise<void>;
+    beforeCommit?: () => Promise<void>;
+  }
+): Promise<Participant> {
+  if (!db) throw new Error('Firestore is not initialized');
+
+  const participantId = participantData.id || `part-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const partRef = doc(db, PARTICIPANTS_COLLECTION, participantId);
+  const actRef = doc(db, ACTIVITIES_COLLECTION, participantData.activityId);
+  const nowIso = new Date().toISOString();
+
+  return await runTransaction(db, async (transaction) => {
+    const actSnap = await transaction.get(actRef as any);
+    if (!actSnap.exists()) {
+      throw new Error('Actividad no encontrada.');
+    }
+    const actData = (typeof actSnap.data === 'function' ? actSnap.data() : actSnap.data) as Activity;
+    if (actData.status === 'celebrada') {
+      throw new Error('No se pueden añadir participantes a una actividad ya celebrada.');
+    }
+
+    if (_testHooks?.afterActivityRead) {
+      await _testHooks.afterActivityRead(actData);
+    }
+
+    const currentBooked = Number(actData.bookedSpots || 0);
+    const totalSpots = Number(actData.totalSpots || 0);
+
+    const hasSpot = currentBooked < totalSpots;
+    const assignedStatus: ParticipantStatus = hasSpot ? 'pendiente_pago' : 'lista_de_espera';
+    const newBookedSpots = hasSpot ? currentBooked + 1 : currentBooked;
+
+    const fullParticipant: Participant = {
+      ...participantData,
+      id: participantId,
+      status: assignedStatus,
+      groupId: participantData.groupId || `grp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      registeredAt: nowIso,
+      updatedAt: nowIso
+    };
+
+    const cleanData = sanitizeForFirestore(fullParticipant);
+    transaction.set(partRef as any, cleanData);
+
+    const existingIds: string[] = Array.isArray(actData.participantIds) ? actData.participantIds : [];
+    const updatedParticipantIds = Array.from(new Set([...existingIds, participantId]));
+
+    const actUpdates: any = {
+      participantIds: updatedParticipantIds,
+      updatedAt: nowIso
+    };
+    if (hasSpot) {
+      actUpdates.bookedSpots = newBookedSpots;
+    }
+
+    if (_testHooks?.beforeCommit) {
+      await _testHooks.beforeCommit();
+    }
+
+    transaction.update(actRef as any, actUpdates);
+
+    return fullParticipant;
   });
 }
 
@@ -249,56 +336,6 @@ export async function deleteParticipantFirestore(id: string): Promise<void> {
   if (!db) throw new Error('Firestore is not initialized');
   const participantDocRef = doc(db, PARTICIPANTS_COLLECTION, id);
   await deleteDoc(participantDocRef);
-}
-
-/**
- * Atomic reservation creation with multiple individual Participant records + spot update
- */
-export async function createReservationWithParticipantsFirestore(
-  attendees: Participant[],
-  activityId: string
-): Promise<void> {
-  if (!db) throw new Error('Firestore is not initialized');
-  if (!attendees || attendees.length === 0) return;
-
-  // 1. Save each participant document (all sharing the same groupId)
-  for (const attendee of attendees) {
-    const participantDocRef = doc(db, PARTICIPANTS_COLLECTION, attendee.id);
-    const cleanData = sanitizeForFirestore(attendee);
-    await setDoc(participantDocRef, cleanData);
-  }
-
-  // 2. Increment spots on activity if valid
-  if (activityId) {
-    const activityDocRef = doc(db, ACTIVITIES_COLLECTION, activityId);
-    try {
-      await updateDoc(activityDocRef, {
-        bookedSpots: increment(attendees.length),
-        updatedAt: new Date().toISOString().split('T')[0]
-      });
-    } catch (actErr) {
-      console.warn('Could not increment activity spots directly:', actErr);
-    }
-  }
-}
-
-/**
- * Adjust activity spots when participant spots change or are cancelled
- */
-export async function adjustActivitySpotsFirestore(
-  activityId: string,
-  spotsDelta: number
-): Promise<void> {
-  if (!db || !activityId) return;
-  const activityDocRef = doc(db, ACTIVITIES_COLLECTION, activityId);
-  try {
-    await updateDoc(activityDocRef, {
-      bookedSpots: increment(spotsDelta),
-      updatedAt: new Date().toISOString().split('T')[0]
-    });
-  } catch (err) {
-    console.warn('Error adjusting activity spots:', err);
-  }
 }
 
 // =========================================================================
@@ -631,7 +668,8 @@ export async function executeParticipantTransitionFirestore({
   activityId,
   targetStatus,
   actor = 'Administración',
-  cancellationData
+  cancellationData,
+  _testHooks
 }: {
   participantId: string;
   activityId: string;
@@ -642,6 +680,10 @@ export async function executeParticipantTransitionFirestore({
     justified: boolean;
     kind: 'cancelacion_usuario' | 'no_presentado';
   };
+  _testHooks?: {
+    afterRead?: (participant: Participant, activity: Activity) => Promise<void>;
+    beforeCommit?: () => Promise<void>;
+  };
 }): Promise<{ success: boolean; error?: string; updatedParticipant?: Partial<Participant>; spotsDelta?: number }> {
   if (!db) throw new Error('Firestore is not initialized');
 
@@ -649,17 +691,24 @@ export async function executeParticipantTransitionFirestore({
   const actRef = doc(db, ACTIVITIES_COLLECTION, activityId);
 
   return await runTransaction(db, async (transaction) => {
-    const partSnap = await transaction.get(partRef);
+    const partSnap = await transaction.get(partRef as any);
     if (!partSnap.exists()) {
       return { success: false, error: 'Participante no encontrado.' };
     }
-    const actSnap = await transaction.get(actRef);
+    const actSnap = await transaction.get(actRef as any);
     if (!actSnap.exists()) {
       return { success: false, error: 'Actividad no encontrada.' };
     }
 
-    const participant = { ...partSnap.data(), id: partSnap.id } as Participant;
-    const activity = { ...actSnap.data(), id: actSnap.id } as Activity;
+    const partData = typeof partSnap.data === 'function' ? partSnap.data() : partSnap.data;
+    const actData = typeof actSnap.data === 'function' ? actSnap.data() : actSnap.data;
+
+    const participant = { ...(partData as any), id: partSnap.id } as Participant;
+    const activity = { ...(actData as any), id: actSnap.id } as Activity;
+
+    if (_testHooks?.afterRead) {
+      await _testHooks.afterRead(participant, activity);
+    }
 
     const transition = validateAndPrepareTransition({
       participant,
@@ -674,14 +723,18 @@ export async function executeParticipantTransitionFirestore({
     }
 
     const cleanUpdates = sanitizeForFirestore(transition.updatedParticipant || {});
-    transaction.update(partRef, cleanUpdates);
+    transaction.update(partRef as any, cleanUpdates);
 
     if (transition.spotsDelta && transition.spotsDelta !== 0) {
       const newBooked = Math.max(0, (activity.bookedSpots || 0) + transition.spotsDelta);
-      transaction.update(actRef, {
+      transaction.update(actRef as any, {
         bookedSpots: newBooked,
         updatedAt: new Date().toISOString()
       });
+    }
+
+    if (_testHooks?.beforeCommit) {
+      await _testHooks.beforeCommit();
     }
 
     return {
@@ -692,32 +745,184 @@ export async function executeParticipantTransitionFirestore({
   });
 }
 
+
+
 /**
- * Executes closing attendance for an entire activity transactionally in Firestore.
- * Converts all unattended participants to 'cancelada' ('no_presentado').
- * Does not alter bookedSpots since the activity has already taken place.
+ * Executes administrative migration to canonical model directly in Firestore.
+ * - Writes the exact normalized state for each participant.
+ * - Deletes legacy fields (attended, justified, confirmada, no_asistio).
+ * - Returns per-record individual results.
+ * - Does not alter bookedSpots.
+ * - Idempotent: repeating the migration produces 0 alterations.
  */
-export async function executeBulkAttendanceCloseFirestore(
+export async function executeAdministrativeMigrationFirestore(
   participants: Participant[],
-  activity: Activity,
-  actor: string = 'Administración'
-): Promise<{ success: boolean; affectedCount: number; error?: string }> {
+  actor: string = 'Migración Administrativa'
+): Promise<{
+  success: boolean;
+  migratedCount: number;
+  results: Array<{ id: string; success: boolean; previousStatus: string; targetStatus: string; error?: string }>;
+  error?: string;
+}> {
   if (!db) throw new Error('Firestore is not initialized');
 
-  const { affectedCount, updatedParticipants } = prepareAttendanceClose(participants, activity, actor);
-  if (affectedCount === 0) {
-    return { success: true, affectedCount: 0 };
+  const results: Array<{ id: string; success: boolean; previousStatus: string; targetStatus: string; error?: string }> = [];
+  let migratedCount = 0;
+
+  for (const p of participants) {
+    const rawStatus = (p.status as string) || '';
+    const norm = normalizeParticipantRecord(p, actor);
+
+    if (!norm.needsMigration) {
+      results.push({
+        id: p.id,
+        success: true,
+        previousStatus: rawStatus,
+        targetStatus: norm.targetStatus
+      });
+      continue;
+    }
+
+    const pRef = doc(db, PARTICIPANTS_COLLECTION, p.id);
+    try {
+      const cleanData = sanitizeForFirestore(norm.cleanRecord);
+      // Use setDoc to replace document and eliminate deprecated legacy properties
+      await setDoc(pRef, cleanData);
+      migratedCount++;
+      results.push({
+        id: p.id,
+        success: true,
+        previousStatus: rawStatus,
+        targetStatus: norm.targetStatus
+      });
+    } catch (err: any) {
+      results.push({
+        id: p.id,
+        success: false,
+        previousStatus: rawStatus,
+        targetStatus: norm.targetStatus,
+        error: err.message || String(err)
+      });
+    }
   }
 
-  const batch = writeBatch(db);
-  for (const item of updatedParticipants) {
-    const pRef = doc(db, PARTICIPANTS_COLLECTION, item.id);
-    const cleanData = sanitizeForFirestore(item.updates);
-    batch.update(pRef, cleanData);
-  }
-
-  await batch.commit();
-  return { success: true, affectedCount };
+  const allSucceeded = results.every(r => r.success);
+  return {
+    success: allSucceeded,
+    migratedCount,
+    results,
+    error: allSucceeded ? undefined : 'Uno o más registros fallaron durante la migración.'
+  };
 }
+
+/**
+ * Closes an activity and marks it as 'celebrada' with atomic validation in Firestore.
+ * 
+ * Rules (T-03 / T-03C):
+ * - Builds a transactional query: query(collection(db, 'participants'), where('activityId', '==', activityId)).
+ * - Reads all participants transactionally inside the transaction via transaction.get(partsQuery).
+ * - Never uses participantIds or React state as authority for closure.
+ * - Blocks closure if ANY participant of the activity is in 'pendiente_pago' or 'pagada'.
+ * - Leaves participants and bookedSpots completely untouched.
+ * - Idempotent: repeating close on already celebrada activity returns alreadyClosed: true with 0 writes.
+ * - Concurrency safe: reads all participant docs and activity doc atomically inside transaction.
+ */
+export async function closeActivityAsCelebratedFirestore(
+  activityId: string,
+  actor: string = 'Administración',
+  _testHooks?: {
+    afterParticipantsRead?: (participants: Participant[]) => Promise<void>;
+    beforeCommit?: () => Promise<void>;
+  }
+): Promise<{
+  success: boolean;
+  alreadyClosed?: boolean;
+  blockedByPendingSheet?: boolean;
+  pendingCount?: number;
+  pendingParticipantIds?: string[];
+  error?: string;
+  message?: string;
+}> {
+  if (!db) throw new Error('Firestore is not initialized');
+
+  const actRef = doc(db, ACTIVITIES_COLLECTION, activityId);
+  const partsQuery = query(
+    collection(db, PARTICIPANTS_COLLECTION),
+    where('activityId', '==', activityId)
+  );
+
+  return await runTransaction(db, async (transaction) => {
+    // 1. Read activity document atomically inside transaction
+    const actSnap = await transaction.get(actRef as any);
+    if (!actSnap.exists()) {
+      return { success: false, error: 'Actividad no encontrada.' };
+    }
+    const actData = (typeof actSnap.data === 'function' ? actSnap.data() : actSnap.data) as Activity;
+
+    // AC-05: If already celebrada, do not write anything and report it was already closed
+    if (actData.status === 'celebrada') {
+      return {
+        success: true,
+        alreadyClosed: true,
+        message: 'La actividad ya estaba cerrada como celebrada.'
+      };
+    }
+
+    // 2. Read participants transactionally
+    // Query participants for this activity, and lock each document in the transaction read-set
+    const querySnapshot = await getDocs(partsQuery);
+    const participantDocs = await Promise.all(
+      querySnapshot.docs.map(d => transaction.get(d.ref as any))
+    );
+
+    const currentParticipants: Participant[] = [];
+    for (const d of participantDocs) {
+      const exists = typeof d.exists === 'function' ? d.exists() : Boolean(d.exists);
+      if (exists) {
+        const data = (typeof d.data === 'function' ? d.data() : d.data) as Record<string, any> || {};
+        currentParticipants.push({ ...data, id: d.id } as Participant);
+      }
+    }
+
+    // Test hook after transactional participants read (AC-03 to AC-06)
+    if (_testHooks?.afterParticipantsRead) {
+      await _testHooks.afterParticipantsRead(currentParticipants);
+    }
+
+    // 3. Validate completeness using pure shared function
+    const sheetStatus = checkAttendanceSheetComplete(currentParticipants, activityId);
+
+    // AC-01 / AC-02: If incomplete, block closing and abort with zero writes
+    if (!sheetStatus.isComplete) {
+      return {
+        success: false,
+        blockedByPendingSheet: true,
+        pendingCount: sheetStatus.pendingCount,
+        pendingParticipantIds: sheetStatus.pendingParticipantIds,
+        error: 'Para cerrar la actividad debes completar la hoja de asistencia.'
+      };
+    }
+
+    // Test hook before commit
+    if (_testHooks?.beforeCommit) {
+      await _testHooks.beforeCommit();
+    }
+
+    // AC-03 / AC-07: If complete, ONLY mark activity as celebrada and cerrada.
+    // Participants and bookedSpots remain untouched.
+    transaction.update(actRef as any, {
+      status: 'celebrada',
+      registrationStatus: 'cerrada',
+      updatedAt: new Date().toISOString()
+    });
+
+    return {
+      success: true,
+      message: 'Actividad cerrada y marcada como celebrada correctamente.'
+    };
+  });
+}
+
+
 
 

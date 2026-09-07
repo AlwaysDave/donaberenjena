@@ -8,10 +8,11 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { initializeApp, getApps, App, cert } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { validateIdempotencyKey, executeReservationInTransaction } from "../src/services/reservationTransaction.ts";
 
 const currentDir = typeof __dirname !== "undefined"
   ? __dirname
-  : path.dirname(fileURLToPath(import.meta.url));
+  : process.cwd();
 
 const app = express();
 
@@ -626,6 +627,16 @@ app.post("/api/reserve", rateLimitMiddleware, async (req: Request, res: Response
       return res.status(400).json({ error: "El teléfono de contacto debe tener entre 5 y 30 dígitos." });
     }
 
+    // Strict idempotency validation (RES-01, RES-02, AC-05) - Never fabricate key from date/email/spots!
+    const rawKey = req.headers['idempotency-key'] || req.body.idempotencyKey || reservationData.idempotencyKey;
+    const keyValidation = validateIdempotencyKey(rawKey);
+    if (!keyValidation.valid) {
+      return res.status(400).json({
+        error: keyValidation.error || "Se requiere una clave de idempotencia válida (cabecera 'Idempotency-Key' o campo 'idempotencyKey')."
+      });
+    }
+    const idempotencyKey = keyValidation.key;
+
     const adminApp = getFirebaseAdmin();
     if (!adminApp) {
       return res.status(503).json({
@@ -635,113 +646,28 @@ app.post("/api/reserve", rateLimitMiddleware, async (req: Request, res: Response
 
     const firestore = getFirestore(adminApp);
     const actRef = firestore.collection("activities").doc(activityId.trim());
+    const idemRef = firestore.collection("idempotency_keys").doc(idempotencyKey);
+    const getParticipantRef = (pId: string) => firestore.collection("participants").doc(pId);
 
-    const groupId = `grp-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-    const nowIso = new Date().toISOString();
-
-    // Run atomic Firestore transaction
-    await firestore.runTransaction(async (transaction) => {
-      const actDoc = await transaction.get(actRef);
-      if (!actDoc.exists) {
-        throw new Error("ACTIVIDAD_NO_ENCONTRADA");
-      }
-
-      const actData = actDoc.data() || {};
-
-      if (actData.status === "celebrada") {
-        throw new Error("ACTIVIDAD_CELEBRADA");
-      }
-
-      if (actData.registrationStatus === "cerrada") {
-        throw new Error("INSCRIPCIONES_CERRADAS");
-      }
-
-      const currentBooked = Number(actData.bookedSpots || 0);
-      const totalSpots = Number(actData.totalSpots || 0);
-      const available = Math.max(0, totalSpots - currentBooked);
-
-      if (requestedSpots > available) {
-        throw new Error(`AFORO_INSUFICIENTE:${available}`);
-      }
-
-      const priceMember = Number(actData.priceMember ?? 0);
-      const priceNonMember = Number(actData.priceNonMember ?? 0);
-      const turnText = reservationData.turn || (actData.time ? `Turno (${actData.time})` : undefined);
-
-      // 1. Participant 1 (Titular)
-      const isTitularMember = Boolean(reservationData.isMember ?? reservationData.attendees?.[0]?.isMember);
-      const titularPrice = isTitularMember ? priceMember : priceNonMember;
-      const titularId = `part-${Date.now()}-0-${Math.random().toString(36).substring(2, 6)}`;
-
-      const titularDocRef = firestore.collection("participants").doc(titularId);
-      const titularPayload: any = {
-        id: titularId,
+    // Run atomic Firestore transaction with idempotency check
+    const result = await firestore.runTransaction(async (transaction) => {
+      return await executeReservationInTransaction({
+        transaction,
+        activityRef: actRef,
+        idempotencyRef: idemRef,
+        getParticipantRef,
         activityId: activityId.trim(),
-        activityTitle: actData.title || "Actividad",
-        activityDate: actData.date || "",
-        activityType: actData.type || "cata",
-        fullName: titularName,
-        email: titularEmail,
-        phone: titularPhone,
-        isMember: isTitularMember,
-        groupId,
-        status: "pendiente_pago",
-        totalAmount: titularPrice,
-        paidAmount: 0,
-        paymentMethod: reservationData.paymentMethod || "bizum",
-        registeredAt: nowIso,
-        updatedAt: nowIso
-      };
-
-      if (turnText) titularPayload.turn = turnText;
-      if (reservationData.membershipNumber?.trim()) titularPayload.membershipNumber = reservationData.membershipNumber.trim();
-      if (reservationData.notes?.trim()) titularPayload.notes = reservationData.notes.trim();
-
-      transaction.set(titularDocRef, titularPayload);
-
-      // 2. Companions (Plazas 2..N)
-      for (let i = 1; i < requestedSpots; i++) {
-        const comp = reservationData.attendees?.[i];
-        const isCompMember = Boolean(comp?.isMember);
-        const compPrice = isCompMember ? priceMember : priceNonMember;
-        const compId = `part-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`;
-        const compName = comp?.fullName?.trim() || `Acompañante ${i} (${titularName})`;
-
-        const compDocRef = firestore.collection("participants").doc(compId);
-        const compPayload: any = {
-          id: compId,
-          activityId: activityId.trim(),
-          activityTitle: actData.title || "Actividad",
-          activityDate: actData.date || "",
-          activityType: actData.type || "cata",
-          fullName: compName,
-          email: comp?.email?.trim() || "",
-          phone: comp?.phone?.trim() || "",
-          isMember: isCompMember,
-          groupId,
-          status: "pendiente_pago",
-          totalAmount: compPrice,
-          paidAmount: 0,
-          paymentMethod: reservationData.paymentMethod || "bizum",
-          registeredAt: nowIso,
-          updatedAt: nowIso
-        };
-
-        if (turnText) compPayload.turn = turnText;
-        if (comp?.membershipNumber?.trim()) compPayload.membershipNumber = comp.membershipNumber.trim();
-        if (comp?.notes?.trim()) compPayload.notes = comp.notes.trim();
-
-        transaction.set(compDocRef, compPayload);
-      }
-
-      // 3. Atomically increment activity bookedSpots
-      transaction.update(actRef, {
-        bookedSpots: currentBooked + requestedSpots,
-        updatedAt: nowIso
+        requestedSpots,
+        reservationData,
+        idempotencyKey
       });
     });
 
-    // Record reservation_completed metric asynchronously in daily aggregate
+    if (result.isReplay) {
+      return res.status(200).json(result);
+    }
+
+    // Record reservation_completed metric asynchronously in daily aggregate for first-time success
     try {
       recordReservationCompletedInMemory(activityId.trim());
       const todayStr = getTodayDateString();
@@ -751,17 +677,13 @@ app.post("/api/reserve", rateLimitMiddleware, async (req: Request, res: Response
         date: todayStr,
         reservationsCompleted: FieldValue.increment(1),
         [`activities.${activityId.trim()}.reservationsCompleted`]: FieldValue.increment(1),
-        updatedAt: nowIso
+        updatedAt: new Date().toISOString()
       }, { merge: true });
     } catch (metricErr) {
       // safe fallback
     }
 
-    return res.status(200).json({
-      success: true,
-      message: `¡Plazas reservadas con éxito para ${titularName}! En breve recibirás las instrucciones de abono.`,
-      groupId
-    });
+    return res.status(200).json(result);
   } catch (error: any) {
     const errCode = error?.message || "";
     console.error("[RESERVATION_TRANSACTION_ERROR]", errCode);
@@ -774,14 +696,6 @@ app.post("/api/reserve", rateLimitMiddleware, async (req: Request, res: Response
     }
     if (errCode === "INSCRIPCIONES_CERRADAS") {
       return res.status(400).json({ error: "Las inscripciones para esta actividad se encuentran cerradas actualmente." });
-    }
-    if (errCode.startsWith("AFORO_INSUFICIENTE:")) {
-      const remaining = errCode.split(":")[1];
-      return res.status(400).json({
-        error: remaining === "0"
-          ? "Lo sentimos, el aforo para esta actividad está completo."
-          : `Lo sentimos, solo quedan ${remaining} plaza(s) disponibles.`
-      });
     }
 
     return res.status(500).json({

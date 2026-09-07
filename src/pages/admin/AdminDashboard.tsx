@@ -36,6 +36,7 @@ export const AdminDashboard: React.FC = () => {
   } = useData();
   const navigate = useNavigate();
   const [showNotificationsDrawer, setShowNotificationsDrawer] = useState(false);
+  const [targetAttendanceActivityId, setTargetAttendanceActivityId] = useState<string | null>(null);
 
   const activeAlerts = useMemo(() => {
     return computeAdminAlerts({
@@ -325,9 +326,17 @@ export const AdminDashboard: React.FC = () => {
             }}
           />
         ) : currentRole === 'simple' ? (
-          <ModoSencilloView />
+          <ModoSencilloView 
+            onNavigateToAttendance={(actId) => {
+              setTargetAttendanceActivityId(actId);
+              switchRole('advanced');
+            }}
+          />
         ) : (
-          <ModoAvanzadoView />
+          <ModoAvanzadoView 
+            initialTab={targetAttendanceActivityId ? 'participantes' : undefined}
+            initialActivityId={targetAttendanceActivityId}
+          />
         )}
       </main>
 

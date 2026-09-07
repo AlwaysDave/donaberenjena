@@ -16,11 +16,13 @@ export interface BaseActivity {
   subtitle: string;
   description: string;
   date: string; // e.g. "2026-04-10"
-  time?: string; // e.g. "20:30 h"
+  time?: string; // e.g. "20:30 h" (Hora de inicio)
+  endTime?: string; // e.g. "22:30 h" (Hora de finalización)
   priceMember: number; // Precio para socios (€)
   priceNonMember: number; // Precio para no socios (€)
   totalSpots: number;
   bookedSpots: number;
+  participantIds?: string[];
   status: ActivityStatus;
   registrationStatus?: RegistrationStatus; // 'abierta' o 'cerrada'
   images: string[];
@@ -224,10 +226,26 @@ export interface ReservationFormData {
   notes?: string;
   paymentMethod?: PaymentMethod;
   attendees?: ReservationAttendee[];
+  idempotencyKey?: string;
+}
+
+export type ReservationFailureKind = 'definitive' | 'retryable';
+
+export interface ReservationResult {
+  success: boolean;
+  message: string;
+  groupId?: string;
+  status?: CanonicalParticipantStatus;
+  failureKind?: ReservationFailureKind;
+  httpStatus?: number;
+  participants?: Participant[];
+  bookedSpots?: number;
 }
 
 export type CanonicalParticipantStatus = 'lista_de_espera' | 'pendiente_pago' | 'pagada' | 'asistio' | 'cancelada';
-export type ParticipantStatus = CanonicalParticipantStatus | 'confirmada' | 'no_asistio';
+export type ParticipantStatus = CanonicalParticipantStatus;
+
+export type CancellationKind = 'cancelacion_usuario' | 'no_presentado';
 
 export type PaymentMethod = 'bizum' | 'transferencia' | 'efectivo' | 'tarjeta' | 'pendiente' | 'otro';
 
@@ -241,23 +259,18 @@ export interface Participant {
   email: string;
   phone: string;
   isMember: boolean;
+  memberId?: string;
   groupId: string;
   turn?: string;
   membershipNumber?: string;
   notes?: string;
-  status: ParticipantStatus;
-  attended?: boolean; // Lectura temporal para compatibilidad y migración
+  status: CanonicalParticipantStatus;
   cancellationReason?: string;
   cancellationJustified?: boolean;
-  cancellationKind?: 'cancelacion_usuario' | 'no_presentado';
+  cancellationKind?: CancellationKind;
   cancelledAt?: string;
   cancelledBy?: string;
-  // Campos antiguos para migración
-  justified?: boolean;
-  justificationReason?: string;
-  justifiedBy?: string;
-  justifiedAt?: string;
-  refundAmount?: number;
+  cancellationRefund?: number;
   attendedAt?: string;
   attendedBy?: string;
   spotsCount?: number;

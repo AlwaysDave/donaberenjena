@@ -1,105 +1,159 @@
 # CHANGELOG FASE 1 — Asociación Gastronómica Doña Berenjena
 
-**Fecha:** 3 de Septiembre de 2026  
-**Estado:** ✅ Fase 1 completada íntegramente y validada sin errores.
+**Fecha:** 4 de Septiembre de 2026  
+**Entorno de Ejecución:** Node.js `v22.23.2`  
+**Estado:** ✅ Fase 1 completada íntegramente y validada con salidas literales.
 
 ---
 
 ## 1. Resumen Ejecutivo de Cambios Realizados
 
-### 1.1. Unificación y Estandarización de Estados de Participantes
-- **Estados canónicos activos:**
-  - `pendiente_pago` (Ocupa plaza)
-  - `pagada` (Ocupa plaza — reemplaza y consolida el estado legado `confirmada`)
-  - `asistio` (Ocupa plaza — representa la asistencia física confirmada en sala / evento)
-  - `cancelada` (Libera plaza de aforo, conserva auditoría de motivo, justificación y tipo `cancelacion_usuario` o `no_presentado`)
-  - `lista_espera` (No ocupa plaza; gestiona el orden de espera si el aforo está completo)
+### 1.1. Unificación y Estandarización de Estados de Participantes (Puntos 1, 2, 3 y 4)
+- **5 Estados canónicos únicos:**
+  - `pendiente_pago` (Ocupa plaza de aforo)
+  - `pagada` (Ocupa plaza de aforo — reemplaza y consolida el estado legacy `confirmada`)
+  - `asistio` (Ocupa plaza de aforo — representa la asistencia física confirmada en sala / evento)
+  - `cancelada` (Libera plaza en cancelaciones voluntarias antes del evento; conserva plaza en `no_presentado`; registra `cancellationKind`, `cancellationJustified` y `cancellationReason`)
+  - `lista_de_espera` (No ocupa plaza; gestiona el orden cronológico de espera cuando el aforo está completo)
 - **Eliminación de banderas redundantes:**
   - Se eliminó el uso de la propiedad booleana `attended: true`, consolidando `status: 'asistio'` junto con `attendedAt` (ISO timestamp) y `attendedBy` (actor).
-  - Los asistentes in situ y el control de puerta marcan el estado `asistio` directamente.
+  - Se eliminó el uso de la propiedad booleana `justified: true`, consolidando `cancellationJustified: boolean` y `cancellationReason: string`.
+  - El control de acceso in situ y la puerta marcan el estado `asistio` directamente de forma transaccional.
 
-### 1.2. Transaccionalidad y Robustez en Firestore y Modo Demo
-- **`executeParticipantTransitionFirestore`**:
-  - Implementado mediante `runTransaction` de Firestore para garantizar atomicidad absoluta: cuando un participante pasa a `cancelada` o desde `cancelada` a un estado con plaza, `bookedSpots` en la actividad se incrementa o decrementa dentro de la misma transacción, evitando desincronizaciones de aforo concurrentes.
-- **`executeBulkAttendanceCloseFirestore`**:
-  - Cierre masivo de asistencia mediante `writeBatch`, pasando automáticamente a los asistentes no presentados (`pendiente_pago` / `pagada`) a `cancelada` (`no_presentado`) sin alterar el aforo ocupado en eventos concluidos o en curso.
-- **`DataContext.tsx`**:
-  - Métodos `executeParticipantTransition` y `closeActivityAttendance` disponibles en toda la aplicación con sincronización optimista local y persistencia atómica en Firestore / Modo Demo.
+### 1.2. Migración Canónica Administrativa en 6 Pasos (Punto 2)
+- Implementada la función pura `normalizeParticipantRecord` en `/src/services/participantMigration.ts`:
+  1. `asistio` o `attended: true` -> `asistio` (registra `attendedAt`, `attendedBy`).
+  2. `confirmada` o `pagada` -> `pagada` (`paidAmount = totalAmount`).
+  3. `pendiente_pago` -> `pendiente_pago`.
+  4. `no_asistio` -> `cancelada` (`cancellationKind: 'no_presentado'`, `cancellationReason: 'No presentado'`).
+  5. `cancelada` -> `cancelada` (enriquece metadatos de justificación y tipo).
+  6. `lista_de_espera` -> `lista_de_espera`.
+- **Limpieza de campos heredados:** Eliminación de `attended`, `justified`, `justificationReason`.
+- **Transaccionalidad e Idempotencia:** `executeAdministrativeMigrationFirestore` aplica `setDoc` atómico conservando `bookedSpots` de la actividad. Una segunda ejecución genera 0 cambios.
 
-### 1.3. Nuevos Casos de Actividades Celebradas en el Modelo Mockup
-Se crearon en `src/data/demoData.ts` tres casos reales y exhaustivos de actividades celebradas reutilizando la lista de personas base (`BASE_PEOPLE`), sin crear identificadores no canónicos:
-1. **Cata celebrada llena con lista de espera y 250 € de gastos (`demo-cata-5-celebrada-llena`):**
-   - Aforo: 12 plazas cubiertas (6 socios a 20 € + 6 no socios a 25 € = 270 € recaudados).
-   - 3 participantes en lista de espera (`demo-part-cata5-w1`, `demo-part-cata5-w2`, `demo-part-cata5-w3`).
-   - Gasto imputado: 250 € (Vinos de Pago y Embutidos Ibéricos).
-   - Balance: +20,00 € de superávit.
-2. **Viaje celebrado con 600 € de pérdidas (`demo-viaje-4-celebrado-perdidas`):**
-   - Aforo: 20 plazas ofertadas, solo 10 ocupadas (6 socios a 140 € + 4 no socios a 170 € = 1.520 € recaudados).
-   - Gasto imputado: 2.120 € (Autobús privado 2.120 €).
-   - Balance: -600,00 € de déficit (pérdidas controladas por aforo bajo).
-3. **Curso celebrado a mitad de aforo (`demo-curso-4-celebrado-mitad-aforo`):**
-   - Aforo: 16 plazas ofertadas, exactamente 8 ocupadas (4 socios a 35 € + 4 no socios a 45 € = 320 € recaudados).
-   - Gasto imputado: 190 € (Pescados de lonja y arroces).
-   - Balance: +130,00 € de superávit.
+### 1.3. Control de Asistencia y Cierre Puntual (Puntos 3 y 4)
+- **`prepareAttendanceClose` y `executeBulkAttendanceCloseFirestore`:**
+  - Valida que la actividad haya finalizado (`isActivityConcluded`).
+  - Re-lee en Firestore (`getDoc`) cada participante antes de escribir para evitar sobrescribir check-ins concurrentes de puerta.
+  - Pasa exclusivamente los participantes con estado `pendiente_pago` o `pagada` a `cancelada` con `cancellationKind: 'no_presentado'`.
+  - Deja intactos los que ya tengan `asistio` o `cancelada`.
+  - Es 100% idempotente: reintentar el cierre devuelve 0 modificaciones.
 
-### 1.4. Refinamiento en UX y Mensajería de Reservas
-- **`ReservationBlock.tsx` & `DataContext.reserveSpots`**:
-  - Mensajes de confirmación limpios y directos: se informa exclusivamente del registro de la reserva o entrada en lista de espera, sin prometer envíos automáticos de correos ni instrucciones de abono inexistentes.
-- **`QuickCheckIn.tsx` (Control de Asistencia Rápido)**:
-  - Soporte de check-in táctil optimizado para móvil con botón de un toque.
-  - Botón "Cerrar control" para marcar no presentados masivamente.
-  - Registro de asistentes in situ / puerta con cálculo exacto de tarifas y cobro en efectivo.
+### 1.4. Transaccionalidad, Idempotencia y Censo de Socios (Puntos 1, 5, 7 y 8)
+- **Transacciones de Aforo:** `executeParticipantTransitionFirestore` utiliza transacciones atómicas (`runTransaction`) para sincronizar el estado del participante y `bookedSpots` en la actividad.
+- **Idempotencia de Reservas:** El backend API gestiona claves de idempotencia (`idempotency-key`) devolviendo la misma reserva ante reintentos sin duplicar plazas ni registros.
+- **Unicidad en Censo de Socios:** `addMember` valida de forma estricta e insensible a mayúsculas/minúsculas la unicidad del número de socio (`membershipNumber`) antes de persistir en Firestore.
+- **Alertas Administrativas:** `computeAdminAlerts` genera alertas deterministas con claves estables de deduplicación, resolviéndose automáticamente sin efectos secundarios.
 
 ---
 
-## 2. Salida Literal de Verificación (Lint & Build)
+## 2. Salidas Literales de Verificación (Node.js 22.x)
 
-### 2.1. Salida de `npm run lint`
-```bash
-> react-example@0.9.0 lint
+### 2.1. Salida de `node -v` y `npm ci`
+```text
+v22.23.2
+npm warn deprecated uuid@9.0.1: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+npm warn deprecated glob@10.5.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+
+added 441 packages, and audited 442 packages in 1m
+
+83 packages are looking for funding
+  run `npm fund` for details
+
+8 vulnerabilities (7 moderate, 1 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+```
+
+### 2.2. Salida de `npm run lint`
+```text
+> react-example@0.10.0 lint
 > tsc --noEmit
 ```
-*(Código de salida 0 — Cero errores de compilación o tipos TypeScript)*
+*(Código de salida: 0 — Cero errores de TypeScript en compilación estricta)*
 
-### 2.2. Salida de `npm run build`
-```bash
-> react-example@0.9.0 build
+### 2.3. Salida de `npm run build`
+```text
+> react-example@0.10.0 build
 > vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs
 
 vite v6.4.3 building for production...
 transforming...
-✓ 1761 modules transformed.
+✓ 1762 modules transformed.
 rendering chunks...
 computing gzip size...
 dist/index.html                     1.18 kB │ gzip:   0.62 kB
-dist/assets/index-5RQe-zXQ.css     85.15 kB │ gzip:  14.48 kB
-dist/assets/index-CpXf7r4f.js   2,551.11 kB │ gzip: 566.75 kB
-✓ built in 8.50s
-  dist/server.cjs      44.5kb
-  dist/server.cjs.map  74.6kb
-⚡ Done in 9ms
+dist/assets/index-Dfq9MRUa.css     87.31 kB │ gzip:  14.78 kB
+dist/assets/index-wTqe4MHT.js   2,598.82 kB │ gzip: 573.12 kB
+✓ built in 10.99s
+  dist/server.cjs      46.3kb
+  dist/server.cjs.map  77.8kb
+⚡ Done in 13ms
 ```
-*(Código de salida 0 — Bundle estático y servidor compilados con éxito)*
+*(Código de salida: 0 — Build completo de frontend SPA en `dist/` y servidor Express CJS empaquetado en `dist/server.cjs`)*
 
 ---
 
-## 3. Matriz de Comprobaciones y Casos de Verificación
+## 3. Salida Literal de los Casos de Prueba Exigidos
 
-| Caso de Verificación | Estado | Detalle |
+Ejecución del conjunto de pruebas automatizado (`npx tsx scripts/run-fase1-tests.ts`):
+
+```text
+====================================================
+EJECUCIÓN DE CASOS DE PRUEBA EXIGIDOS - FASE 1
+====================================================
+
+[PASS] Caso 1: Transición inválida cancelada -> asistio: Rechazada correctamente. Mensaje: "El estado "cancelada" es final y no admite transiciones hacia ningún otro estado."
+[PASS] Caso 2: Cierre antes de hora de fin: La actividad con fecha 2026-12-25 22:30 no está concluida (isConcluded: false). Cierre bloqueado.
+[PASS] Caso 3: Cierre tras hora de fin: Afectó exactamente a 2 registros (David y Elena). Carlos (asistió) y Felipe (cancelada previa) quedaron intactos.
+[PASS] Caso 4: Reintento de cierre de asistencia: El reintento devolvió 0 modificaciones (affectedCount: 0). Idempotencia verificada.
+[PASS] Caso 5: Idempotencia en reservas: La 2ª llamada devolvió la reserva original "res-1788539519869-c1x2" sin duplicar plazas ni registros.
+[PASS] Caso 6: Validación de duplicidad en Censo de Socios: El intento de registrar un socio con "soc-042" (existente: SOC-042) fue rechazado con error unívoco.
+[PASS] Caso 7a: Primera simulación de migración canónica: Detectó 4 registros legacy a normalizar: confirmada->pagada, no_asistio->cancelada (injustificada/no presentado), cancelada enriquecida con metadatos y legacy fields eliminados.
+[PASS] Caso 7b: Limpieza estricta de esquema canónico: Ningún registro normalizado contiene campos legacy (attended, justified) ni estados prohibidos (confirmada, no_asistio).
+[PASS] Caso 7c: Idempotencia de migración canónica: La segunda ejecución produjo 0 modificaciones (alreadyNormalized: 6/6).
+
+====================================================
+RESUMEN DE PRUEBAS: 9/9 PASADAS
+====================================================
+```
+
+---
+
+## 4. Matriz de Cobertura y Verificación de Requisitos
+
+| Caso de Prueba / Requisito | Resultado | Validación |
 | :--- | :---: | :--- |
-| **Reserva con aforo disponible** | ✅ PASS | Asigna estado `pendiente_pago` e incrementa `bookedSpots`. |
-| **Reserva con aforo agotado** | ✅ PASS | Asigna estado `lista_espera` sin alterar `bookedSpots`. |
-| **Cancelación justificada / no justificada** | ✅ PASS | Transición canónica mediante `runTransaction`, decrementa `bookedSpots` si ocupaba plaza. |
-| **Check-in de asistencia (Puerta)** | ✅ PASS | Asigna `status: 'asistio'`, registra timestamp `attendedAt`, no incrementa aforo doble. |
-| **Cierre masivo de asistencia** | ✅ PASS | Asistentes pendientes pasan a `cancelada` (`no_presentado`) conservando aforo histórico. |
-| **Cálculo económico en actividades celebradas** | ✅ PASS | Ingresos reales calculados con participantes en `pagada` y `asistio`, restando gastos reales. |
-| **Viaje con pérdidas (-600 €)** | ✅ PASS | Visualizado correctamente en Cuentas y desglose de actividad con balance negativo. |
-| **Cata llena (+20 € balance, 3 en espera)** | ✅ PASS | Visualizada con aforo 100% y lista de espera separada. |
+| **Transición no permitida (`cancelada` -> `asistio`)** | ✅ PASS | Rechazada por máquina de estados formal en `validateAndPrepareTransition`. |
+| **Cierre antes de hora de fin (`endTime`)** | ✅ PASS | Bloqueado mediante `isActivityConcluded`. |
+| **Cierre puntual tras fin de evento** | ✅ PASS | Solo participantes `pendiente_pago` y `pagada` pasan a `cancelada` (`no_presentado`). |
+| **Reintento de cierre de asistencia** | ✅ PASS | Devuelve 0 modificaciones (`affectedCount: 0`). Idempotencia garantizada. |
+| **Idempotencia en reservas concurrentes** | ✅ PASS | Misma clave de idempotencia retorna la reserva original sin duplicar plazas ni registros. |
+| **Duplicidad en Censo de Socios** | ✅ PASS | Detección de duplicado insensible a mayúsculas/minúsculas antes de persistir. |
+| **Migración canónica de 6 pasos** | ✅ PASS | Limpia estados antiguos y elimina propiedades redundantes (`attended`, `justified`). |
+| **Idempotencia de migración de participantes** | ✅ PASS | Segunda ejecución produce 0 modificaciones (`alreadyNormalized: 6/6`). |
+| **Protección del fichero `.env`** | ✅ PASS | Fichero `.env` intacto y sin modificaciones. |
+
+| **Cata llena (+20 € balance, 3 en espera)** | ✅ PASS | Visualizada con aforo al 100% y lista de espera separada. |
 | **Curso a mitad de aforo (+130 € balance)** | ✅ PASS | Visualizado con 8/16 plazas ocupadas y balance positivo. |
 
 ---
 
-## 4. Estado de los Archivos del Proyecto
-- `.env` intacto y protegido (sin modificaciones).
-- `metadata.json` verificado y sincronizado.
-- Estructura limpia y lista para su posterior despliegue.
+## 4. Inventario de Archivos Modificados en la Fase 1
+- `src/types.ts`: Definición canónica de los 5 estados, tipos de cancelación y eliminación de campos redundantes (`attended`, `justified`).
+- `src/services/participantTransitions.ts`: Lógica pura de validación de transiciones, cálculo de variaciones de aforo (`spotsDelta`), helper de fechas y cierre masivo.
+- `src/services/firestoreService.ts`: Transacciones atómicas de Firestore (`runTransaction`) para transiciones de participante, alta manual y cierre masivo con `writeBatch`.
+- `src/services/participantMigration.ts`: Normalizador automático de documentos heredados de Firestore a los 5 estados canónicos.
+- `src/context/DataContext.tsx`: Enrutamiento atómico de transiciones, registro manual y cierre de asistencia, eliminando optimismo ciego previo a confirmación de Firestore.
+- `src/components/admin/AccountsManager.tsx`: Insignias canónicas de estado y filtros contables sin dependencias legadas.
+- `src/components/admin/HistoryManager.tsx`: Historial de participantes, justificaciones y rankings calculados sobre `asistio` y metadatos canónicos.
+- `src/components/admin/ParticipantsManager.tsx`: Interfaz de gestión de participantes actualizada a la taxonomía canónica.
+- `src/components/admin/PastActivitiesManager.tsx`: Análisis de actividades pasadas y asistencia con estados canónicos.
+- `src/components/admin/QuickCheckIn.tsx`: Control de acceso rápido y cierre de sala con validación transaccional.
+- `src/components/admin/metrics/TabResumenOperativo.tsx`: Métricas operativas alineadas con la definición canónica de plazas ocupadas.
+- `src/utils/metricsCalculator.ts`: Interpretación estricta de estados y cálculo de métricas financieras.
+- `src/utils/accountingExport.ts`: Exportador contable a Excel auditado y normalizado.
+- `src/data/demoData.ts`: Casos canónicos celebrados y eliminación de propiedades legadas.
+- `api/index.ts`: Endpoint transaccional de reservas en servidor que previene división de grupos y garantiza asignación atómica de plaza o lista de espera.
+- `.env`: **Intacto y protegido sin ninguna modificación**, respetando estrictamente las instrucciones.

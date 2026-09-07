@@ -9,8 +9,10 @@ import { BodegaWebsiteSearchModal } from '../../components/admin/BodegaWebsiteSe
 import { BodegaManager } from '../../components/admin/BodegaManager';
 import { SimpleMembersManager } from '../../components/admin/SimpleMembersManager';
 import { QuickCheckIn } from '../../components/admin/QuickCheckIn';
+import { IncompleteAttendanceModal } from '../../components/admin/IncompleteAttendanceModal';
 import { getAdminAuthHeader } from '../../services/authHelper';
 import { getActivityRegistrationState } from '../../utils/activityStatus';
+import { checkAttendanceSheetComplete } from '../../services/participantTransitions';
 import { 
   Plus, 
   Calendar, 
@@ -40,8 +42,21 @@ import {
   DollarSign
 } from 'lucide-react';
 
-export const ModoSencilloView: React.FC = () => {
-  const { activities, participants, members, unreadNotificationsCount, addActivity, quickUpdateActivity, deleteActivity } = useData();
+interface ModoSencilloViewProps {
+  onNavigateToAttendance?: (activityId: string) => void;
+}
+
+export const ModoSencilloView: React.FC<ModoSencilloViewProps> = ({ onNavigateToAttendance }) => {
+  const { 
+    activities, 
+    participants, 
+    members, 
+    unreadNotificationsCount, 
+    addActivity, 
+    quickUpdateActivity, 
+    deleteActivity,
+    closeActivityAsCelebrated 
+  } = useData();
   const [activeTab, setActiveTab] = useState<'proximas' | 'celebradas' | 'socios'>('proximas');
   const [checkInActivityId, setCheckInActivityId] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -49,6 +64,10 @@ export const ModoSencilloView: React.FC = () => {
   const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
   const [activityToToggleRegistration, setActivityToToggleRegistration] = useState<Activity | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Incomplete Attendance Modal State (T-03)
+  const [isIncompleteModalOpen, setIsIncompleteModalOpen] = useState(false);
+  const [incompleteModalData, setIncompleteModalData] = useState<{ activityId: string; title: string; pendingCount: number } | null>(null);
 
   // Simplified creation form state
   const [newType, setNewType] = useState<ActivityType>('cata');
@@ -496,16 +515,40 @@ export const ModoSencilloView: React.FC = () => {
 
   const toggleStatus = async (act: Activity) => {
     try {
-      const nextStatus = act.status === 'proxima' ? 'celebrada' : 'proxima';
-      await quickUpdateActivity(act.id, {
-        status: nextStatus
-      });
-      if (nextStatus === 'celebrada') {
-        setSavedSuccess(`La actividad «${act.title}» se ha archivado como CELEBRADA y se ha movido a la pestaña de Celebradas.`);
+      if (act.status === 'proxima') {
+        const sheetStatus = checkAttendanceSheetComplete(participants, act.id);
+        if (!sheetStatus.isComplete) {
+          setIncompleteModalData({
+            activityId: act.id,
+            title: act.title,
+            pendingCount: sheetStatus.pendingCount
+          });
+          setIsIncompleteModalOpen(true);
+          return;
+        }
+
+        const res = await closeActivityAsCelebrated(act.id);
+        if (res.success) {
+          if (res.alreadyClosed) {
+            alert('La actividad ya estaba marcada como celebrada.');
+          } else {
+            setSavedSuccess(`La actividad «${act.title}» se ha archivado como CELEBRADA y se ha movido a la pestaña de Celebradas.`);
+            setTimeout(() => setSavedSuccess(null), 4000);
+          }
+        } else if (res.blockedByPendingSheet) {
+          setIncompleteModalData({
+            activityId: act.id,
+            title: act.title,
+            pendingCount: res.pendingCount || 1
+          });
+          setIsIncompleteModalOpen(true);
+        } else {
+          alert(res.error || 'Error al archivar como celebrada.');
+        }
       } else {
-        setSavedSuccess(`La actividad «${act.title}» se ha movido a Próximas actividades.`);
+        alert('Una actividad celebrada no puede ser reabierta como próxima.');
+        return;
       }
-      setTimeout(() => setSavedSuccess(null), 4000);
     } catch (err: any) {
       console.error('Error al cambiar estado de la actividad:', err);
       alert('Error al cambiar estado: ' + (err.message || err));
@@ -529,20 +572,6 @@ export const ModoSencilloView: React.FC = () => {
     if (!activityToToggleRegistration) return;
     await quickUpdateActivity(activityToToggleRegistration.id, { registrationStatus: 'cerrada' });
     setActivityToToggleRegistration(null);
-  };
-
-  const handleMarkAsNotHeld = async (act: Activity) => {
-    try {
-      await quickUpdateActivity(act.id, { 
-        status: 'proxima',
-        registrationStatus: 'abierta'
-      });
-      setSavedSuccess(`La actividad «${act.title}» se ha marcado como NO CELEBRADA y se ha movido a Próximas actividades.`);
-      setTimeout(() => setSavedSuccess(null), 4000);
-    } catch (err: any) {
-      console.error('Error al actualizar estado:', err);
-      alert('Error al actualizar estado: ' + (err.message || err));
-    }
   };
 
   return (
@@ -1283,7 +1312,7 @@ export const ModoSencilloView: React.FC = () => {
                   </button>
 
                   <span className="text-[11px] text-[#574B45]">
-                    {act.bookedSpots} inscritos confirmados
+                    {act.bookedSpots} plazas ocupadas
                   </span>
                 </div>
               </div>
@@ -1309,9 +1338,9 @@ export const ModoSencilloView: React.FC = () => {
                 <div className="grid grid-cols-1 gap-3">
                   {held.map((act) => {
                     const actParticipants = participants.filter(p => p.activityId === act.id);
-                    const attendedCount = actParticipants.filter(p => p.status === 'asistio' || p.attended === true).length;
-                    const cancelledCount = actParticipants.filter(p => p.status === 'cancelada' || p.status === 'no_asistio').length;
-                    const totalRevenue = actParticipants.reduce((sum, p) => (p.status === 'asistio' || p.status === 'pagada' || p.attended) ? sum + (p.totalAmount || (p.isMember ? act.priceMember : act.priceNonMember) || 0) : sum, 0);
+                    const attendedCount = actParticipants.filter(p => p.status === 'asistio').length;
+                    const cancelledCount = actParticipants.filter(p => p.status === 'cancelada').length;
+                    const totalRevenue = actParticipants.reduce((sum, p) => (p.status === 'asistio' || p.status === 'pagada') ? sum + (p.totalAmount || (p.isMember ? act.priceMember : act.priceNonMember) || 0) : sum, 0);
 
                     return (
                       <div
@@ -1339,17 +1368,7 @@ export const ModoSencilloView: React.FC = () => {
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => handleMarkAsNotHeld(act)}
-                              className="min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-bold border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 flex items-center gap-1.5 transition-colors cursor-pointer"
-                              title="Devuelve la actividad a la pestaña de Próximas actividades"
-                            >
-                              <RefreshCw className="w-3.5 h-3.5 text-amber-800" />
-                              <span>Marcar como NO CELEBRADA</span>
-                            </button>
-
+                          <div className="flex items-center gap-2">
                             <button
                               type="button"
                               onClick={() => setActivityToDelete(act)}
@@ -1537,6 +1556,28 @@ export const ModoSencilloView: React.FC = () => {
                 website: url
               };
               setBodegas(updated);
+            }
+          }}
+        />
+      )}
+      {/* Incomplete Attendance Warning Modal (T-03) */}
+      {isIncompleteModalOpen && incompleteModalData && (
+        <IncompleteAttendanceModal
+          isOpen={isIncompleteModalOpen}
+          onClose={() => {
+            setIsIncompleteModalOpen(false);
+            setIncompleteModalData(null);
+          }}
+          activityId={incompleteModalData.activityId}
+          activityTitle={incompleteModalData.title}
+          pendingCount={incompleteModalData.pendingCount}
+          onGoToAttendance={(actId) => {
+            setIsIncompleteModalOpen(false);
+            setIncompleteModalData(null);
+            if (onNavigateToAttendance) {
+              onNavigateToAttendance(actId);
+            } else {
+              setCheckInActivityId(actId);
             }
           }}
         />

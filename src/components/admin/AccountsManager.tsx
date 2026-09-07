@@ -1132,11 +1132,13 @@ export function AccountsManager() {
                                     </td>
                                     <td className="p-3 text-center">
                                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize ${
-                                        p.status === 'confirmada' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                                        p.status === 'asistio' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                                        'bg-amber-50 text-amber-700 border border-amber-200'
+                                        p.status === 'asistio' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                                        p.status === 'pagada' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                                        p.status === 'pendiente_pago' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                                        p.status === 'lista_de_espera' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
+                                        'bg-rose-50 text-rose-700 border border-rose-200'
                                       }`}>
-                                        {p.status}
+                                        {p.status.replace(/_/g, ' ')}
                                       </span>
                                     </td>
                                     <td className="p-3 text-slate-600 capitalize">

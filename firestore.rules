@@ -121,5 +121,13 @@ service cloud.firestore {
     match /webMetricsDaily/{dailyDocId} {
       allow read, write: if false;
     }
+
+    // =========================================================================
+    // 11. IDEMPOTENCY KEYS
+    // Strictly accessible by authenticated administrators
+    // =========================================================================
+    match /idempotency_keys/{keyId} {
+      allow read, write: if isAdmin();
+    }
   }
 }

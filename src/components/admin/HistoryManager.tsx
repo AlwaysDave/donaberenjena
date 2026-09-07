@@ -141,11 +141,11 @@ export const HistoryManager: React.FC = () => {
         return;
       }
 
-      // Check attendance status strictly
-      const attended = (p.status === 'asistio' || p.attended === true) && p.status !== 'cancelada' && p.status !== 'no_asistio';
+      // Check attendance status strictly using canonical values
+      const attended = p.status === 'asistio';
       const isCancelled = p.status === 'cancelada';
-      const isNoShow = p.status === 'no_asistio';
-      const isJustified = p.justified === true;
+      const isNoShow = p.status === 'cancelada' && p.cancellationKind === 'no_presentado';
+      const isJustified = p.status === 'cancelada' && p.cancellationJustified === true;
 
       if (!map.has(key)) {
         // Resolve member status: check census first, then fallback to participant flag
@@ -189,10 +189,7 @@ export const HistoryManager: React.FC = () => {
         else if (actType === 'viaje') record.viajeAttendances += 1;
       } else if (isCancelled) {
         record.totalCancelled += 1;
-        if (isJustified) record.totalJustified += 1;
-        else record.totalUnjustified += 1;
-      } else if (isNoShow) {
-        record.totalNoShows += 1;
+        if (isNoShow) record.totalNoShows += 1;
         if (isJustified) record.totalJustified += 1;
         else record.totalUnjustified += 1;
       }
@@ -300,7 +297,7 @@ export const HistoryManager: React.FC = () => {
   const topActivitiesRanking = useMemo(() => {
     return activities
       .map(act => {
-        const count = participants.filter(p => p.activityId === act.id && (p.status === 'asistio' || p.attended === true) && p.status !== 'cancelada' && p.status !== 'no_asistio').length;
+        const count = participants.filter(p => p.activityId === act.id && p.status === 'asistio').length;
         const year = new Date(act.date).getFullYear();
         return {
           ...act,
@@ -420,13 +417,11 @@ export const HistoryManager: React.FC = () => {
   };
 
   const handleStartJustification = (p: Participant) => {
-    if (p.justified) {
+    if (p.cancellationJustified) {
       // Toggle off justification directly
       updateParticipant(p.id, {
-        justified: false,
-        justificationReason: undefined,
-        justifiedAt: undefined,
-        justifiedBy: undefined
+        cancellationJustified: false,
+        cancellationReason: 'Sin justificar'
       });
       // Also update in selectedPerson local view if open
       if (selectedPerson) {
@@ -434,7 +429,7 @@ export const HistoryManager: React.FC = () => {
           ...prev,
           totalJustified: Math.max(0, prev.totalJustified - 1),
           totalUnjustified: prev.totalUnjustified + 1,
-          participations: prev.participations.map(item => item.id === p.id ? { ...item, justified: false, justificationReason: undefined, justifiedAt: undefined, justifiedBy: undefined } : item)
+          participations: prev.participations.map(item => item.id === p.id ? { ...item, cancellationJustified: false, cancellationReason: 'Sin justificar' } : item)
         } : null);
       }
     } else {
@@ -449,14 +444,10 @@ export const HistoryManager: React.FC = () => {
     if (!justifyingParticipant) return;
 
     const reason = justificationReasonInput.trim() || 'Justificada por secretaría';
-    const justifiedAt = new Date().toISOString();
-    const justifiedBy = user?.name || user?.email || 'Secretaría / Administración';
 
     await updateParticipant(justifyingParticipant.id, {
-      justified: true,
-      justificationReason: reason,
-      justifiedAt,
-      justifiedBy
+      cancellationJustified: true,
+      cancellationReason: reason
     });
 
     if (selectedPerson) {
@@ -466,10 +457,8 @@ export const HistoryManager: React.FC = () => {
         totalUnjustified: Math.max(0, prev.totalUnjustified - 1),
         participations: prev.participations.map(item => item.id === justifyingParticipant.id ? {
           ...item,
-          justified: true,
-          justificationReason: reason,
-          justifiedAt,
-          justifiedBy
+          cancellationJustified: true,
+          cancellationReason: reason
         } : item)
       } : null);
     }
@@ -808,7 +797,7 @@ export const HistoryManager: React.FC = () => {
             <span className="text-[11px] text-purple-700">participaciones</span>
           </div>
           <p className="text-[10px] text-purple-800 mt-1 truncate">
-            Presencias confirmadas en sala
+            Presencias registradas en sala
           </p>
         </div>
 
@@ -1223,9 +1212,9 @@ export const HistoryManager: React.FC = () => {
             <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
               {selectedPerson.participations.map(p => {
                 const act = activities.find(a => a.id === p.activityId);
-                const attended = (p.status === 'asistio' || p.attended === true) && p.status !== 'cancelada' && p.status !== 'no_asistio';
+                const attended = p.status === 'asistio';
                 const isCancelled = p.status === 'cancelada';
-                const isNoShow = p.status === 'no_asistio';
+                const isNoShow = p.status === 'cancelada' && p.cancellationKind === 'no_presentado';
 
                 return (
                   <div 
@@ -1235,7 +1224,7 @@ export const HistoryManager: React.FC = () => {
                     <div className="flex-1 space-y-1.5">
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-[#26201D]">{p.activityTitle}</span>
-                        {p.justified && (
+                        {p.cancellationJustified && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-semibold text-[10px]">
                             <ShieldCheck className="w-3 h-3 text-emerald-700" />
                             <span>Justificada</span>
@@ -1255,33 +1244,20 @@ export const HistoryManager: React.FC = () => {
                         <div className="mt-1 p-2 rounded-xl bg-rose-50 border border-rose-200/80 text-[11px] space-y-0.5 text-rose-950">
                           <div className="font-semibold flex items-center gap-1 text-rose-900">
                             <XCircle className="w-3 h-3 text-rose-600 shrink-0" />
-                            <span>Cancelación Registrada:</span>
+                            <span>{isNoShow ? 'No Presentado en Sala:' : 'Cancelación Registrada:'}</span>
                           </div>
                           <p className="italic text-rose-800">
-                            «{p.cancellationReason || p.justificationReason || 'Sin motivo detallado'}»
+                            «{p.cancellationReason || 'Sin motivo detallado'}»
                           </p>
                           <div className="flex flex-wrap items-center gap-2 text-[10px] text-rose-900/80 mt-0.5">
                             {p.cancelledAt && <span>Fecha: {new Date(p.cancelledAt).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>}
                             {p.cancelledBy && <span>• Por: {p.cancelledBy}</span>}
-                            {p.refundAmount !== undefined && (
+                            {p.cancellationRefund !== undefined && (
                               <span className="font-bold text-rose-950 bg-rose-200/60 px-1.5 py-0.5 rounded">
-                                Devolución: {p.refundAmount} €
+                                Devolución: {p.cancellationRefund} €
                               </span>
                             )}
                           </div>
-                        </div>
-                      )}
-
-                      {/* Motivo de Justificación para No Asistencia */}
-                      {isNoShow && p.justificationReason && (
-                        <div className="flex flex-col mt-1 p-2 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900">
-                          <span className="font-semibold text-amber-950">Motivo de justificación:</span>
-                          <span className="italic text-amber-800">«{p.justificationReason}»</span>
-                          {(p.justifiedAt || p.justifiedBy) && (
-                            <span className="text-[10px] text-amber-800/80 mt-0.5">
-                              Por {p.justifiedBy || 'Secretaría'} el {p.justifiedAt ? new Date(p.justifiedAt).toLocaleDateString('es-ES') : ''}
-                            </span>
-                          )}
                         </div>
                       )}
                     </div>
@@ -1291,27 +1267,29 @@ export const HistoryManager: React.FC = () => {
                         attended 
                           ? 'bg-emerald-100 text-emerald-800' 
                           : isCancelled
-                          ? 'bg-rose-100 text-rose-800'
-                          : isNoShow
-                          ? 'bg-amber-100 text-amber-900'
+                          ? (isNoShow ? 'bg-amber-100 text-amber-900' : 'bg-rose-100 text-rose-800')
+                          : p.status === 'pagada'
+                          ? 'bg-blue-100 text-blue-800'
+                          : p.status === 'pendiente_pago'
+                          ? 'bg-amber-100 text-amber-800'
                           : 'bg-stone-200 text-stone-700'
                       }`}>
-                        {attended ? 'Asistió' : isCancelled ? 'Cancelada' : isNoShow ? 'No Asistió (Falta)' : 'Pendiente'}
+                        {attended ? 'Asistió' : isNoShow ? 'No Presentado' : isCancelled ? 'Cancelada' : p.status.replace(/_/g, ' ')}
                       </span>
 
-                      {(isCancelled || isNoShow) && (
+                      {isCancelled && (
                         <button
                           type="button"
                           onClick={() => handleStartJustification(p)}
                           className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-bold border transition-colors cursor-pointer ${
-                            p.justified 
+                            p.cancellationJustified 
                               ? 'bg-stone-100 hover:bg-rose-50 text-stone-700 hover:text-rose-800 border-stone-300 hover:border-rose-300' 
                               : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
                           }`}
-                          title={p.justified ? "Quitar justificación" : "Marcar como justificada"}
+                          title={p.cancellationJustified ? "Quitar justificación" : "Marcar como justificada"}
                         >
                           <ShieldCheck className="w-3 h-3" />
-                          <span>{p.justified ? 'Desjustificar' : 'Justificar'}</span>
+                          <span>{p.cancellationJustified ? 'Desjustificar' : 'Justificar'}</span>
                         </button>
                       )}
                     </div>

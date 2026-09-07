@@ -106,7 +106,7 @@ export function exportAccountingToExcel(options: ExportAccountingOptions): void 
     { 'Concepto': '', 'Detalle / Importe (€)': '' },
     { 'Concepto': '--- TOTALES GLOBALES ---', 'Detalle / Importe (€)': '' },
     { 'Concepto': 'Total Actividades', 'Detalle / Importe (€)': activities.length },
-    { 'Concepto': 'Total Asistentes Confirmados', 'Detalle / Importe (€)': totalAsistentes },
+    { 'Concepto': 'Total Asistentes Registrados', 'Detalle / Importe (€)': totalAsistentes },
     { 'Concepto': 'Reservas Facturadas (€)', 'Detalle / Importe (€)': Number(totalReservasFact.toFixed(2)) },
     { 'Concepto': 'Reservas Cobradas (€)', 'Detalle / Importe (€)': Number(totalReservasCob.toFixed(2)) },
     { 'Concepto': 'Patrocinios Facturados (€)', 'Detalle / Importe (€)': Number(totalPatrociniosFact.toFixed(2)) },

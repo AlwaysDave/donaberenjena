@@ -280,7 +280,7 @@ export const SimpleMembersManager: React.FC = () => {
               const nameMatch = member.fullName && p.fullName && member.fullName.toLowerCase().trim() === p.fullName.toLowerCase().trim();
               return emailMatch || phoneMatch || nameMatch;
             });
-            const attendedCount = memberHistory.filter(p => p.status === 'asistio' || p.attended).length;
+            const attendedCount = memberHistory.filter(p => p.status === 'asistio').length;
 
             // Formatted phone for WhatsApp link (digits only)
             const cleanPhone = member.phone ? member.phone.replace(/\D/g, '') : '';

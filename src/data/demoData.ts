@@ -517,7 +517,6 @@ function buildParticipant(
   index: number,
   options: {
     status?: ParticipantStatus;
-    attended?: boolean;
     cancellationJustified?: boolean;
     cancellationKind?: 'cancelacion_usuario' | 'no_presentado';
     cancellationReason?: string;
@@ -698,45 +697,45 @@ export const DEMO_PARTICIPANTS: Participant[] = [
   buildParticipant(DEMO_ACTIVITIES[7], BASE_PEOPLE[20], 21), // José Antonio García López
 
   // --- CURSO 3 (Celebrado - Masterclass Quesos y Vino 2025, 17 asistentes) ---
-  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[0], 0, { attended: true }), // María José
-  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[1], 1, { attended: true }), // Antonio Sánchez
-  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[2], 2, { attended: true }), // Laura Martínez
-  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[4], 3, { attended: true }), // Carmen Jiménez
-  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[5], 4, { attended: true }), // Francisco Torres
-  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[6], 5, { attended: true }), // Isabel Romero
-  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[7], 6, { attended: true }), // Manuel Ortega
-  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[8], 7, { attended: true }), // Pilar Gutiérrez
-  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[9], 8, { attended: true }), // David Muñoz
-  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[10], 9, { attended: true }), // Rocío Delgado
-  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[11], 10, { attended: true }), // Alberto Ramírez
-  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[12], 11, { attended: true }), // Cristina Herrera
-  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[13], 12, { attended: true }), // Sergio Guerrero
-  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[14], 13, { attended: true }), // Elena Cortés
-  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[15], 14, { attended: true }), // Pablo Vázquez
-  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[16], 15, { attended: true }), // Marta Cano
-  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[17], 16, { attended: true }), // Rubén Domínguez
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[0], 0, { status: 'asistio' }), // María José
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[1], 1, { status: 'asistio' }), // Antonio Sánchez
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[2], 2, { status: 'asistio' }), // Laura Martínez
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[4], 3, { status: 'asistio' }), // Carmen Jiménez
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[5], 4, { status: 'asistio' }), // Francisco Torres
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[6], 5, { status: 'asistio' }), // Isabel Romero
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[7], 6, { status: 'asistio' }), // Manuel Ortega
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[8], 7, { status: 'asistio' }), // Pilar Gutiérrez
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[9], 8, { status: 'asistio' }), // David Muñoz
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[10], 9, { status: 'asistio' }), // Rocío Delgado
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[11], 10, { status: 'asistio' }), // Alberto Ramírez
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[12], 11, { status: 'asistio' }), // Cristina Herrera
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[13], 12, { status: 'asistio' }), // Sergio Guerrero
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[14], 13, { status: 'asistio' }), // Elena Cortés
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[15], 14, { status: 'asistio' }), // Pablo Vázquez
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[16], 15, { status: 'asistio' }), // Marta Cano
+  buildParticipant(DEMO_ACTIVITIES[6], BASE_PEOPLE[17], 16, { status: 'asistio' }), // Rubén Domínguez
 
   // --- VIAJE 3 (Celebrado - Ruta del Aceite Sierra de Segura 2025, 36 asistentes) ---
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[0], 0, { attended: true }),
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[1], 1, { attended: true }),
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[2], 2, { attended: true }),
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[3], 3, { attended: true }),
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[4], 4, { attended: true }),
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[5], 5, { attended: true }),
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[6], 6, { attended: true }),
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[7], 7, { attended: true }),
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[8], 8, { attended: true }),
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[9], 9, { attended: true }),
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[10], 10, { attended: true }),
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[11], 11, { attended: true }),
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[12], 12, { attended: true }),
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[13], 13, { attended: true }),
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[14], 14, { attended: true }),
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[15], 15, { attended: true }),
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[16], 16, { attended: true }),
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[17], 17, { attended: true }),
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[18], 18, { attended: true }),
-  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[20], 19, { attended: true }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[0], 0, { status: 'asistio' }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[1], 1, { status: 'asistio' }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[2], 2, { status: 'asistio' }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[3], 3, { status: 'asistio' }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[4], 4, { status: 'asistio' }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[5], 5, { status: 'asistio' }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[6], 6, { status: 'asistio' }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[7], 7, { status: 'asistio' }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[8], 8, { status: 'asistio' }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[9], 9, { status: 'asistio' }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[10], 10, { status: 'asistio' }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[11], 11, { status: 'asistio' }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[12], 12, { status: 'asistio' }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[13], 13, { status: 'asistio' }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[14], 14, { status: 'asistio' }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[15], 15, { status: 'asistio' }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[16], 16, { status: 'asistio' }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[17], 17, { status: 'asistio' }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[18], 18, { status: 'asistio' }),
+  buildParticipant(DEMO_ACTIVITIES[9], BASE_PEOPLE[20], 19, { status: 'asistio' }),
 
   // --- CATA CELEBRADA 2 (Grandes Reservas y Quesos: 14 asistentes que llenaron el aforo + 3 en lista de espera) ---
   buildParticipant(DEMO_ACTIVITIES[10], BASE_PEOPLE[0], 0, { status: 'asistio' }),  // María José (Socia)

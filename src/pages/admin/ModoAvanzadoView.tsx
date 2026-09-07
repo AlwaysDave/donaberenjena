@@ -14,8 +14,10 @@ import { HistoryManager } from '../../components/admin/HistoryManager';
 import { AccountsManager } from '../../components/admin/AccountsManager';
 import { MessagesManager } from '../../components/admin/MessagesManager';
 import { AdminNotificationsCenter } from '../../components/admin/AdminNotificationsCenter';
+import { IncompleteAttendanceModal } from '../../components/admin/IncompleteAttendanceModal';
 import { Pagination } from '../../components/common/Pagination';
 import { getAdminAuthHeader } from '../../services/authHelper';
+import { checkAttendanceSheetComplete } from '../../services/participantTransitions';
 import { 
   Plus, 
   Trash2, 
@@ -54,12 +56,17 @@ import {
 import { ITMetricsDashboard } from '../../components/admin/ITMetricsDashboard';
 import { computeAdminAlerts } from '../../services/adminAlertsService';
 
-export const ModoAvanzadoView: React.FC = () => {
-  const { activities, participants, members, contactMessages, unreadMessagesCount, metrics, addActivity, updateActivity, deleteActivity, useMockData } = useData();
+interface ModoAvanzadoViewProps {
+  initialTab?: 'gestion' | 'participantes' | 'historico' | 'socios' | 'celebradas' | 'metricas' | 'cuentas' | 'contacto' | 'avisos';
+  initialActivityId?: string | null;
+}
 
-  const [activeTab, setActiveTab] = useState<'gestion' | 'participantes' | 'historico' | 'socios' | 'celebradas' | 'metricas' | 'cuentas' | 'contacto' | 'avisos'>('gestion');
+export const ModoAvanzadoView: React.FC<ModoAvanzadoViewProps> = ({ initialTab, initialActivityId }) => {
+  const { activities, participants, members, contactMessages, unreadMessagesCount, metrics, addActivity, updateActivity, deleteActivity, closeActivityAsCelebrated, useMockData } = useData();
+
+  const [activeTab, setActiveTab] = useState<'gestion' | 'participantes' | 'historico' | 'socios' | 'celebradas' | 'metricas' | 'cuentas' | 'contacto' | 'avisos'>(initialTab || 'gestion');
   const [metricsSort, setMetricsSort] = useState<{ key: 'date' | 'type' | 'occupancy'; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
-  const [selectedParticipantActivityId, setSelectedParticipantActivityId] = useState<string | null>(null);
+  const [selectedParticipantActivityId, setSelectedParticipantActivityId] = useState<string | null>(initialActivityId || null);
   const [selectedParticipantSearchQuery, setSelectedParticipantSearchQuery] = useState<string | null>(null);
   const [activeModalTab, setActiveModalTab] = useState<'form' | 'participantes'>('form');
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
@@ -68,6 +75,52 @@ export const ModoAvanzadoView: React.FC = () => {
   const [notification, setNotification] = useState<string | null>(null);
   const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Incomplete Attendance Modal State (T-03)
+  const [isIncompleteModalOpen, setIsIncompleteModalOpen] = useState(false);
+  const [incompleteModalData, setIncompleteModalData] = useState<{ activityId: string; title: string; pendingCount: number } | null>(null);
+
+  const handleCloseActivityAsCelebrated = async (act: Activity) => {
+    if (act.status === 'celebrada') {
+      alert('La actividad ya está marcada como celebrada.');
+      return;
+    }
+
+    const sheetStatus = checkAttendanceSheetComplete(participants, act.id);
+    if (!sheetStatus.isComplete) {
+      setIncompleteModalData({
+        activityId: act.id,
+        title: act.title,
+        pendingCount: sheetStatus.pendingCount
+      });
+      setIsIncompleteModalOpen(true);
+      return;
+    }
+
+    try {
+      const res = await closeActivityAsCelebrated(act.id);
+      if (res.success) {
+        if (res.alreadyClosed) {
+          alert('La actividad ya estaba marcada como celebrada.');
+        } else {
+          setNotification(`La actividad «${act.title}» se ha archivado como CELEBRADA correctamente.`);
+          setTimeout(() => setNotification(null), 4000);
+        }
+      } else if (res.blockedByPendingSheet) {
+        setIncompleteModalData({
+          activityId: act.id,
+          title: act.title,
+          pendingCount: res.pendingCount || 1
+        });
+        setIsIncompleteModalOpen(true);
+      } else {
+        alert(res.error || 'Error al archivar la actividad como celebrada.');
+      }
+    } catch (err: any) {
+      console.error('Error closing activity as celebrated:', err);
+      alert('Error al archivar la actividad: ' + (err.message || err));
+    }
+  };
 
   // Dynamic real-time admin alerts calculation (Punto 8)
   const activeAlerts = useMemo(() => {
@@ -660,11 +713,20 @@ export const ModoAvanzadoView: React.FC = () => {
         } as ViajeActivity;
       }
 
+      const resolvedStatus = isCreatingNew ? 'proxima' : (editingActivity?.status || 'proxima');
+      finalActivity1.status = resolvedStatus;
+
       if (isCreatingNew) {
         finalActivity1.id = `${finalActivity1.type}-${Date.now()}`;
         await addActivity(finalActivity1);
         showNotification('Nueva actividad creada y sincronizada con Firestore.');
       } else {
+        if (editingActivity && editingActivity.status === 'celebrada' && finalActivity1.status !== 'celebrada') {
+          setFormValidationError('Una actividad celebrada no puede ser reabierta como próxima.');
+          setIsSavingActivity(false);
+          return;
+        }
+
         await updateActivity(finalActivity1);
         showNotification('Actividad actualizada correctamente en Firestore.');
       }
@@ -1050,6 +1112,14 @@ export const ModoAvanzadoView: React.FC = () => {
                         })()}
                       </td>
                       <td className="p-4 text-right space-x-1">
+                        <button
+                          type="button"
+                          onClick={() => handleCloseActivityAsCelebrated(act)}
+                          className="p-1.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 cursor-pointer"
+                          title="Marcar como Celebrada (Archivar actividad)"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5 text-amber-700" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -1602,14 +1672,20 @@ export const ModoAvanzadoView: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-[#26201D] mb-1">Estado de la actividad</label>
-                  <select
-                    value={formData.status || 'proxima'}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs"
-                  >
-                    <option value="proxima">Próxima Actividad</option>
-                    <option value="celebrada">Celebrada (Archivada)</option>
-                  </select>
+                  <div className="w-full px-3.5 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-medium text-[#574B45] flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 font-bold">
+                      {(editingActivity?.status || formData.status || 'proxima') === 'celebrada' ? (
+                        <span className="text-amber-800">Celebrada (Archivada)</span>
+                      ) : (
+                        <span className="text-[#521849]">Próxima Actividad</span>
+                      )}
+                    </span>
+                    <span className="text-[11px] text-[#73635B] italic font-normal">
+                      {(editingActivity?.status || formData.status || 'proxima') === 'celebrada' 
+                        ? 'Estado final' 
+                        : 'El cierre se realiza con control de asistencia'}
+                    </span>
+                  </div>
                 </div>
 
                 <div>
@@ -1890,6 +1966,26 @@ export const ModoAvanzadoView: React.FC = () => {
               };
               setCataBodegas(updated);
             }
+          }}
+        />
+      )}
+
+      {/* Incomplete Attendance Warning Modal (T-03) */}
+      {isIncompleteModalOpen && incompleteModalData && (
+        <IncompleteAttendanceModal
+          isOpen={isIncompleteModalOpen}
+          onClose={() => {
+            setIsIncompleteModalOpen(false);
+            setIncompleteModalData(null);
+          }}
+          activityId={incompleteModalData.activityId}
+          activityTitle={incompleteModalData.title}
+          pendingCount={incompleteModalData.pendingCount}
+          onGoToAttendance={(actId) => {
+            setIsIncompleteModalOpen(false);
+            setIncompleteModalData(null);
+            setSelectedParticipantActivityId(actId);
+            setActiveTab('participantes');
           }}
         />
       )}
