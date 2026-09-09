@@ -85,7 +85,6 @@ const activityAC1: Activity = {
   subtitle: 'Cata de prueba',
   date: '2026-10-20',
   time: '19:00',
-  endTime: '21:00',
   location: 'Sede Doña Berenjena',
   type: 'cata',
   category: 'vino',

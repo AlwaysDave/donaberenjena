@@ -33,7 +33,6 @@ const baseActivity: Activity = {
   subtitle: 'Cata guiada',
   date: '2026-10-15',
   time: '19:00',
-  endTime: '21:30',
   location: 'Sede Doña Berenjena',
   type: 'cata',
   category: 'vino',
@@ -83,14 +82,13 @@ assert(
 );
 
 // ----------------------------------------------------------------------------
-// TEST 2: Cierre de asistencia antes de hora de fin
+// TEST 2: Estado de conclusión por status administrativo ('proxima' no concluida)
 // ----------------------------------------------------------------------------
 const futureActivity: Activity = {
   ...baseActivity,
   id: 'act-future-2',
   date: '2026-12-25',
   time: '20:00',
-  endTime: '22:30',
   status: 'proxima'
 };
 
@@ -114,19 +112,18 @@ const pendingParticipant: Participant = {
 const isConcludedBeforeEnd = isActivityConcluded(futureActivity);
 assert(
   isConcludedBeforeEnd === false,
-  'Caso 2: Cierre antes de hora de fin',
-  `La actividad con fecha 2026-12-25 22:30 no está concluida (isConcluded: ${isConcludedBeforeEnd}). Cierre bloqueado.`
+  'Caso 2: Actividad proxima no concluida',
+  `La actividad con status proxima no está concluida (isConcluded: ${isConcludedBeforeEnd}).`
 );
 
 // ----------------------------------------------------------------------------
-// TEST 3: Cierre de asistencia tras hora de fin (sólo pendiente_pago y pagada -> cancelada no_presentado)
+// TEST 3: Cierre de hoja de sala (sólo pendiente_pago y pagada -> cancelada no_presentado)
 // ----------------------------------------------------------------------------
 const pastActivity: Activity = {
   ...baseActivity,
   id: 'act-past-3',
   date: '2026-01-10',
   time: '19:00',
-  endTime: '21:00',
   status: 'proxima',
   bookedSpots: 3
 };

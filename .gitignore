@@ -1,8 +1,36 @@
+# Dependencias
 node_modules/
+
+# Builds y cobertura
 build/
 dist/
 coverage/
-.DS_Store
+*.tsbuildinfo
+
+# Cachés
+.cache/
+.vite/
+.eslintcache
+.firebase/
+
+# Logs
 *.log
+firebase-debug.log
+firestore-debug.log
+
+# Variables privadas
 .env*
 !.env.example
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Configuración local de herramientas
+.idea/
+.vercel/
+
+# Resultados de pruebas, si se añaden en el futuro
+test-results/
+playwright-report/

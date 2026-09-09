@@ -28,10 +28,13 @@ import {
   ShieldAlert,
   HelpCircle,
   CreditCard,
-  UserX
+  UserX,
+  Wine,
+  ChefHat,
+  Compass
 } from 'lucide-react';
 import { AdvancedAttendanceCorrectionModal } from './AdvancedAttendanceCorrectionModal';
-import { sortActivitiesAscending } from '../../utils/dateUtils';
+import { sortActivitiesAscending, getActivityYear } from '../../utils/dateUtils';
 import { Pagination } from '../common/Pagination';
 import { 
   isActivityConcluded, 
@@ -64,7 +67,41 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
   } = useData();
   const { user } = useAuth();
 
+  // Available years sorted descending (max year is first)
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    activities.forEach(a => {
+      const y = getActivityYear(a.date);
+      if (!isNaN(y) && y > 1900) years.add(y);
+    });
+    participants.forEach(p => {
+      if (p.activityDate) {
+        const y = getActivityYear(p.activityDate);
+        if (!isNaN(y) && y > 1900) years.add(y);
+      }
+    });
+    if (years.size === 0) {
+      years.add(new Date().getFullYear());
+    }
+    const sorted = Array.from(years).sort((a, b) => b - a);
+    return sorted.map(String);
+  }, [activities, participants]);
+
+  const maxYear = availableYears[0] || new Date().getFullYear().toString();
+
   // Filters State
+  const [selectedYear, setSelectedYear] = useState<string>(() => {
+    if (initialActivityId && initialActivityId !== 'all') {
+      const act = activities.find(a => a.id === initialActivityId);
+      if (act) return getActivityYear(act.date).toString();
+    }
+    const years = activities.map(a => getActivityYear(a.date)).filter(y => !isNaN(y) && y > 1900);
+    if (years.length > 0) {
+      return Math.max(...years).toString();
+    }
+    return new Date().getFullYear().toString();
+  });
+  const [userCustomizedYear, setUserCustomizedYear] = useState<boolean>(false);
   const [selectedActivityId, setSelectedActivityId] = useState<string>(initialActivityId || 'all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>(initialSearchQuery || '');
@@ -73,8 +110,23 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
   useEffect(() => {
     if (initialActivityId !== undefined) {
       setSelectedActivityId(initialActivityId || 'all');
+      if (initialActivityId && initialActivityId !== 'all') {
+        const act = activities.find(a => a.id === initialActivityId);
+        if (act) {
+          setSelectedYear(getActivityYear(act.date).toString());
+          setUserCustomizedYear(true);
+        }
+      }
     }
-  }, [initialActivityId]);
+  }, [initialActivityId, activities]);
+
+  useEffect(() => {
+    if (!userCustomizedYear && (!initialActivityId || initialActivityId === 'all') && availableYears.length > 0) {
+      if (selectedYear === '' || !availableYears.includes(selectedYear)) {
+        setSelectedYear(availableYears[0]);
+      }
+    }
+  }, [availableYears, userCustomizedYear, initialActivityId, selectedYear]);
 
   useEffect(() => {
     if (initialSearchQuery !== undefined) {
@@ -145,7 +197,12 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
 
   // Filtered Activities
   const activeActivities = useMemo(() => {
-    let filtered = activities.filter(a => a.status !== 'celebrada');
+    let filtered = activities.filter(a => {
+      if (selectedYear !== 'all' && getActivityYear(a.date).toString() !== selectedYear) {
+        return false;
+      }
+      return a.status !== 'celebrada';
+    });
     if (selectedActivityId !== 'all' && !filtered.some(a => a.id === selectedActivityId)) {
       const selected = activities.find(a => a.id === selectedActivityId);
       if (selected) {
@@ -153,12 +210,22 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       }
     }
     return sortActivitiesAscending(filtered);
-  }, [activities, selectedActivityId]);
+  }, [activities, selectedActivityId, selectedYear]);
 
   const currentActivity = useMemo(() => {
     if (selectedActivityId === 'all') return null;
     return activities.find(a => a.id === selectedActivityId) || null;
   }, [activities, selectedActivityId]);
+
+  // Total inscriptions for the selected year
+  const yearParticipantsCount = useMemo(() => {
+    return participants.filter(p => {
+      if (selectedYear === 'all') return true;
+      const act = activities.find(a => a.id === p.activityId);
+      const y = act ? getActivityYear(act.date) : (p.activityDate ? getActivityYear(p.activityDate) : null);
+      return y?.toString() === selectedYear;
+    }).length;
+  }, [participants, activities, selectedYear]);
 
   // Pagination state for participants
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -167,11 +234,19 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedActivityId, statusFilter, searchTerm, pageSize]);
+  }, [selectedYear, selectedActivityId, statusFilter, searchTerm, pageSize]);
 
-  // Filtered Participants (Canonical 5 statuses)
+  // Filtered Participants (Canonical 5 statuses + Year filter)
   const filteredParticipants = useMemo(() => {
     return participants.filter(p => {
+      // Year filter
+      if (selectedYear !== 'all') {
+        const act = activities.find(a => a.id === p.activityId);
+        const pYear = act ? getActivityYear(act.date) : (p.activityDate ? getActivityYear(p.activityDate) : null);
+        if (pYear !== null && pYear.toString() !== selectedYear) {
+          return false;
+        }
+      }
       // Activity filter
       if (selectedActivityId !== 'all' && p.activityId !== selectedActivityId) {
         return false;
@@ -199,7 +274,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       }
       return true;
     });
-  }, [participants, selectedActivityId, statusFilter, searchTerm]);
+  }, [participants, activities, selectedYear, selectedActivityId, statusFilter, searchTerm]);
 
   // Paginated slice
   const paginatedParticipants = useMemo(() => {
@@ -220,11 +295,24 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
     }
   }, [filteredParticipants.length, pageSize, currentPage]);
 
-  // Key Metrics Calculations strictly for the 5 Canonical States
+  // Key Metrics Calculations strictly for the 5 Canonical States and Selected Year
   const metrics = useMemo(() => {
-    const relevant = selectedActivityId === 'all' 
-      ? participants 
-      : participants.filter(p => p.activityId === selectedActivityId);
+    const yearActivities = activities.filter(a => {
+      if (selectedYear === 'all') return true;
+      return getActivityYear(a.date).toString() === selectedYear;
+    });
+
+    const relevant = participants.filter(p => {
+      if (selectedActivityId !== 'all') {
+        return p.activityId === selectedActivityId;
+      }
+      if (selectedYear !== 'all') {
+        const act = activities.find(a => a.id === p.activityId);
+        const y = act ? getActivityYear(act.date) : (p.activityDate ? getActivityYear(p.activityDate) : null);
+        return y?.toString() === selectedYear;
+      }
+      return true;
+    });
 
     const activeParticipants = relevant.filter(p => p.status !== 'cancelada' && p.status !== 'lista_de_espera');
     const waitingListCount = relevant.filter(p => p.status === 'lista_de_espera').length;
@@ -243,7 +331,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
 
     let maxCapacity = 0;
     if (selectedActivityId === 'all') {
-      maxCapacity = activities.reduce((sum, a) => sum + (a.totalSpots || 0), 0);
+      maxCapacity = yearActivities.reduce((sum, a) => sum + (a.totalSpots || 0), 0);
     } else if (currentActivity) {
       maxCapacity = currentActivity.totalSpots || 0;
     }
@@ -266,7 +354,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
       cancelledJustifiedCount,
       cancelledUnjustifiedCount
     };
-  }, [participants, selectedActivityId, activities, currentActivity]);
+  }, [participants, selectedYear, selectedActivityId, activities, currentActivity]);
 
   // Open modal for new manual participant (Always starts in 'pendiente_pago' or auto 'lista_de_espera' if full)
   const handleOpenNewModal = () => {
@@ -906,8 +994,43 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
 
         {/* Filter Controls Row */}
         <div className="pt-2 border-t border-[#F6F1EA] grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
+          {/* Year Filter */}
+          <div className="sm:col-span-2">
+            <label className="block text-[11px] font-bold text-[#574B45] uppercase tracking-wider mb-1">
+              Ejercicio / Año:
+            </label>
+            <div className="relative">
+              <select
+                id="select-participant-year"
+                value={selectedYear}
+                onChange={(e) => {
+                  const newYear = e.target.value;
+                  setSelectedYear(newYear);
+                  setUserCustomizedYear(true);
+                  if (selectedActivityId !== 'all' && newYear !== 'all') {
+                    const act = activities.find(a => a.id === selectedActivityId);
+                    if (act && getActivityYear(act.date).toString() !== newYear) {
+                      setSelectedActivityId('all');
+                    }
+                  }
+                }}
+                className="w-full pl-3.5 pr-8 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-semibold text-[#26201D] focus:outline-none focus:border-[#521849] focus:bg-white appearance-none cursor-pointer"
+              >
+                <option value="all">Todos los años</option>
+                {availableYears.map(y => (
+                  <option key={y} value={y}>
+                    Año {y} {y === maxYear ? '⭐' : ''}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-[#574B45]">
+                <ChevronDown className="w-3.5 h-3.5" />
+              </div>
+            </div>
+          </div>
+
           {/* Activity Selector */}
-          <div className="sm:col-span-5">
+          <div className="sm:col-span-4">
             <label className="block text-[11px] font-bold text-[#574B45] uppercase tracking-wider mb-1">
               Seleccionar Cata / Actividad:
             </label>
@@ -918,7 +1041,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                 onChange={(e) => setSelectedActivityId(e.target.value)}
                 className="w-full pl-3.5 pr-8 py-2 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-xs font-medium text-[#26201D] focus:outline-none focus:border-[#521849] focus:bg-white appearance-none cursor-pointer"
               >
-                <option value="all">🌟 Todas las Actividades ({participants.length} inscripciones)</option>
+                <option value="all">🌟 Todas las Actividades ({yearParticipantsCount} inscripciones)</option>
                 {activeActivities.map(act => {
                   const actParticipants = participants.filter(p => p.activityId === act.id);
                   const actOccupied = actParticipants.filter(p => p.status !== 'cancelada' && p.status !== 'lista_de_espera').length;
@@ -937,7 +1060,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
           </div>
 
           {/* Status Filter (Canonical 5) */}
-          <div className="sm:col-span-4">
+          <div className="sm:col-span-3">
             <label className="block text-[11px] font-bold text-[#574B45] uppercase tracking-wider mb-1">
               Filtrar por Estado Canónico:
             </label>
@@ -1147,12 +1270,28 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
 
                     {/* Actividad */}
                     <td className="p-4 max-w-[200px]">
-                      <p className="font-medium text-[#26201D] truncate" title={p.activityTitle}>
-                        {p.activityTitle || 'Actividad'}
-                      </p>
-                      <p className="text-[11px] text-[#574B45]">
-                        {p.activityDate} {isConcluded ? '• (Celebrada)' : ''}
-                      </p>
+                      <div className="space-y-1">
+                        {act && (
+                          <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                            act.type === 'cata'
+                              ? 'bg-[#521849]/10 text-[#521849] border border-[#521849]/20'
+                              : act.type === 'curso'
+                              ? 'bg-[#C96043]/10 text-[#C96043] border border-[#C96043]/20'
+                              : 'bg-[#4D6233]/10 text-[#4D6233] border border-[#4D6233]/20'
+                          }`}>
+                            {act.type === 'cata' && <Wine className="w-3 h-3" />}
+                            {act.type === 'curso' && <ChefHat className="w-3 h-3" />}
+                            {act.type === 'viaje' && <Compass className="w-3 h-3" />}
+                            <span>{act.type}</span>
+                          </span>
+                        )}
+                        <p className="font-medium text-[#26201D] truncate" title={p.activityTitle}>
+                          {p.activityTitle || 'Actividad'}
+                        </p>
+                        <p className="text-[11px] text-[#574B45]">
+                          {p.activityDate} {isConcluded ? '• (Celebrada)' : ''}
+                        </p>
+                      </div>
                     </td>
 
                     {/* Condición, Importe y Turno */}

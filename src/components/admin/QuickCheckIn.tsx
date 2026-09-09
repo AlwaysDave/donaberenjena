@@ -186,7 +186,7 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId, o
             >
               {sortedActivities.map(act => (
                 <option key={act.id} value={act.id}>
-                  {new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })} — {act.title} ({act.time || 'Sin hora'}{act.endTime ? ` - ${act.endTime}` : ''})
+                  {new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })} — {act.title} ({act.time || 'Sin hora'})
                 </option>
               ))}
             </select>
@@ -214,7 +214,6 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId, o
                   <span className="flex items-center gap-1 font-medium">
                     <Clock className="w-3.5 h-3.5 text-[#521849]" />
                     {currentActivity.time || 'Hora no especificada'}
-                    {currentActivity.endTime ? ` a ${currentActivity.endTime}` : ''}
                   </span>
                   <span>
                     Aforo: <strong>{currentActivity.bookedSpots || 0}</strong> / {currentActivity.totalSpots} plazas

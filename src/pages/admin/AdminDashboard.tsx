@@ -37,6 +37,13 @@ export const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [showNotificationsDrawer, setShowNotificationsDrawer] = useState(false);
   const [targetAttendanceActivityId, setTargetAttendanceActivityId] = useState<string | null>(null);
+  const [navTarget, setNavTarget] = useState<{
+    tab?: 'gestion' | 'participantes' | 'historico' | 'socios' | 'celebradas' | 'metricas' | 'cuentas' | 'contacto' | 'avisos';
+    activityId?: string;
+    searchQuery?: string;
+    participantId?: string;
+    contactMessageId?: string;
+  } | null>(null);
 
   const activeAlerts = useMemo(() => {
     return computeAdminAlerts({
@@ -323,8 +330,15 @@ export const AdminDashboard: React.FC = () => {
         {showNotificationsDrawer ? (
           <AdminNotificationsCenter 
             onClose={() => setShowNotificationsDrawer(false)} 
-            onNavigateTab={() => {
+            onNavigateTab={(tab, options) => {
               setShowNotificationsDrawer(false);
+              setNavTarget({
+                tab,
+                activityId: options?.activityId,
+                searchQuery: options?.searchQuery,
+                participantId: options?.participantId,
+                contactMessageId: options?.contactMessageId
+              });
               if (isAdvancedAdmin && effectiveRole !== 'advanced') {
                 switchRole('advanced');
               }
@@ -343,8 +357,11 @@ export const AdminDashboard: React.FC = () => {
           />
         ) : (
           <ModoAvanzadoView 
-            initialTab={targetAttendanceActivityId ? 'participantes' : undefined}
-            initialActivityId={targetAttendanceActivityId}
+            initialTab={navTarget?.tab || (targetAttendanceActivityId ? 'participantes' : undefined)}
+            initialActivityId={navTarget?.activityId || targetAttendanceActivityId}
+            initialSearchQuery={navTarget?.searchQuery}
+            initialParticipantId={navTarget?.participantId}
+            initialContactMessageId={navTarget?.contactMessageId}
           />
         )}
       </main>

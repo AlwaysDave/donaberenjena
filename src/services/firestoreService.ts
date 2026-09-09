@@ -20,7 +20,14 @@ import { sortActivitiesAscending } from '../utils/dateUtils';
 import { validateAndPrepareTransition, isActivityConcluded, checkAttendanceSheetComplete, validateAndPrepareAdvancedCorrection } from './participantTransitions';
 import { normalizeParticipantRecord } from './participantMigration';
 
+export { 
+  validateTwoShiftCataPair, 
+  saveTwoShiftCataFirestore 
+} from './twoShiftTastingService';
+export type { TwoShiftValidationResult } from './twoShiftTastingService';
+
 const ACTIVITIES_COLLECTION = 'activities';
+
 const METRICS_COLLECTION = 'metrics';
 const METRICS_DOC_ID = 'summary';
 const ADMINS_COLLECTION = 'admins';
@@ -648,6 +655,23 @@ export async function updateContactMessageFirestore(id: string, updates: Partial
   const docRef = doc(db, CONTACT_MESSAGES_COLLECTION, id);
   const cleanUpdates = sanitizeForFirestore(updates);
   await updateDoc(docRef, cleanUpdates);
+}
+
+/**
+ * Mark a Contact alert as seen (CON-TACT-05: updates only contactAlertSeenAt and seen by fields)
+ */
+export async function markContactAlertSeenFirestore(
+  id: string,
+  seenBy?: string,
+  seenByUid?: string
+): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const docRef = doc(db, CONTACT_MESSAGES_COLLECTION, id);
+  await updateDoc(docRef, {
+    contactAlertSeenAt: new Date().toISOString(),
+    contactAlertSeenBy: seenBy || 'Administración',
+    contactAlertSeenByUid: seenByUid || 'admin'
+  });
 }
 
 /**

@@ -37,7 +37,10 @@ import {
   subscribeToContactMessagesFirestore,
   saveContactMessageFirestore,
   updateContactMessageFirestore,
-  deleteContactMessageFirestore
+  markContactAlertSeenFirestore,
+  deleteContactMessageFirestore,
+  validateTwoShiftCataPair,
+  saveTwoShiftCataFirestore
 } from '../services/firestoreService';
 import { validateAndPrepareTransition, isActivityConcluded, checkAttendanceSheetComplete, validateAndPrepareAdvancedCorrection } from '../services/participantTransitions';
 import { normalizeParticipantRecord } from '../services/participantMigration';
@@ -62,6 +65,7 @@ interface DataContextType {
   getActivityById: (id: string) => Activity | undefined;
   getParticipantsByActivityId: (activityId: string) => Participant[];
   addActivity: (activity: Activity) => Promise<void>;
+  addTwoShiftCata: (shift1: CataActivity, shift2: CataActivity) => Promise<void>;
   updateActivity: (activity: Activity) => Promise<void>;
   deleteActivity: (id: string) => Promise<void>;
   quickUpdateActivity: (id: string, updates: Partial<Activity>) => Promise<void>;
@@ -119,8 +123,9 @@ interface DataContextType {
   updateSponsorship: (id: string, updates: Partial<Sponsorship>) => Promise<void>;
   deleteSponsorship: (id: string) => Promise<void>;
   // Contact Messages
-  sendContactMessage: (msgData: Omit<ContactMessage, 'id' | 'createdAt' | 'read' | 'status'>) => Promise<{ success: boolean; message: string }>;
+  sendContactMessage: (msgData: Omit<ContactMessage, 'id' | 'createdAt' | 'read' | 'status'>) => Promise<{ success: boolean; message: string; messageSaved?: boolean; emailSent?: boolean; messageId?: string }>;
   markContactMessageRead: (id: string, read?: boolean) => Promise<void>;
+  markContactAlertSeen: (id: string, seenBy?: string, seenByUid?: string) => Promise<void>;
   updateContactMessageStatus: (id: string, status: 'nuevo' | 'leido' | 'respondido', replyNotes?: string) => Promise<void>;
   deleteContactMessage: (id: string) => Promise<void>;
   useMockData: boolean;
@@ -379,14 +384,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setDemoActivities(prev => [activity, ...prev]);
       return;
     }
-    setActivities(prev => [activity, ...prev]);
-    try {
-      if (isFirebaseConfigured() && db) {
-        await saveActivityFirestore(activity);
-      }
-    } catch (err) {
-      console.error('Error saving activity to Firestore:', err);
+    if (isFirebaseConfigured() && db) {
+      await saveActivityFirestore(activity);
     }
+    setActivities(prev => [activity, ...prev.filter(a => a.id !== activity.id)]);
+  };
+
+  const addTwoShiftCata = async (shift1: CataActivity, shift2: CataActivity): Promise<void> => {
+    const validation = validateTwoShiftCataPair(shift1, shift2);
+    if (!validation.valid) {
+      throw new Error(validation.error || 'Error de validación en la pareja de turnos.');
+    }
+
+    if (useMockData) {
+      setDemoActivities(prev => [shift1, shift2, ...prev]);
+      return;
+    }
+
+    if (isFirebaseConfigured() && db) {
+      await saveTwoShiftCataFirestore(shift1, shift2);
+    }
+    setActivities(prev => [shift1, shift2, ...prev.filter(a => a.id !== shift1.id && a.id !== shift2.id)]);
   };
 
   const updateActivity = async (updated: Activity) => {
@@ -403,14 +421,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setDemoActivities(prev => prev.map(a => a.id === updated.id ? updated : a));
       return;
     }
-    setActivities(prev => prev.map(a => a.id === updated.id ? updated : a));
-    try {
-      if (isFirebaseConfigured() && db) {
-        await saveActivityFirestore(updated);
-      }
-    } catch (err) {
-      console.error('Error saving activity to Firestore:', err);
+    if (isFirebaseConfigured() && db) {
+      await saveActivityFirestore(updated);
     }
+    setActivities(prev => prev.map(a => a.id === updated.id ? updated : a));
   };
 
   const quickUpdateActivity = async (id: string, updates: Partial<Activity>) => {
@@ -1569,30 +1583,70 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Contact Message Handlers
-  const sendContactMessage = async (msgData: Omit<ContactMessage, 'id' | 'createdAt' | 'read' | 'status'>): Promise<{ success: boolean; message: string }> => {
-    const newId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const newMsg: ContactMessage = {
-      ...msgData,
-      id: newId,
-      read: false,
-      status: 'nuevo',
-      createdAt: new Date().toISOString()
-    };
-
+  const sendContactMessage = async (
+    msgData: Omit<ContactMessage, 'id' | 'createdAt' | 'read' | 'status'>
+  ): Promise<{ success: boolean; message: string; messageSaved?: boolean; emailSent?: boolean; messageId?: string }> => {
     if (useMockData) {
+      const newId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      const newMsg: ContactMessage = {
+        ...msgData,
+        id: newId,
+        read: false,
+        status: 'nuevo',
+        createdAt: new Date().toISOString(),
+        emailDeliveryStatus: 'simulated'
+      };
       setDemoContactMessages(prev => [newMsg, ...prev]);
-      return { success: true, message: 'Tu mensaje ha sido enviado correctamente.' };
+      return { 
+        success: true, 
+        message: 'Tu mensaje ha sido enviado correctamente (Modo Simulación).',
+        messageSaved: true,
+        emailSent: true,
+        messageId: newId
+      };
     }
 
-    setContactMessages(prev => [newMsg, ...prev]);
     try {
-      if (isFirebaseConfigured() && db) {
-        await saveContactMessageFirestore(newMsg);
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(msgData)
+      });
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        return {
+          success: true,
+          messageSaved: true,
+          emailSent: true,
+          messageId: data.messageId,
+          message: data.message || 'Tu mensaje ha sido enviado y registrado correctamente.'
+        };
+      } else if (data.messageSaved && !data.emailSent) {
+        // Warning case: saved in Firestore, but SMTP failed (status 207)
+        return {
+          success: false,
+          messageSaved: true,
+          emailSent: false,
+          messageId: data.messageId,
+          message: data.error || 'El mensaje se ha registrado en el sistema, pero no se pudo enviar la copia por correo electrónico.'
+        };
+      } else {
+        return {
+          success: false,
+          messageSaved: false,
+          emailSent: false,
+          message: data.error || 'Error al procesar el mensaje de contacto.'
+        };
       }
-      return { success: true, message: 'Tu mensaje ha sido enviado correctamente.' };
     } catch (error: any) {
       console.error('Error sending contact message:', error);
-      return { success: false, message: error.message || 'Error al enviar el mensaje de contacto.' };
+      return { 
+        success: false, 
+        messageSaved: false,
+        emailSent: false,
+        message: error.message || 'Error de conexión al enviar el mensaje de contacto.' 
+      };
     }
   };
 
@@ -1609,6 +1663,37 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (error) {
       console.error('Error marking contact message read:', error);
+    }
+  };
+
+  const markContactAlertSeen = async (id: string, seenBy?: string, seenByUid?: string) => {
+    const timestamp = new Date().toISOString();
+    const actorName = seenBy || 'Administración';
+    const actorUid = seenByUid || 'admin';
+
+    if (useMockData) {
+      setDemoContactMessages(prev => prev.map(m => m.id === id ? {
+        ...m,
+        contactAlertSeenAt: timestamp,
+        contactAlertSeenBy: actorName,
+        contactAlertSeenByUid: actorUid
+      } : m));
+      return;
+    }
+
+    setContactMessages(prev => prev.map(m => m.id === id ? {
+      ...m,
+      contactAlertSeenAt: timestamp,
+      contactAlertSeenBy: actorName,
+      contactAlertSeenByUid: actorUid
+    } : m));
+
+    try {
+      if (isFirebaseConfigured() && db) {
+        await markContactAlertSeenFirestore(id, actorName, actorUid);
+      }
+    } catch (error) {
+      console.error('Error marking contact alert seen:', error);
     }
   };
 
@@ -1670,6 +1755,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       getActivityById,
       getParticipantsByActivityId,
       addActivity,
+      addTwoShiftCata,
       updateActivity,
       deleteActivity,
       quickUpdateActivity,
@@ -1701,6 +1787,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // contact messages
       sendContactMessage,
       markContactMessageRead,
+      markContactAlertSeen,
       updateContactMessageStatus,
       deleteContactMessage,
       useMockData,

@@ -24,7 +24,48 @@ interface PastActivitiesManagerProps {
 
 export const PastActivitiesManager: React.FC<PastActivitiesManagerProps> = ({ onViewParticipants }) => {
   const { activities, participants } = useData();
-  const [selectedYear, setSelectedYear] = useState<string>('all');
+  const pastActivities = useMemo(() => {
+    const celebrated = activities.filter(a => a.status === 'celebrada');
+    return celebrated;
+  }, [activities]);
+
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    pastActivities.forEach(a => {
+      const y = getActivityYear(a.date);
+      if (!isNaN(y) && y > 1900) years.add(y);
+    });
+    if (years.size === 0) {
+      activities.forEach(a => {
+        const y = getActivityYear(a.date);
+        if (!isNaN(y) && y > 1900) years.add(y);
+      });
+    }
+    if (years.size === 0) {
+      years.add(new Date().getFullYear());
+    }
+    return Array.from(years).sort((a, b) => b - a).map(String);
+  }, [pastActivities, activities]);
+
+  const maxYear = availableYears[0] || new Date().getFullYear().toString();
+
+  const [selectedYear, setSelectedYear] = useState<string>(() => {
+    const celebratedYears = activities
+      .filter(a => a.status === 'celebrada')
+      .map(a => getActivityYear(a.date))
+      .filter(y => !isNaN(y) && y > 1900);
+    if (celebratedYears.length > 0) {
+      return Math.max(...celebratedYears).toString();
+    }
+    const allYears = activities
+      .map(a => getActivityYear(a.date))
+      .filter(y => !isNaN(y) && y > 1900);
+    if (allYears.length > 0) {
+      return Math.max(...allYears).toString();
+    }
+    return new Date().getFullYear().toString();
+  });
+  const [userCustomizedYear, setUserCustomizedYear] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<string>('all');
 
@@ -37,15 +78,14 @@ export const PastActivitiesManager: React.FC<PastActivitiesManagerProps> = ({ on
     setCurrentPage(1);
   }, [searchTerm, selectedType, selectedYear, pageSize]);
 
-  const pastActivities = useMemo(() => {
-    const celebrated = activities.filter(a => a.status === 'celebrada');
-    return celebrated;
-  }, [activities]);
-
-  const availableYears = useMemo(() => {
-    const years = new Set(pastActivities.map(a => getActivityYear(a.date).toString()));
-    return Array.from(years).sort((a, b) => Number(b) - Number(a));
-  }, [pastActivities]);
+  // Sync default year when data loads if user hasn't explicitly customized
+  useEffect(() => {
+    if (!userCustomizedYear && availableYears.length > 0) {
+      if (selectedYear === '' || !availableYears.includes(selectedYear)) {
+        setSelectedYear(availableYears[0]);
+      }
+    }
+  }, [availableYears, userCustomizedYear, selectedYear]);
 
   const filteredActivities = useMemo(() => {
     const q = (searchTerm || '').toLowerCase().trim();
@@ -181,12 +221,17 @@ export const PastActivitiesManager: React.FC<PastActivitiesManagerProps> = ({ on
 
             <select
               value={selectedYear}
-              onChange={(e) => setSelectedYear(e.target.value)}
+              onChange={(e) => {
+                setSelectedYear(e.target.value);
+                setUserCustomizedYear(true);
+              }}
               className="px-3 py-2 bg-[#FCFAF7] border border-[#EDE4D7] rounded-xl text-xs font-semibold text-[#26201D] focus:outline-none focus:border-[#521849]"
             >
               <option value="all">Todos los años</option>
               {availableYears.map(y => (
-                <option key={y} value={y}>{y}</option>
+                <option key={y} value={y}>
+                  Año {y} {y === maxYear ? '⭐' : ''}
+                </option>
               ))}
             </select>
           </div>

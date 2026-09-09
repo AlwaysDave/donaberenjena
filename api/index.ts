@@ -4,6 +4,7 @@ import multer from "multer";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import nodemailer from "nodemailer";
 import { GoogleGenAI, Type } from "@google/genai";
 import { initializeApp, getApps, App, cert } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
@@ -703,6 +704,249 @@ app.post("/api/reserve", rateLimitMiddleware, async (req: Request, res: Response
     });
   }
 });
+
+// Endpoint: Public contact form submission with server-side persistence & SMTP email notification
+app.post("/api/contact", rateLimitMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { name, email, phone, subject, message, activityInterest, website } = req.body || {};
+
+    // Anti-spam Honeypot: if 'website' is filled, silently ignore/reject
+    if (website && typeof website === 'string' && website.trim().length > 0) {
+      return res.status(400).json({ error: "Petición no válida." });
+    }
+
+    // Input Validation
+    const sanitizedName = typeof name === "string" ? name.trim() : "";
+    const sanitizedEmail = typeof email === "string" ? email.trim() : "";
+    const sanitizedPhone = typeof phone === "string" ? phone.trim() : "";
+    const sanitizedSubject = typeof subject === "string" ? subject.trim() : "";
+    const sanitizedMessage = typeof message === "string" ? message.trim() : "";
+    const sanitizedActivityInterest = typeof activityInterest === "string" ? activityInterest.trim() : "";
+
+    if (sanitizedName.length < 2 || sanitizedName.length > 120) {
+      return res.status(400).json({ error: "El nombre debe tener entre 2 y 120 caracteres." });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!sanitizedEmail || !emailRegex.test(sanitizedEmail) || sanitizedEmail.length > 150) {
+      return res.status(400).json({ error: "El correo electrónico no es válido." });
+    }
+
+    if (sanitizedPhone && sanitizedPhone.length > 30) {
+      return res.status(400).json({ error: "El teléfono no puede superar los 30 caracteres." });
+    }
+
+    if (!sanitizedSubject || sanitizedSubject.length < 2 || sanitizedSubject.length > 100) {
+      return res.status(400).json({ error: "Debe seleccionar un asunto válido." });
+    }
+
+    if (sanitizedMessage.length < 5 || sanitizedMessage.length > 3000) {
+      return res.status(400).json({ error: "El mensaje debe tener entre 5 y 3000 caracteres." });
+    }
+
+    const recipientEmail = (process.env.CONTACT_RECIPIENT_EMAIL || "ea4ayu.12@gmail.com").trim();
+    const smtpUser = process.env.CONTACT_SMTP_USER?.trim();
+    const smtpPass = process.env.CONTACT_SMTP_APP_PASSWORD?.trim();
+
+    // 1. Persistence in Firestore
+    const adminApp = getFirebaseAdmin();
+    const messageId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    let firestoreDocRef: any = null;
+
+    const contactDocData: any = {
+      id: messageId,
+      name: sanitizedName,
+      email: sanitizedEmail,
+      phone: sanitizedPhone || null,
+      subject: sanitizedSubject,
+      message: sanitizedMessage,
+      activityInterest: sanitizedActivityInterest || null,
+      read: false,
+      status: "nuevo",
+      createdAt: new Date().toISOString(),
+      emailDeliveryStatus: "pending"
+      // Note: contactAlertSeenAt is intentionally absent (CON-TACT-04)
+    };
+
+    if (adminApp) {
+      try {
+        const firestore = getFirestore(adminApp);
+        firestoreDocRef = firestore.collection("contactMessages").doc(messageId);
+        await firestoreDocRef.set(contactDocData);
+      } catch (persistErr: any) {
+        console.error("[CONTACT_FIRESTORE_PERSIST_ERROR]", persistErr);
+        // Requirement 4: "Si no se puede persistir el mensaje, no se intenta enviar el email y el formulario muestra error controlado, sin éxito ficticio."
+        return res.status(500).json({
+          success: false,
+          messageSaved: false,
+          emailSent: false,
+          error: "No se pudo registrar el mensaje en la base de datos. Por favor, inténtalo de nuevo más tarde."
+        });
+      }
+    } else {
+      console.warn("[CONTACT_MSG_STANDALONE] Firebase Admin not initialized, proceeding with standalone mode.");
+    }
+
+    // 2. Format Email Content (CON-TACT-03)
+    const subjectLabelsMap: Record<string, string> = {
+      consulta_general: "Información general de actividades",
+      hazte_socio: "Solicitud de alta como socio",
+      propuesta_cata: "Propuesta de cata para bodega/productor",
+      alquiler_espacio: "Alquiler de espacio / Eventos privados",
+      duda_reserva: "Duda sobre una reserva",
+      prensa: "Prensa / Comunicación / Colaboración",
+      otro: "Otro motivo de consulta"
+    };
+    const subjectLabel = subjectLabelsMap[sanitizedSubject] || sanitizedSubject;
+    const formattedDate = new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" });
+
+    const emailSubject = `[Contacto Web] ${subjectLabel} - ${sanitizedName}`;
+    const emailText = `Se ha recibido un nuevo mensaje desde el formulario de contacto web de la Asociación Gastronómica Doña Berenjena:
+
+- Nombre: ${sanitizedName}
+- Correo electrónico: ${sanitizedEmail}
+- Teléfono: ${sanitizedPhone || 'No proporcionado'}
+- Asunto: ${subjectLabel} (${sanitizedSubject})
+${sanitizedActivityInterest ? `- Actividad de interés: ${sanitizedActivityInterest}\n` : ''}- Fecha y hora: ${formattedDate}
+
+Mensaje:
+--------------------------------------------------
+${sanitizedMessage}
+--------------------------------------------------
+
+Puede responder directamente a este correo para contactar con ${sanitizedName} (${sanitizedEmail}).`;
+
+    const emailHtml = `
+      <div style="font-family: sans-serif; color: #26201D; max-width: 600px; margin: 0 auto; border: 1px solid #EDE4D7; border-radius: 12px; padding: 24px; background-color: #FFFFFF;">
+        <h2 style="color: #521849; margin-top: 0; font-family: serif;">Nuevo mensaje de contacto web</h2>
+        <p style="font-size: 14px; color: #574B45;">Se ha recibido una nueva consulta a través del portal de Doña Berenjena:</p>
+        
+        <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+          <tr style="border-bottom: 1px solid #F6F1EA;">
+            <td style="padding: 8px 0; font-weight: bold; color: #574B45; width: 140px;">Nombre:</td>
+            <td style="padding: 8px 0; color: #26201D;">${sanitizedName}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #F6F1EA;">
+            <td style="padding: 8px 0; font-weight: bold; color: #574B45;">Email:</td>
+            <td style="padding: 8px 0; color: #26201D;"><a href="mailto:${sanitizedEmail}" style="color: #521849; text-decoration: underline;">${sanitizedEmail}</a></td>
+          </tr>
+          <tr style="border-bottom: 1px solid #F6F1EA;">
+            <td style="padding: 8px 0; font-weight: bold; color: #574B45;">Teléfono:</td>
+            <td style="padding: 8px 0; color: #26201D;">${sanitizedPhone ? sanitizedPhone : '<em style="color: #8C7E77;">No indicado</em>'}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #F6F1EA;">
+            <td style="padding: 8px 0; font-weight: bold; color: #574B45;">Asunto:</td>
+            <td style="padding: 8px 0; color: #26201D;"><strong>${subjectLabel}</strong></td>
+          </tr>
+          ${sanitizedActivityInterest ? `
+          <tr style="border-bottom: 1px solid #F6F1EA;">
+            <td style="padding: 8px 0; font-weight: bold; color: #574B45;">Actividad:</td>
+            <td style="padding: 8px 0; color: #26201D;">${sanitizedActivityInterest}</td>
+          </tr>
+          ` : ''}
+          <tr>
+            <td style="padding: 8px 0; font-weight: bold; color: #574B45;">Fecha / Hora:</td>
+            <td style="padding: 8px 0; color: #73635B;">${formattedDate}</td>
+          </tr>
+        </table>
+
+        <div style="margin-top: 20px; padding: 16px; background-color: #FCFAF7; border-left: 4px solid #521849; border-radius: 4px;">
+          <div style="font-weight: bold; font-size: 13px; color: #521849; margin-bottom: 8px;">Mensaje recibido:</div>
+          <div style="font-size: 14px; line-height: 1.6; white-space: pre-wrap; color: #26201D;">${sanitizedMessage.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+        </div>
+
+        <p style="font-size: 12px; color: #8C7E77; margin-top: 24px; border-top: 1px solid #EDE4D7; padding-top: 12px;">
+          Puede responder directamente a esta notificación para contestar al remitente (${sanitizedEmail}).
+        </p>
+      </div>
+    `;
+
+    // 3. SMTP Execution (Nodemailer)
+    let emailSent = false;
+    let emailErrorReason: string | undefined = undefined;
+
+    if (!smtpUser || !smtpPass) {
+      emailSent = false;
+      emailErrorReason = "Credenciales SMTP no configuradas en el servidor (CONTACT_SMTP_USER / CONTACT_SMTP_APP_PASSWORD no definidas).";
+      console.warn("[CONTACT_EMAIL_WARN]", emailErrorReason);
+    } else {
+      try {
+        const transporter = nodemailer.createTransport({
+          service: "gmail",
+          auth: {
+            user: smtpUser,
+            pass: smtpPass
+          }
+        });
+
+        await transporter.sendMail({
+          from: `"Asociación Doña Berenjena" <${smtpUser}>`,
+          to: recipientEmail,
+          replyTo: `${sanitizedName} <${sanitizedEmail}>`,
+          subject: emailSubject,
+          text: emailText,
+          html: emailHtml
+        });
+        emailSent = true;
+      } catch (smtpErr: any) {
+        emailSent = false;
+        const rawMsg = smtpErr?.message || "Error desconocido al conectar con servidor SMTP.";
+        // Clean error message without exposing any secrets, tokens or passwords
+        emailErrorReason = `Error SMTP al enviar email: ${rawMsg.replace(/auth.*?:.*?,/gi, "").replace(/pass.*?:.*?,/gi, "").slice(0, 200)}`;
+        console.error("[CONTACT_SMTP_ERROR]", emailErrorReason);
+      }
+    }
+
+    // 4. Update Firestore Doc with Traceability
+    if (firestoreDocRef) {
+      try {
+        if (emailSent) {
+          await firestoreDocRef.update({
+            emailDeliveryStatus: "sent",
+            emailSentAt: new Date().toISOString()
+          });
+        } else {
+          await firestoreDocRef.update({
+            emailDeliveryStatus: "failed",
+            emailFailedAt: new Date().toISOString(),
+            emailErrorReason: emailErrorReason || "Fallo en el servicio SMTP"
+          });
+        }
+      } catch (updateErr) {
+        console.warn("[CONTACT_DOC_UPDATE_WARN]", updateErr);
+      }
+    }
+
+    // 5. Response formulation
+    if (emailSent) {
+      return res.status(200).json({
+        success: true,
+        messageSaved: true,
+        emailSent: true,
+        messageId,
+        message: "Mensaje registrado y remitido por email a la asociación con éxito."
+      });
+    } else {
+      // Requirement 6: "El formulario solo muestra éxito si el mensaje quedó persistido y SMTP aceptó el envío. Si el email falla tras persistir, mostrar un error controlado que indique que el mensaje se registró pero no se pudo remitir; no presentar éxito total."
+      return res.status(207).json({
+        success: false,
+        messageSaved: true,
+        emailSent: false,
+        messageId,
+        error: "El mensaje se ha registrado en el sistema, pero no se pudo enviar el correo de aviso a la asociación. La secretaría revisará su consulta desde el panel interno."
+      });
+    }
+  } catch (error: any) {
+    console.error("[CONTACT_API_UNHANDLED_ERROR]", error);
+    return res.status(500).json({
+      success: false,
+      messageSaved: false,
+      emailSent: false,
+      error: "Error interno al procesar el formulario de contacto."
+    });
+  }
+});
+
 
 // In-Memory Daily Web Metrics Store (resilient fallback for local / permission restricted environments)
 interface InMemoryDailyMetric {

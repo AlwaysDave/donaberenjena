@@ -31,6 +31,10 @@ import {
 } from 'lucide-react';
 import { getAdminAuthHeader } from '../../services/authHelper';
 
+interface HistoryManagerProps {
+  onViewActivity?: (activityId: string) => void;
+}
+
 interface UnifiedPerson {
   id: string; // generated unique key
   normalizedName: string;
@@ -43,7 +47,6 @@ interface UnifiedPerson {
   cursoAttendances: number;
   viajeAttendances: number;
   totalCancelled: number;
-  totalNoShows: number;
   totalJustified: number;
   totalUnjustified: number;
   participations: Participant[];
@@ -70,7 +73,7 @@ function isAnonymousName(name: string): boolean {
   return anonTerms.some(term => norm === term || norm.startsWith(term + ' ') || norm.endsWith(' ' + term));
 }
 
-export const HistoryManager: React.FC = () => {
+export const HistoryManager: React.FC<HistoryManagerProps> = ({ onViewActivity }) => {
   const { activities, participants, members, updateParticipant } = useData();
   const { user } = useAuth();
 
@@ -78,8 +81,7 @@ export const HistoryManager: React.FC = () => {
   const [selectedYear, setSelectedYear] = useState<string>('all');
   const [memberFilter, setMemberFilter] = useState<'all' | 'members' | 'non_members'>('all');
   const [showRankings, setShowRankings] = useState(false);
-  const [rankingCategory, setRankingCategory] = useState<'attendance' | 'no_shows' | 'cancelled'>('attendance');
-  const [sortField, setSortField] = useState<'attendances' | 'no_shows' | 'cancelled' | 'catas' | 'cursos' | 'viajes' | 'name'>('attendances');
+  const [sortField, setSortField] = useState<'attendances' | 'cancelled' | 'catas' | 'cursos' | 'viajes' | 'name'>('attendances');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [selectedPerson, setSelectedPerson] = useState<UnifiedPerson | null>(null);
 
@@ -144,7 +146,6 @@ export const HistoryManager: React.FC = () => {
       // Check attendance status strictly using canonical values
       const attended = p.status === 'asistio';
       const isCancelled = p.status === 'cancelada';
-      const isNoShow = p.status === 'cancelada' && p.cancellationKind === 'no_presentado';
       const isJustified = p.status === 'cancelada' && p.cancellationJustified === true;
 
       if (!map.has(key)) {
@@ -163,7 +164,6 @@ export const HistoryManager: React.FC = () => {
           cursoAttendances: 0,
           viajeAttendances: 0,
           totalCancelled: 0,
-          totalNoShows: 0,
           totalJustified: 0,
           totalUnjustified: 0,
           participations: [],
@@ -189,7 +189,6 @@ export const HistoryManager: React.FC = () => {
         else if (actType === 'viaje') record.viajeAttendances += 1;
       } else if (isCancelled) {
         record.totalCancelled += 1;
-        if (isNoShow) record.totalNoShows += 1;
         if (isJustified) record.totalJustified += 1;
         else record.totalUnjustified += 1;
       }
@@ -224,10 +223,8 @@ export const HistoryManager: React.FC = () => {
         comparison = a.normalizedName.localeCompare(b.normalizedName);
       } else if (sortField === 'attendances') {
         comparison = b.totalAttendances - a.totalAttendances;
-      } else if (sortField === 'no_shows') {
-        comparison = b.totalNoShows - a.totalNoShows;
       } else if (sortField === 'cancelled') {
-        comparison = b.totalCancelled - a.totalCancelled;
+        comparison = b.totalUnjustified - a.totalUnjustified;
       } else if (sortField === 'catas') {
         comparison = b.cataAttendances - a.cataAttendances;
       } else if (sortField === 'cursos') {
@@ -254,18 +251,18 @@ export const HistoryManager: React.FC = () => {
     let totalCatas = 0;
     let totalCursos = 0;
     let totalViajes = 0;
-    let totalNoShows = 0;
     let totalCancelled = 0;
     let totalJustified = 0;
+    let totalUnjustified = 0;
 
     filteredPeople.forEach(p => {
       totalAttendances += p.totalAttendances;
       totalCatas += p.cataAttendances;
       totalCursos += p.cursoAttendances;
       totalViajes += p.viajeAttendances;
-      totalNoShows += p.totalNoShows;
       totalCancelled += p.totalCancelled;
       totalJustified += p.totalJustified;
+      totalUnjustified += p.totalUnjustified;
     });
 
     return {
@@ -274,41 +271,27 @@ export const HistoryManager: React.FC = () => {
       totalCatas,
       totalCursos,
       totalViajes,
-      totalNoShows,
       totalCancelled,
-      totalJustified
+      totalJustified,
+      totalUnjustified
     };
   }, [filteredPeople]);
 
-  // Top 10 People Ranking according to selected ranking category
-  const topPeopleRanking = useMemo(() => {
-    let list = [...unifiedPeople];
-    if (rankingCategory === 'attendance') {
-      list = list.filter(p => p.totalAttendances > 0).sort((a, b) => b.totalAttendances - a.totalAttendances);
-    } else if (rankingCategory === 'no_shows') {
-      list = list.filter(p => p.totalNoShows > 0).sort((a, b) => b.totalNoShows - a.totalNoShows);
-    } else if (rankingCategory === 'cancelled') {
-      list = list.filter(p => p.totalCancelled > 0).sort((a, b) => b.totalCancelled - a.totalCancelled);
-    }
-    return list.slice(0, 10);
-  }, [unifiedPeople, rankingCategory]);
-
-  // Top 10 Popular Activities Ranking
-  const topActivitiesRanking = useMemo(() => {
-    return activities
-      .map(act => {
-        const count = participants.filter(p => p.activityId === act.id && p.status === 'asistio').length;
-        const year = new Date(act.date).getFullYear();
-        return {
-          ...act,
-          attendanceCount: count,
-          year
-        };
-      })
-      .filter(act => selectedYear === 'all' || String(act.year) === selectedYear)
-      .sort((a, b) => b.attendanceCount - a.attendanceCount)
+  // Top 10 Participation Ranking (HIS-04)
+  const topAttendanceRanking = useMemo(() => {
+    return unifiedPeople
+      .filter(p => p.totalAttendances > 0)
+      .sort((a, b) => b.totalAttendances - a.totalAttendances)
       .slice(0, 10);
-  }, [activities, participants, selectedYear]);
+  }, [unifiedPeople]);
+
+  // Top 10 Cancellations Ranking (HIS-04: ordered by non-justified cancellations)
+  const topCancelledRanking = useMemo(() => {
+    return unifiedPeople
+      .filter(p => p.totalUnjustified > 0)
+      .sort((a, b) => b.totalUnjustified - a.totalUnjustified)
+      .slice(0, 10);
+  }, [unifiedPeople]);
 
   // Export History to CSV
   const handleExportCsv = () => {
@@ -323,8 +306,8 @@ export const HistoryManager: React.FC = () => {
       'Cursos', 
       'Viajes', 
       'Total Asistencias', 
-      'No Asistencias (Faltas)', 
-      'Cancelaciones'
+      'Cancelaciones (No Justificadas)', 
+      'Cancelaciones Justificadas'
     ];
     const rows = sortedAndFilteredPeople.map(p => [
       `"${p.normalizedName}"`,
@@ -335,8 +318,8 @@ export const HistoryManager: React.FC = () => {
       p.cursoAttendances,
       p.viajeAttendances,
       p.totalAttendances,
-      p.totalNoShows,
-      p.totalCancelled
+      p.totalUnjustified,
+      p.totalJustified
     ]);
 
     const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
@@ -550,88 +533,33 @@ export const HistoryManager: React.FC = () => {
       {/* RANKINGS PANEL (If toggled) */}
       {showRankings && (
         <div className="space-y-4 animate-fadeIn">
-          {/* Ranking Category Selector Tabs */}
-          <div className="bg-[#FCFAF7] p-2 rounded-2xl border border-[#EDE4D7] flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs font-bold text-[#574B45] uppercase tracking-wider px-2">Criterio de Ranking:</span>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setRankingCategory('attendance')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  rankingCategory === 'attendance'
-                    ? 'bg-[#521849] text-white shadow-2xs'
-                    : 'bg-white hover:bg-[#F6F1EA] text-[#574B45] border border-[#EDE4D7]'
-                }`}
-              >
-                <Trophy className="w-3.5 h-3.5" />
-                <span>👑 Más Asistencias (Fidelidad)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setRankingCategory('no_shows')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  rankingCategory === 'no_shows'
-                    ? 'bg-amber-700 text-white shadow-2xs'
-                    : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200'
-                }`}
-              >
-                <UserX className="w-3.5 h-3.5" />
-                <span>⚠️ Más No Asistencias (Faltas)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setRankingCategory('cancelled')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  rankingCategory === 'cancelled'
-                    ? 'bg-rose-700 text-white shadow-2xs'
-                    : 'bg-rose-50 hover:bg-rose-100 text-rose-900 border border-rose-200'
-                }`}
-              >
-                <XCircle className="w-3.5 h-3.5" />
-                <span>❌ Más Cancelaciones (Bajas)</span>
-              </button>
-            </div>
-          </div>
-
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {/* Top 10 Asistentes según Criterio */}
+            {/* Top 10 Mayor Participación / Asistencias */}
             <div className="bg-white rounded-3xl border border-[#EDE4D7] p-5 shadow-xs">
               <div className="flex items-center justify-between pb-3 border-b border-[#EDE4D7] mb-4">
                 <div className="flex items-center gap-2">
-                  <div className={`p-2 rounded-xl ${
-                    rankingCategory === 'attendance' ? 'bg-amber-100 text-amber-800' :
-                    rankingCategory === 'no_shows' ? 'bg-amber-100 text-amber-900' :
-                    'bg-rose-100 text-rose-800'
-                  }`}>
-                    {rankingCategory === 'attendance' && <Trophy className="w-4 h-4" />}
-                    {rankingCategory === 'no_shows' && <UserX className="w-4 h-4" />}
-                    {rankingCategory === 'cancelled' && <XCircle className="w-4 h-4" />}
+                  <div className="p-2 rounded-xl bg-amber-100 text-amber-800">
+                    <Trophy className="w-4 h-4" />
                   </div>
                   <div>
                     <h4 className="font-bold text-sm font-serif text-[#26201D]">
-                      {rankingCategory === 'attendance' && 'Top 10 Asistentes Más Fieles'}
-                      {rankingCategory === 'no_shows' && 'Top 10 Mayores No Asistencias'}
-                      {rankingCategory === 'cancelled' && 'Top 10 Mayores Cancelaciones'}
+                      Top 10 Asistentes Más Fieles
                     </h4>
                     <p className="text-[11px] text-[#574B45]">
                       {selectedYear === 'all' ? 'Histórico global acumulado' : `Año ${selectedYear}`}
                     </p>
                   </div>
                 </div>
-                <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                  rankingCategory === 'attendance' ? 'text-[#521849] bg-[#521849]/10' :
-                  rankingCategory === 'no_shows' ? 'text-amber-900 bg-amber-100' :
-                  'text-rose-900 bg-rose-100'
-                }`}>
-                  {rankingCategory === 'attendance' ? 'Fidelidad' : rankingCategory === 'no_shows' ? 'Ausencias' : 'Bajas'}
+                <span className="text-xs font-bold px-2.5 py-1 rounded-full text-[#521849] bg-[#521849]/10">
+                  Participación
                 </span>
               </div>
 
               <div className="space-y-2">
-                {topPeopleRanking.length === 0 ? (
-                  <p className="text-xs text-[#8C7E77] text-center py-6">No hay registros para este ranking en este periodo.</p>
+                {topAttendanceRanking.length === 0 ? (
+                  <p className="text-xs text-[#8C7E77] text-center py-6">No hay registros de asistencia en este periodo.</p>
                 ) : (
-                  topPeopleRanking.map((p, idx) => (
+                  topAttendanceRanking.map((p, idx) => (
                     <div 
                       key={p.id}
                       onClick={() => setSelectedPerson(p)}
@@ -652,48 +580,15 @@ export const HistoryManager: React.FC = () => {
                             <span>{p.isMember ? '⭐ Socio' : 'Tarifa General'}</span>
                             <span>•</span>
                             <span>{p.cataAttendances} catas, {p.cursoAttendances} cursos, {p.viajeAttendances} viajes</span>
-                            {(p.totalNoShows > 0 || p.totalCancelled > 0) && (
-                              <>
-                                <span>•</span>
-                                {p.totalNoShows > 0 && (
-                                  <span className="text-amber-800 font-medium">⚠️ {p.totalNoShows} faltas</span>
-                                )}
-                                {p.totalCancelled > 0 && (
-                                  <span className="text-rose-800 font-medium">❌ {p.totalCancelled} canc.</span>
-                                )}
-                              </>
-                            )}
                           </div>
                         </div>
                       </div>
 
                       <div className="text-right">
-                        {rankingCategory === 'attendance' && (
-                          <>
-                            <span className="font-bold font-mono text-sm text-[#521849]">
-                              {p.totalAttendances}
-                            </span>
-                            <span className="text-[10px] text-[#8C7E77] block">asistencias</span>
-                          </>
-                        )}
-                        {rankingCategory === 'no_shows' && (
-                          <>
-                            <span className="font-bold font-mono text-sm text-amber-800">
-                              {p.totalNoShows}
-                            </span>
-                            <span className="text-[10px] text-amber-700 block">
-                              {p.totalJustified > 0 ? `(${p.totalJustified} just.)` : 'no asistió'}
-                            </span>
-                          </>
-                        )}
-                        {rankingCategory === 'cancelled' && (
-                          <>
-                            <span className="font-bold font-mono text-sm text-rose-800">
-                              {p.totalCancelled}
-                            </span>
-                            <span className="text-[10px] text-rose-700 block">canceladas</span>
-                          </>
-                        )}
+                        <span className="font-bold font-mono text-sm text-[#521849]">
+                          {p.totalAttendances}
+                        </span>
+                        <span className="text-[10px] text-[#8C7E77] block">asistencias</span>
                       </div>
                     </div>
                   ))
@@ -701,39 +596,40 @@ export const HistoryManager: React.FC = () => {
               </div>
             </div>
 
-            {/* Top 10 Actividades Más Populares */}
+            {/* Top 10 Cancelaciones (ordenado por no justificadas) */}
             <div className="bg-white rounded-3xl border border-[#EDE4D7] p-5 shadow-xs">
               <div className="flex items-center justify-between pb-3 border-b border-[#EDE4D7] mb-4">
                 <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-xl bg-purple-100 text-purple-800">
-                    <TrendingUp className="w-4 h-4" />
+                  <div className="p-2 rounded-xl bg-rose-100 text-rose-800">
+                    <XCircle className="w-4 h-4" />
                   </div>
                   <div>
                     <h4 className="font-bold text-sm font-serif text-[#26201D]">
-                      Top 10 Actividades Más Concurridas
+                      Top 10 Cancelaciones
                     </h4>
                     <p className="text-[11px] text-[#574B45]">
-                      {selectedYear === 'all' ? 'Ranking histórico' : `Año ${selectedYear}`}
+                      {selectedYear === 'all' ? 'Histórico global acumulado' : `Año ${selectedYear}`}
                     </p>
                   </div>
                 </div>
-                <span className="text-xs font-bold text-purple-900 px-2.5 py-1 rounded-full bg-purple-100">
-                  Afluencia
+                <span className="text-xs font-bold px-2.5 py-1 rounded-full text-rose-900 bg-rose-100">
+                  Cancelaciones
                 </span>
               </div>
 
               <div className="space-y-2">
-                {topActivitiesRanking.length === 0 ? (
-                  <p className="text-xs text-[#8C7E77] text-center py-6">No hay actividades en este periodo.</p>
+                {topCancelledRanking.length === 0 ? (
+                  <p className="text-xs text-[#8C7E77] text-center py-6">No hay cancelaciones registradas en este periodo.</p>
                 ) : (
-                  topActivitiesRanking.map((act, idx) => (
+                  topCancelledRanking.map((p, idx) => (
                     <div 
-                      key={act.id}
-                      className="flex items-center justify-between p-2.5 rounded-xl hover:bg-[#FCFAF7] border border-[#EDE4D7]/50 text-xs transition-colors"
+                      key={p.id}
+                      onClick={() => setSelectedPerson(p)}
+                      className="flex items-center justify-between p-2.5 rounded-xl hover:bg-[#FCFAF7] border border-[#EDE4D7]/50 text-xs transition-colors cursor-pointer"
                     >
                       <div className="flex items-center gap-3">
                         <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${
-                          idx === 0 ? 'bg-amber-400 text-amber-950 shadow-xs' :
+                          idx === 0 ? 'bg-rose-400 text-rose-950 shadow-xs' :
                           idx === 1 ? 'bg-stone-300 text-stone-900' :
                           idx === 2 ? 'bg-amber-700 text-white' :
                           'bg-stone-100 text-stone-600'
@@ -741,20 +637,25 @@ export const HistoryManager: React.FC = () => {
                           {idx + 1}
                         </span>
                         <div>
-                          <span className="font-bold text-[#26201D] block truncate max-w-[200px] sm:max-w-xs">{act.title}</span>
-                          <div className="flex items-center gap-2 text-[10px] text-[#574B45]">
-                            <span className="capitalize">{act.type}</span>
+                          <span className="font-bold text-[#26201D] block">{p.normalizedName}</span>
+                          <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-[#574B45]">
+                            <span>{p.isMember ? '⭐ Socio' : 'Tarifa General'}</span>
                             <span>•</span>
-                            <span>{new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                            <span>{p.totalAttendances} asistencias</span>
                           </div>
                         </div>
                       </div>
 
                       <div className="text-right">
-                        <span className="font-bold font-mono text-sm text-purple-900">
-                          {act.attendanceCount} / {act.totalSpots}
+                        <span className="font-bold font-mono text-sm text-rose-800">
+                          {p.totalUnjustified}
                         </span>
-                        <span className="text-[10px] text-[#8C7E77] block">asistieron</span>
+                        <span className="text-[10px] text-rose-700 block">canceladas</span>
+                        {p.totalJustified > 0 && (
+                          <span className="text-[10px] text-emerald-700 font-semibold block">
+                            {p.totalJustified} justificada{p.totalJustified > 1 ? 's' : ''}
+                          </span>
+                        )}
                       </div>
                     </div>
                   ))
@@ -765,12 +666,12 @@ export const HistoryManager: React.FC = () => {
         </div>
       )}
 
-      {/* Aggregate KPI Metric Cards */}
+      {/* Aggregate KPI Metric Cards: Participantes únicos, Asistencias, Cancelaciones, Catas, Cursos, Viajes */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {/* Card 1: Total Personas Únicas */}
+        {/* Card 1: Participantes únicos */}
         <div className="bg-white rounded-2xl border border-[#EDE4D7] p-3.5 shadow-2xs">
           <div className="flex items-center justify-between text-xs text-[#574B45] mb-1">
-            <span className="font-semibold uppercase tracking-wider text-[10px]">Asistentes Únicos</span>
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Participantes Únicos</span>
             <Users className="w-4 h-4 text-[#521849]" />
           </div>
           <div className="flex items-baseline gap-1.5">
@@ -784,10 +685,10 @@ export const HistoryManager: React.FC = () => {
           </p>
         </div>
 
-        {/* Card 2: Total Asistencias Efectivas */}
+        {/* Card 2: Asistencias */}
         <div className="bg-white rounded-2xl border border-purple-200/80 bg-purple-50/20 p-3.5 shadow-2xs">
           <div className="flex items-center justify-between text-xs text-purple-900 mb-1">
-            <span className="font-semibold uppercase tracking-wider text-[10px]">Total Asistencias</span>
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Asistencias</span>
             <Trophy className="w-4 h-4 text-purple-600" />
           </div>
           <div className="flex items-baseline gap-1.5">
@@ -797,62 +698,11 @@ export const HistoryManager: React.FC = () => {
             <span className="text-[11px] text-purple-700">participaciones</span>
           </div>
           <p className="text-[10px] text-purple-800 mt-1 truncate">
-            Presencias registradas en sala
+            Presencias en sala
           </p>
         </div>
 
-        {/* Card 3: Catas */}
-        <div className="bg-white rounded-2xl border border-rose-200 bg-rose-50/20 p-3.5 shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-rose-900 mb-1">
-            <span className="font-semibold uppercase tracking-wider text-[10px]">Catas</span>
-            <Wine className="w-4 h-4 text-rose-600" />
-          </div>
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-xl sm:text-2xl font-bold font-serif text-rose-950">
-              {aggregateMetrics.totalCatas}
-            </span>
-            <span className="text-[11px] text-rose-800">asistencias</span>
-          </div>
-          <p className="text-[10px] text-rose-700 mt-1 truncate">
-            Eventos enológicos
-          </p>
-        </div>
-
-        {/* Card 4: Cursos y Viajes */}
-        <div className="bg-white rounded-2xl border border-teal-200 bg-teal-50/20 p-3.5 shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-teal-900 mb-1">
-            <span className="font-semibold uppercase tracking-wider text-[10px]">Cursos & Viajes</span>
-            <GraduationCap className="w-4 h-4 text-teal-600" />
-          </div>
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-xl sm:text-2xl font-bold font-serif text-teal-950">
-              {aggregateMetrics.totalCursos + aggregateMetrics.totalViajes}
-            </span>
-            <span className="text-[11px] text-teal-800">asistencias</span>
-          </div>
-          <p className="text-[10px] text-teal-700 mt-1 truncate">
-            {aggregateMetrics.totalCursos} cursos • {aggregateMetrics.totalViajes} viajes
-          </p>
-        </div>
-
-        {/* Card 5: No Asistencias (Faltas) */}
-        <div className="bg-white rounded-2xl border border-amber-200 bg-amber-50/30 p-3.5 shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-amber-900 mb-1">
-            <span className="font-semibold uppercase tracking-wider text-[10px]">No Asistencias</span>
-            <UserX className="w-4 h-4 text-amber-600" />
-          </div>
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-xl sm:text-2xl font-bold font-serif text-amber-950">
-              {aggregateMetrics.totalNoShows}
-            </span>
-            <span className="text-[11px] text-amber-800">faltas</span>
-          </div>
-          <p className="text-[10px] text-amber-700 mt-1 truncate">
-            {aggregateMetrics.totalJustified > 0 ? `${aggregateMetrics.totalJustified} justificadas` : 'Sin justificar'}
-          </p>
-        </div>
-
-        {/* Card 6: Cancelaciones */}
+        {/* Card 3: Cancelaciones (Rojo) */}
         <div className="bg-white rounded-2xl border border-rose-200 bg-rose-50/30 p-3.5 shadow-2xs">
           <div className="flex items-center justify-between text-xs text-rose-900 mb-1">
             <span className="font-semibold uppercase tracking-wider text-[10px]">Cancelaciones</span>
@@ -860,12 +710,63 @@ export const HistoryManager: React.FC = () => {
           </div>
           <div className="flex items-baseline gap-1.5">
             <span className="text-xl sm:text-2xl font-bold font-serif text-rose-950">
-              {aggregateMetrics.totalCancelled}
+              {aggregateMetrics.totalUnjustified}
             </span>
             <span className="text-[11px] text-rose-800">bajas</span>
           </div>
           <p className="text-[10px] text-rose-700 mt-1 truncate">
-            Bajas previas de reservas
+            {aggregateMetrics.totalJustified} justificada{aggregateMetrics.totalJustified !== 1 ? 's' : ''}
+          </p>
+        </div>
+
+        {/* Card 4: Catas (Tono Vino #521849) */}
+        <div className="bg-white rounded-2xl border border-[#521849]/20 bg-[#521849]/5 p-3.5 shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-[#521849] mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Catas</span>
+            <Wine className="w-4 h-4 text-[#521849]" />
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-bold font-serif text-[#521849]">
+              {aggregateMetrics.totalCatas}
+            </span>
+            <span className="text-[11px] text-[#521849]/80">asistencias</span>
+          </div>
+          <p className="text-[10px] text-[#521849]/70 mt-1 truncate">
+            Eventos enológicos
+          </p>
+        </div>
+
+        {/* Card 5: Cursos (Naranja) */}
+        <div className="bg-white rounded-2xl border border-orange-200 bg-orange-50/30 p-3.5 shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-orange-900 mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Cursos</span>
+            <GraduationCap className="w-4 h-4 text-orange-600" />
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-bold font-serif text-orange-950">
+              {aggregateMetrics.totalCursos}
+            </span>
+            <span className="text-[11px] text-orange-800">asistencias</span>
+          </div>
+          <p className="text-[10px] text-orange-700 mt-1 truncate">
+            Formación y talleres
+          </p>
+        </div>
+
+        {/* Card 6: Viajes (Verde) */}
+        <div className="bg-white rounded-2xl border border-emerald-200 bg-emerald-50/30 p-3.5 shadow-2xs">
+          <div className="flex items-center justify-between text-xs text-emerald-900 mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Viajes</span>
+            <Compass className="w-4 h-4 text-emerald-600" />
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-bold font-serif text-emerald-950">
+              {aggregateMetrics.totalViajes}
+            </span>
+            <span className="text-[11px] text-emerald-800">asistencias</span>
+          </div>
+          <p className="text-[10px] text-emerald-700 mt-1 truncate">
+            Viajes enoturísticos
           </p>
         </div>
       </div>
@@ -981,16 +882,6 @@ export const HistoryManager: React.FC = () => {
                   </div>
                 </th>
                 <th 
-                  className="p-4 text-center cursor-pointer hover:text-amber-900 transition-colors select-none"
-                  onClick={() => handleToggleSort('no_shows')}
-                >
-                  <div className="flex items-center justify-center gap-1 text-amber-800">
-                    <UserX className="w-3.5 h-3.5" />
-                    <span>No Asist.</span>
-                    {sortField === 'no_shows' && <ArrowUpDown className="w-3 h-3 text-amber-800" />}
-                  </div>
-                </th>
-                <th 
                   className="p-4 text-center cursor-pointer hover:text-rose-900 transition-colors select-none"
                   onClick={() => handleToggleSort('cancelled')}
                 >
@@ -1015,7 +906,7 @@ export const HistoryManager: React.FC = () => {
             <tbody className="divide-y divide-[#EDE4D7]">
               {sortedAndFilteredPeople.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="p-8 text-center text-[#8C7E77]">
+                  <td colSpan={9} className="p-8 text-center text-[#8C7E77]">
                     <Users className="w-8 h-8 mx-auto mb-2 text-[#EDE4D7]" />
                     <p className="font-semibold text-sm text-[#574B45]">No hay registros históricos</p>
                     <p className="text-xs mt-1">Prueba a seleccionar otro año o restablecer los filtros de búsqueda.</p>
@@ -1064,41 +955,37 @@ export const HistoryManager: React.FC = () => {
                       )}
                     </td>
 
-                    {/* Breakdown counts */}
+                    {/* Breakdown counts: Catas (Vino), Cursos (Naranja), Viajes (Verde) */}
                     <td className="p-4 text-center font-mono">
-                      <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-900 font-semibold">{person.cataAttendances}</span>
+                      <span className="px-2 py-0.5 rounded bg-[#521849]/10 text-[#521849] font-semibold border border-[#521849]/20">{person.cataAttendances}</span>
                     </td>
                     <td className="p-4 text-center font-mono">
-                      <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-900 font-semibold">{person.cursoAttendances}</span>
+                      <span className="px-2 py-0.5 rounded bg-orange-50 text-orange-900 font-semibold border border-orange-200">{person.cursoAttendances}</span>
                     </td>
                     <td className="p-4 text-center font-mono">
-                      <span className="px-2 py-0.5 rounded bg-teal-50 text-teal-900 font-semibold">{person.viajeAttendances}</span>
-                    </td>
-
-                    {/* No Asistencias */}
-                    <td className="p-4 text-center font-mono">
-                      {person.totalNoShows > 0 ? (
-                        <span 
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-100 text-amber-900 font-semibold border border-amber-200"
-                          title={`${person.totalNoShows} no asistencias (${person.totalJustified} justificadas)`}
-                        >
-                          <UserX className="w-3 h-3 text-amber-700" />
-                          <span>{person.totalNoShows}</span>
-                        </span>
-                      ) : (
-                        <span className="text-stone-300 font-mono">0</span>
-                      )}
+                      <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-900 font-semibold border border-emerald-200">{person.viajeAttendances}</span>
                     </td>
 
-                    {/* Cancelaciones */}
+                    {/* Cancelaciones (solo no justificadas en contador principal, con detalle de justificadas) */}
                     <td className="p-4 text-center font-mono">
-                      {person.totalCancelled > 0 ? (
-                        <span 
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-50 text-rose-800 font-semibold border border-rose-200"
-                          title={`${person.totalCancelled} cancelaciones`}
-                        >
-                          <XCircle className="w-3 h-3 text-rose-600" />
-                          <span>{person.totalCancelled}</span>
+                      {person.totalUnjustified > 0 ? (
+                        <div className="inline-flex flex-col items-center">
+                          <span 
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-50 text-rose-800 font-semibold border border-rose-200"
+                            title={`${person.totalUnjustified} cancelaciones no justificadas`}
+                          >
+                            <XCircle className="w-3 h-3 text-rose-600" />
+                            <span>{person.totalUnjustified}</span>
+                          </span>
+                          {person.totalJustified > 0 && (
+                            <span className="text-[9px] text-emerald-700 font-semibold mt-0.5">
+                              {person.totalJustified} just.
+                            </span>
+                          )}
+                        </div>
+                      ) : person.totalJustified > 0 ? (
+                        <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                          {person.totalJustified} just.
                         </span>
                       ) : (
                         <span className="text-stone-300 font-mono">0</span>
@@ -1166,36 +1053,41 @@ export const HistoryManager: React.FC = () => {
               </button>
             </div>
 
-            {/* Quick Metrics */}
+            {/* Quick Metrics: Exact order: Asistencias, Cancelaciones, Catas, Cursos, Viajes */}
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 mb-5 text-center">
+              {/* 1. Asistencias */}
               <div className="p-3 rounded-2xl bg-purple-50/50 border border-purple-200">
                 <span className="text-[10px] uppercase font-bold text-purple-900 block">Asistencias</span>
                 <span className="text-xl font-bold font-mono text-[#521849]">{selectedPerson.totalAttendances}</span>
               </div>
-              <div className="p-3 rounded-2xl bg-rose-50 border border-rose-100">
-                <span className="text-[10px] uppercase font-bold text-rose-800 block">Catas</span>
-                <span className="text-xl font-bold font-mono text-rose-900">{selectedPerson.cataAttendances}</span>
-              </div>
-              <div className="p-3 rounded-2xl bg-teal-50 border border-teal-100">
-                <span className="text-[10px] uppercase font-bold text-teal-800 block">Cursos / Viajes</span>
-                <span className="text-xl font-bold font-mono text-teal-900">{selectedPerson.cursoAttendances + selectedPerson.viajeAttendances}</span>
-              </div>
-              <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200">
-                <span className="text-[10px] uppercase font-bold text-amber-900 block">No Asistencias</span>
-                <span className="text-xl font-bold font-mono text-amber-900">
-                  {selectedPerson.totalNoShows}
-                </span>
-                {selectedPerson.totalJustified > 0 && (
-                  <span className="text-[9px] text-emerald-800 font-semibold block mt-0.5">
-                    {selectedPerson.totalJustified} justificada{selectedPerson.totalJustified > 1 ? 's' : ''}
-                  </span>
-                )}
-              </div>
+
+              {/* 2. Cancelaciones */}
               <div className="p-3 rounded-2xl bg-rose-50/80 border border-rose-200">
-                <span className="text-[10px] uppercase font-bold text-rose-900 block">Canceladas</span>
+                <span className="text-[10px] uppercase font-bold text-rose-900 block">Cancelaciones</span>
                 <span className="text-xl font-bold font-mono text-rose-950">
-                  {selectedPerson.totalCancelled}
+                  {selectedPerson.totalUnjustified}
                 </span>
+                <span className="text-[9px] text-emerald-800 font-semibold block mt-0.5">
+                  {selectedPerson.totalJustified} justificada{selectedPerson.totalJustified !== 1 ? 's' : ''}
+                </span>
+              </div>
+
+              {/* 3. Catas (Vino) */}
+              <div className="p-3 rounded-2xl bg-[#521849]/5 border border-[#521849]/20">
+                <span className="text-[10px] uppercase font-bold text-[#521849] block">Catas</span>
+                <span className="text-xl font-bold font-mono text-[#521849]">{selectedPerson.cataAttendances}</span>
+              </div>
+
+              {/* 4. Cursos (Naranja) */}
+              <div className="p-3 rounded-2xl bg-orange-50/60 border border-orange-200">
+                <span className="text-[10px] uppercase font-bold text-orange-900 block">Cursos</span>
+                <span className="text-xl font-bold font-mono text-orange-950">{selectedPerson.cursoAttendances}</span>
+              </div>
+
+              {/* 5. Viajes (Verde) */}
+              <div className="p-3 rounded-2xl bg-emerald-50/60 border border-emerald-200">
+                <span className="text-[10px] uppercase font-bold text-emerald-900 block">Viajes</span>
+                <span className="text-xl font-bold font-mono text-emerald-950">{selectedPerson.viajeAttendances}</span>
               </div>
             </div>
 
@@ -1214,7 +1106,6 @@ export const HistoryManager: React.FC = () => {
                 const act = activities.find(a => a.id === p.activityId);
                 const attended = p.status === 'asistio';
                 const isCancelled = p.status === 'cancelada';
-                const isNoShow = p.status === 'cancelada' && p.cancellationKind === 'no_presentado';
 
                 return (
                   <div 
@@ -1223,7 +1114,20 @@ export const HistoryManager: React.FC = () => {
                   >
                     <div className="flex-1 space-y-1.5">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-[#26201D]">{p.activityTitle}</span>
+                        {/* HIS-03: Enlace visible para abrir Control de Asistencia / Hoja de sala */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onViewActivity && p.activityId) {
+                              setSelectedPerson(null);
+                              onViewActivity(p.activityId);
+                            }
+                          }}
+                          className="font-bold text-[#26201D] hover:text-[#521849] hover:underline text-left cursor-pointer transition-colors"
+                          title="Abrir Control de Asistencia / Hoja de sala de esta actividad"
+                        >
+                          {p.activityTitle}
+                        </button>
                         {p.cancellationJustified && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-semibold text-[10px]">
                             <ShieldCheck className="w-3 h-3 text-emerald-700" />
@@ -1244,7 +1148,7 @@ export const HistoryManager: React.FC = () => {
                         <div className="mt-1 p-2 rounded-xl bg-rose-50 border border-rose-200/80 text-[11px] space-y-0.5 text-rose-950">
                           <div className="font-semibold flex items-center gap-1 text-rose-900">
                             <XCircle className="w-3 h-3 text-rose-600 shrink-0" />
-                            <span>{isNoShow ? 'No Presentado en Sala:' : 'Cancelación Registrada:'}</span>
+                            <span>Cancelación Registrada:</span>
                           </div>
                           <p className="italic text-rose-800">
                             «{p.cancellationReason || 'Sin motivo detallado'}»
@@ -1267,14 +1171,14 @@ export const HistoryManager: React.FC = () => {
                         attended 
                           ? 'bg-emerald-100 text-emerald-800' 
                           : isCancelled
-                          ? (isNoShow ? 'bg-amber-100 text-amber-900' : 'bg-rose-100 text-rose-800')
+                          ? 'bg-rose-100 text-rose-800'
                           : p.status === 'pagada'
                           ? 'bg-blue-100 text-blue-800'
                           : p.status === 'pendiente_pago'
                           ? 'bg-amber-100 text-amber-800'
                           : 'bg-stone-200 text-stone-700'
                       }`}>
-                        {attended ? 'Asistió' : isNoShow ? 'No Presentado' : isCancelled ? 'Cancelada' : p.status.replace(/_/g, ' ')}
+                        {attended ? 'Asistió' : isCancelled ? 'Cancelada' : p.status.replace(/_/g, ' ')}
                       </span>
 
                       {isCancelled && (

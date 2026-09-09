@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Mail, 
   MessageSquare, 
@@ -14,30 +14,32 @@ import {
   Eye,
   Check,
   AlertCircle,
+  AlertTriangle,
   Inbox,
   Sparkles,
-  Tag
+  Tag,
+  ShieldCheck,
+  CheckCircle,
+  Loader2
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
-import { ContactMessage } from '../../types';
+import { useAuth } from '../../context/AuthContext';
+import { ContactMessage, CONTACT_SUBJECTS, getContactSubjectLabel, getContactSubjectBadge } from '../../types';
 
-const SUBJECT_LABELS: Record<string, { label: string; color: string }> = {
-  consulta_general: { label: 'Consulta General', color: 'bg-slate-100 text-slate-800 border-slate-200' },
-  hazte_socio: { label: 'Alta de Socio', color: 'bg-amber-50 text-amber-800 border-amber-200' },
-  propuesta_cata: { label: 'Propuesta / Cata Privada', color: 'bg-purple-50 text-purple-800 border-purple-200' },
-  duda_reserva: { label: 'Duda de Reserva', color: 'bg-blue-50 text-blue-800 border-blue-200' },
-  prensa: { label: 'Prensa / Colaboración', color: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-  otro: { label: 'Otro Asunto', color: 'bg-stone-100 text-stone-800 border-stone-200' }
-};
+interface MessagesManagerProps {
+  initialMessageId?: string | null;
+}
 
-export const MessagesManager: React.FC = () => {
+export const MessagesManager: React.FC<MessagesManagerProps> = ({ initialMessageId }) => {
   const { 
     contactMessages, 
-    markContactMessageRead, 
+    markContactMessageRead,
+    markContactAlertSeen,
     updateContactMessageStatus, 
     deleteContactMessage,
     useMockData 
   } = useData();
+  const { user } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'todos' | 'nuevo' | 'leido' | 'respondido'>('todos');
@@ -45,6 +47,29 @@ export const MessagesManager: React.FC = () => {
   const [selectedMessage, setSelectedMessage] = useState<ContactMessage | null>(null);
   const [replyNotes, setReplyNotes] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [markingAlertSeen, setMarkingAlertSeen] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(false);
+
+  // Sync initialMessageId if supplied (without auto-marking as read - CON-TACT-06)
+  useEffect(() => {
+    if (initialMessageId) {
+      const found = contactMessages.find(m => m.id === initialMessageId);
+      if (found) {
+        setSelectedMessage(found);
+        setReplyNotes(found.replyNotes || '');
+      }
+    }
+  }, [initialMessageId, contactMessages]);
+
+  // Keep selectedMessage synchronized if contactMessages changes
+  useEffect(() => {
+    if (selectedMessage) {
+      const updated = contactMessages.find(m => m.id === selectedMessage.id);
+      if (updated) {
+        setSelectedMessage(updated);
+      }
+    }
+  }, [contactMessages]);
 
   // Statistics
   const totalCount = contactMessages.length;
@@ -76,18 +101,52 @@ export const MessagesManager: React.FC = () => {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [contactMessages, searchQuery, statusFilter, subjectFilter]);
 
+  // Handler to open message details (CON-TACT-06: strictly read-only, does NOT auto-mark as read)
   const handleOpenDetail = (msg: ContactMessage) => {
     setSelectedMessage(msg);
     setReplyNotes(msg.replyNotes || '');
-    if (!msg.read || msg.status === 'nuevo') {
-      markContactMessageRead(msg.id, true);
+  };
+
+  // Handler to explicitly mark message as reviewed (CON-TACT-06)
+  const handleMarkAsReviewed = async () => {
+    if (!selectedMessage) return;
+    setSavingStatus(true);
+    try {
+      await markContactMessageRead(selectedMessage.id, true);
+    } catch (err) {
+      console.error('Error marking contact message as read:', err);
+    } finally {
+      setSavingStatus(false);
+    }
+  };
+
+  // Handler to mark alert as seen (CON-TACT-05: updates only contactAlertSeenAt and seen by fields)
+  const handleMarkAlertSeen = async () => {
+    if (!selectedMessage) return;
+    setMarkingAlertSeen(true);
+    try {
+      await markContactAlertSeen(
+        selectedMessage.id,
+        user?.name || 'Administración',
+        user?.uid || 'admin'
+      );
+    } catch (err) {
+      console.error('Error marking contact alert seen:', err);
+    } finally {
+      setMarkingAlertSeen(false);
     }
   };
 
   const handleSaveReply = async () => {
     if (!selectedMessage) return;
-    await updateContactMessageStatus(selectedMessage.id, 'respondido', replyNotes.trim());
-    setSelectedMessage(prev => prev ? { ...prev, status: 'respondido', replyNotes: replyNotes.trim(), repliedAt: new Date().toISOString(), read: true } : null);
+    setSavingStatus(true);
+    try {
+      await updateContactMessageStatus(selectedMessage.id, 'respondido', replyNotes.trim());
+    } catch (err) {
+      console.error('Error saving contact message reply:', err);
+    } finally {
+      setSavingStatus(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -108,13 +167,13 @@ export const MessagesManager: React.FC = () => {
               Buzón de Contacto y Consultas
             </h2>
             {newCount > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-[#521849] text-white">
-                {newCount} sin leer
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#521849] text-white shadow-2xs">
+                {newCount} sin revisar
               </span>
             )}
           </div>
           <p className="text-xs text-[#574B45] mt-1">
-            Gestión de solicitudes y mensajes recibidos desde el formulario público de contacto.
+            Gestión de solicitudes y consultas recibidas desde el formulario público de contacto.
           </p>
         </div>
       </div>
@@ -165,7 +224,7 @@ export const MessagesManager: React.FC = () => {
         >
           <div className="flex items-center justify-between">
             <span className={`text-xs uppercase tracking-wider font-semibold ${statusFilter === 'leido' ? 'text-white/80' : 'text-amber-700'}`}>
-              En Gestión
+              Revisados / En Gestión
             </span>
             <Clock className={`w-4 h-4 ${statusFilter === 'leido' ? 'text-white' : 'text-amber-600'}`} />
           </div>
@@ -190,7 +249,7 @@ export const MessagesManager: React.FC = () => {
         </div>
       </div>
 
-      {/* Filters and Search Bar */}
+      {/* Filters and Search Bar (CON-TACT-07) */}
       <div className="bg-white p-4 rounded-2xl border border-[#EDE4D7] flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
         <div className="relative flex-1">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#574B45]" />
@@ -209,13 +268,12 @@ export const MessagesManager: React.FC = () => {
             onChange={(e) => setSubjectFilter(e.target.value)}
             className="px-3 py-2 bg-[#FCFAF7] border border-[#EDE4D7] rounded-xl text-xs font-medium text-[#26201D] focus:outline-none focus:border-[#521849]"
           >
-            <option value="todos">Todos los motivos</option>
-            <option value="consulta_general">Consulta General</option>
-            <option value="hazte_socio">Alta de Socio</option>
-            <option value="propuesta_cata">Propuesta / Cata Privada</option>
-            <option value="duda_reserva">Duda de Reserva</option>
-            <option value="prensa">Prensa / Colaboración</option>
-            <option value="otro">Otro Asunto</option>
+            <option value="todos">Todos los motivos de consulta ({totalCount})</option>
+            {CONTACT_SUBJECTS.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
           </select>
         </div>
       </div>
@@ -235,9 +293,11 @@ export const MessagesManager: React.FC = () => {
         ) : (
           <div className="divide-y divide-[#EDE4D7]">
             {filteredMessages.map((msg) => {
-              const subjectInfo = SUBJECT_LABELS[msg.subject] || { label: msg.subject, color: 'bg-gray-100 text-gray-800 border-gray-200' };
+              const subjectBadge = getContactSubjectBadge(msg.subject);
               const isUnread = !msg.read || msg.status === 'nuevo';
               const isReplied = msg.status === 'respondido';
+              const isEmailFailed = msg.emailDeliveryStatus === 'failed';
+              const isAlertPending = !msg.contactAlertSeenAt;
               const createdDate = new Date(msg.createdAt);
               const formattedDate = createdDate.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
               const formattedTime = createdDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
@@ -253,13 +313,13 @@ export const MessagesManager: React.FC = () => {
                   <div className="space-y-2 flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       {isUnread && (
-                        <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" title="Mensaje no leído" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" title="Mensaje no leído / nuevo" />
                       )}
                       <h4 className={`text-sm sm:text-base ${isUnread ? 'font-bold text-[#26201D]' : 'font-semibold text-[#574B45]'}`}>
                         {msg.name}
                       </h4>
-                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${subjectInfo.color}`}>
-                        {subjectInfo.label}
+                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${subjectBadge.color}`}>
+                        {subjectBadge.label}
                       </span>
                       {isReplied ? (
                         <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
@@ -271,7 +331,23 @@ export const MessagesManager: React.FC = () => {
                         </span>
                       ) : (
                         <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
-                          En gestión
+                          Revisado
+                        </span>
+                      )}
+
+                      {/* Email Failure Indicator */}
+                      {isEmailFailed && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 flex items-center gap-1" title={msg.emailErrorReason || 'Fallo SMTP'}>
+                          <AlertTriangle className="w-3 h-3 text-rose-600" />
+                          Fallo email
+                        </span>
+                      )}
+
+                      {/* Central Alert Seen Indicator */}
+                      {isAlertPending && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-[#521849] border border-purple-200 flex items-center gap-1">
+                          <Eye className="w-3 h-3" />
+                          Aviso pendiente
                         </span>
                       )}
                     </div>
@@ -323,7 +399,7 @@ export const MessagesManager: React.FC = () => {
         )}
       </div>
 
-      {/* DETAIL MODAL / DRAWER */}
+      {/* DETAIL MODAL / DRAWER (CON-TACT-05 & CON-TACT-06) */}
       {selectedMessage && (
         <div
           id="modal-message-backdrop"
@@ -364,8 +440,8 @@ export const MessagesManager: React.FC = () => {
               <div className="flex flex-wrap items-center justify-between gap-2 p-3.5 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7]">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold text-[#574B45]">Motivo:</span>
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${(SUBJECT_LABELS[selectedMessage.subject] || {}).color || 'bg-gray-100'}`}>
-                    {(SUBJECT_LABELS[selectedMessage.subject] || {}).label || selectedMessage.subject}
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${getContactSubjectBadge(selectedMessage.subject).color}`}>
+                    {getContactSubjectBadge(selectedMessage.subject).label}
                   </span>
                 </div>
 
@@ -376,21 +452,85 @@ export const MessagesManager: React.FC = () => {
                     onChange={(e) => {
                       const newSt = e.target.value as 'nuevo' | 'leido' | 'respondido';
                       updateContactMessageStatus(selectedMessage.id, newSt, selectedMessage.replyNotes);
-                      setSelectedMessage(prev => prev ? { ...prev, status: newSt, read: true } : null);
                     }}
                     className="px-3 py-1 bg-white border border-[#EDE4D7] rounded-xl text-xs font-bold text-[#26201D] focus:outline-none focus:border-[#521849]"
                   >
-                    <option value="nuevo">🔴 Nuevo / Sin leer</option>
-                    <option value="leido">🟡 En Gestión / Leído</option>
+                    <option value="nuevo">🔴 Nuevo / Sin revisar</option>
+                    <option value="leido">🟡 Revisado / En gestión</option>
                     <option value="respondido">🟢 Respondido</option>
                   </select>
+                </div>
+              </div>
+
+              {/* Central Alert Status & Email Traceability Banner */}
+              <div className="space-y-2">
+                {/* Email Delivery Traceability */}
+                <div className="p-3 rounded-xl bg-white border border-[#EDE4D7] text-xs flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Mail className="w-4 h-4 text-[#521849] shrink-0" />
+                    <span className="text-[#574B45] font-medium">Reenvío por email:</span>
+                    {selectedMessage.emailDeliveryStatus === 'sent' ? (
+                      <span className="text-emerald-700 font-bold flex items-center gap-1">
+                        <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                        Remitido a ea4ayu.12@gmail.com
+                        {selectedMessage.emailSentAt && (
+                          <span className="font-normal text-[#8C7E77] text-[11px]">
+                            ({new Date(selectedMessage.emailSentAt).toLocaleTimeString('es-ES')})
+                          </span>
+                        )}
+                      </span>
+                    ) : selectedMessage.emailDeliveryStatus === 'failed' ? (
+                      <span className="text-rose-700 font-bold flex items-center gap-1 truncate" title={selectedMessage.emailErrorReason}>
+                        <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                        Fallo en envío: {selectedMessage.emailErrorReason || 'Error SMTP'}
+                      </span>
+                    ) : selectedMessage.emailDeliveryStatus === 'simulated' ? (
+                      <span className="text-indigo-700 font-semibold flex items-center gap-1">
+                        <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                        Simulado (Modo Demo)
+                      </span>
+                    ) : (
+                      <span className="text-amber-700 font-medium">Pendiente de reenvío</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Central Alert Status & Action (CON-TACT-05) */}
+                <div className="p-3 rounded-xl bg-[#FCFAF7] border border-[#EDE4D7] text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Eye className="w-4 h-4 text-[#521849] shrink-0" />
+                    <span className="text-[#574B45] font-medium">Aviso central:</span>
+                    {selectedMessage.contactAlertSeenAt ? (
+                      <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                        <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                        Visto el {new Date(selectedMessage.contactAlertSeenAt).toLocaleString('es-ES')} por {selectedMessage.contactAlertSeenBy || 'Administración'}
+                      </span>
+                    ) : (
+                      <span className="text-amber-800 font-bold flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        Pendiente de confirmación en la Central de Avisos
+                      </span>
+                    )}
+                  </div>
+
+                  {!selectedMessage.contactAlertSeenAt && (
+                    <button
+                      type="button"
+                      onClick={handleMarkAlertSeen}
+                      disabled={markingAlertSeen}
+                      className="px-3 py-1.5 rounded-lg bg-white border border-[#EDE4D7] hover:bg-[#F6EDF4] text-[#521849] font-bold text-xs shadow-2xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 self-start sm:self-auto shrink-0"
+                    >
+                      {markingAlertSeen ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+                      <span>Marcar aviso como visto</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
               {/* Direct Contact Actions */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <a
-                  href={`mailto:${selectedMessage.email}?subject=Respuesta de Asoc. Gastronómica Doña Berenjena - ${encodeURIComponent(SUBJECT_LABELS[selectedMessage.subject]?.label || 'Consulta')}`}
+                  href={`mailto:${selectedMessage.email}?subject=Respuesta de Asoc. Gastronómica Doña Berenjena - ${encodeURIComponent(getContactSubjectLabel(selectedMessage.subject))}`}
                   className="p-3.5 rounded-2xl bg-white border border-[#EDE4D7] hover:border-[#521849] hover:bg-[#FCFAF7] transition-all flex items-center justify-between group"
                 >
                   <div className="flex items-center gap-3">
@@ -436,13 +576,41 @@ export const MessagesManager: React.FC = () => {
 
               {/* Message Content */}
               <div className="space-y-2">
-                <label className="block text-xs font-bold uppercase tracking-wider text-[#574B45]">
-                  Mensaje del Remitente
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-[#574B45]">
+                    Mensaje del Remitente
+                  </label>
+                  {selectedMessage.activityInterest && (
+                    <span className="text-xs text-[#521849] font-semibold bg-[#FCFAF7] px-2.5 py-1 rounded-lg border border-[#EDE4D7]">
+                      Actividad de interés: <strong>{selectedMessage.activityInterest}</strong>
+                    </span>
+                  )}
+                </div>
                 <div className="p-4 rounded-2xl bg-[#FCFAF7] border border-[#EDE4D7] text-sm text-[#26201D] leading-relaxed whitespace-pre-wrap">
                   {selectedMessage.message}
                 </div>
               </div>
+
+              {/* Explicit Mark as Reviewed Action (CON-TACT-06) */}
+              {(!selectedMessage.read || selectedMessage.status === 'nuevo') && (
+                <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h5 className="text-xs font-bold text-amber-950">El mensaje está marcado como Nuevo</h5>
+                    <p className="text-[11px] text-amber-800">
+                      Puedes marcarlo como revisado para indicar que ya ha sido leído por la secretaría.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleMarkAsReviewed}
+                    disabled={savingStatus}
+                    className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer shrink-0 disabled:opacity-50"
+                  >
+                    {savingStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                    <span>Marcar como revisado</span>
+                  </button>
+                </div>
+              )}
 
               {/* Admin Notes & Response tracking */}
               <div className="space-y-3 pt-2 border-t border-[#EDE4D7]">
@@ -466,20 +634,21 @@ export const MessagesManager: React.FC = () => {
                   className="w-full px-4 py-2.5 rounded-xl border border-[#EDE4D7] bg-white text-xs sm:text-sm focus:outline-none focus:border-[#521849] resize-none"
                 />
 
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
                   <button
                     type="button"
                     onClick={handleSaveReply}
-                    className="px-4 py-2 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold transition-all shadow-xs flex items-center gap-2 cursor-pointer"
+                    disabled={savingStatus}
+                    className="px-4 py-2 rounded-xl bg-[#521849] hover:bg-[#3E1037] text-white text-xs font-semibold transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                   >
-                    <Check className="w-3.5 h-3.5" />
+                    {savingStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                     <span>Guardar y Marcar como Respondido</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setShowDeleteConfirm(selectedMessage.id)}
-                    className="p-2 rounded-xl text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                    className="p-2 rounded-xl text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>Eliminar mensaje</span>

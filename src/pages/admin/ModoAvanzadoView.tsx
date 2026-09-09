@@ -59,15 +59,25 @@ import { computeAdminAlerts } from '../../services/adminAlertsService';
 interface ModoAvanzadoViewProps {
   initialTab?: 'gestion' | 'participantes' | 'historico' | 'socios' | 'celebradas' | 'metricas' | 'cuentas' | 'contacto' | 'avisos';
   initialActivityId?: string | null;
+  initialSearchQuery?: string | null;
+  initialParticipantId?: string | null;
+  initialContactMessageId?: string | null;
 }
 
-export const ModoAvanzadoView: React.FC<ModoAvanzadoViewProps> = ({ initialTab, initialActivityId }) => {
-  const { activities, participants, members, contactMessages, unreadMessagesCount, metrics, addActivity, updateActivity, deleteActivity, closeActivityAsCelebrated, useMockData } = useData();
+export const ModoAvanzadoView: React.FC<ModoAvanzadoViewProps> = ({ 
+  initialTab, 
+  initialActivityId,
+  initialSearchQuery,
+  initialParticipantId,
+  initialContactMessageId
+}) => {
+  const { activities, participants, members, contactMessages, unreadMessagesCount, metrics, addActivity, addTwoShiftCata, updateActivity, deleteActivity, closeActivityAsCelebrated, useMockData } = useData();
 
   const [activeTab, setActiveTab] = useState<'gestion' | 'participantes' | 'historico' | 'socios' | 'celebradas' | 'metricas' | 'cuentas' | 'contacto' | 'avisos'>(initialTab || 'gestion');
   const [metricsSort, setMetricsSort] = useState<{ key: 'date' | 'type' | 'occupancy'; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
   const [selectedParticipantActivityId, setSelectedParticipantActivityId] = useState<string | null>(initialActivityId || null);
-  const [selectedParticipantSearchQuery, setSelectedParticipantSearchQuery] = useState<string | null>(null);
+  const [selectedParticipantSearchQuery, setSelectedParticipantSearchQuery] = useState<string | null>(initialSearchQuery || null);
+  const [targetContactMessageId, setTargetContactMessageId] = useState<string | null>(initialContactMessageId || null);
   const [activeModalTab, setActiveModalTab] = useState<'form' | 'participantes'>('form');
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
@@ -660,10 +670,10 @@ export const ModoAvanzadoView: React.FC<ModoAvanzadoViewProps> = ({ initialTab, 
           tastingGroupId
         };
 
-        await addActivity(activity1);
-        await addActivity(activity2);
+        await addTwoShiftCata(activity1, activity2);
         showNotification(`¡Cata con 2 turnos creada con éxito! (${activity1.shiftName} y ${activity2.shiftName})`);
         setEditingActivity(null);
+        setIsCreatingNew(false);
         return;
       }
 
@@ -1203,7 +1213,13 @@ export const ModoAvanzadoView: React.FC<ModoAvanzadoViewProps> = ({ initialTab, 
 
       {/* Tab: Histórico y Ranking */}
       {activeTab === 'historico' && (
-        <HistoryManager />
+        <HistoryManager 
+          onViewActivity={(actId) => {
+            setSelectedParticipantActivityId(actId);
+            setSelectedParticipantSearchQuery(null);
+            setActiveTab('participantes');
+          }}
+        />
       )}
 
       {/* Tab: Censo de Socios */}
@@ -1223,7 +1239,7 @@ export const ModoAvanzadoView: React.FC<ModoAvanzadoViewProps> = ({ initialTab, 
 
       {/* Tab 8: Contacto */}
       {activeTab === 'contacto' && (
-        <MessagesManager />
+        <MessagesManager initialMessageId={targetContactMessageId} />
       )}
 
       {/* Tab 9: Avisos y Alertas */}
@@ -1236,6 +1252,9 @@ export const ModoAvanzadoView: React.FC<ModoAvanzadoViewProps> = ({ initialTab, 
             }
             if (options?.searchQuery) {
               setSelectedParticipantSearchQuery(options.searchQuery);
+            }
+            if (options?.contactMessageId) {
+              setTargetContactMessageId(options.contactMessageId);
             }
             setActiveTab(targetTab as any);
           }}

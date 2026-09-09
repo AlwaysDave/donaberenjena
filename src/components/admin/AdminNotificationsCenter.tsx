@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
+import { useAuth } from '../../context/AuthContext';
 import { 
   Bell, 
   CheckCircle, 
@@ -17,7 +18,10 @@ import {
   UserCheck,
   Clock,
   Sparkles,
-  Search
+  Search,
+  Eye,
+  Check,
+  Loader2
 } from 'lucide-react';
 import { computeAdminAlerts, AdminAlert, AlertSeverity } from '../../services/adminAlertsService';
 
@@ -29,6 +33,7 @@ interface AdminNotificationsCenterProps {
       activityId?: string;
       searchQuery?: string;
       participantId?: string;
+      contactMessageId?: string;
     }
   ) => void;
 }
@@ -37,13 +42,15 @@ export const AdminNotificationsCenter: React.FC<AdminNotificationsCenterProps> =
   onClose,
   onNavigateTab 
 }) => {
-  const { activities, participants, members, contactMessages, useMockData } = useData();
+  const { activities, participants, members, contactMessages, useMockData, markContactAlertSeen } = useData();
+  const { user } = useAuth();
 
   const [severityFilter, setSeverityFilter] = useState<'all' | AlertSeverity>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [markingSeenId, setMarkingSeenId] = useState<string | null>(null);
 
-  // 1. Compute dynamic real-time alerts based on actual data (Punto 8)
+  // 1. Compute dynamic real-time alerts based on actual data (Punto 8 & CON-TACT-04)
   const activeAlerts = useMemo(() => {
     return computeAdminAlerts({
       activities,
@@ -92,8 +99,25 @@ export const AdminNotificationsCenter: React.FC<AdminNotificationsCenterProps> =
       onNavigateTab(alert.actionTarget.tab, {
         activityId: alert.actionTarget.activityId,
         searchQuery: alert.actionTarget.searchQuery,
-        participantId: alert.actionTarget.participantId
+        participantId: alert.actionTarget.participantId,
+        contactMessageId: alert.actionTarget.contactMessageId
       });
+    }
+  };
+
+  const handleMarkContactSeen = async (e: React.MouseEvent, alert: AdminAlert) => {
+    e.stopPropagation();
+    try {
+      setMarkingSeenId(alert.entityId);
+      await markContactAlertSeen(
+        alert.entityId, 
+        user?.name || 'Administración', 
+        user?.uid || 'admin'
+      );
+    } catch (err) {
+      console.error('Error marking contact alert seen:', err);
+    } finally {
+      setMarkingSeenId(null);
     }
   };
 
@@ -376,8 +400,25 @@ export const AdminNotificationsCenter: React.FC<AdminNotificationsCenterProps> =
                     </div>
                   </div>
 
-                  {/* Right Column: Action Button */}
-                  <div className="shrink-0 flex sm:self-center pt-2 lg:pt-0">
+                  {/* Right Column: Action Buttons */}
+                  <div className="shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-2 lg:pt-0">
+                    {alert.type === 'unread-contact' && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleMarkContactSeen(e, alert)}
+                        disabled={markingSeenId === alert.entityId}
+                        className="px-4 py-2.5 rounded-xl font-semibold text-xs border border-[#EDE4D7] bg-white text-[#521849] hover:bg-[#F6EDF4] transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        title="Marcar aviso como visto sin alterar el estado del mensaje"
+                      >
+                        {markingSeenId === alert.entityId ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-[#521849]" />
+                        ) : (
+                          <Eye className="w-4 h-4 text-[#521849]" />
+                        )}
+                        <span>Aviso visto</span>
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => handleActionClick(alert)}

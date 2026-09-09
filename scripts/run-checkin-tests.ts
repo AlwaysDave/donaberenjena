@@ -87,18 +87,16 @@ async function runCheckInTests() {
     id: 'act-unit-future',
     status: 'proxima',
     date: '2029-12-31',
-    time: '20:00',
-    endTime: '22:00'
+    time: '20:00'
   });
   const unitPastEnd = canResolveAttendance({
     id: 'act-unit-past',
     status: 'proxima',
     date: '2020-01-01',
-    time: '10:00',
-    endTime: '12:00'
+    time: '10:00'
   });
-  const unitNoEndTime = canResolveAttendance({
-    id: 'act-unit-noend',
+  const unitProximaStandard = canResolveAttendance({
+    id: 'act-unit-standard',
     status: 'proxima',
     date: '2026-10-10',
     time: '19:00'
@@ -116,18 +114,18 @@ async function runCheckInTests() {
   const unitAllPass = 
     unitFuture.allowed === true &&
     unitPastEnd.allowed === true &&
-    unitNoEndTime.allowed === true &&
+    unitProximaStandard.allowed === true &&
     unitCelebrada.allowed === false &&
     unitMissingStatus.allowed === false;
 
   if (!unitAllPass) {
     console.error('Fallo en pruebas unitarias de canResolveAttendance:', {
-      unitFuture, unitPastEnd, unitNoEndTime, unitCelebrada, unitMissingStatus
+      unitFuture, unitPastEnd, unitProximaStandard, unitCelebrada, unitMissingStatus
     });
   }
 
   // ==========================================================================
-  // AC-4A-01: Actividad proxima con date + endTime ya pasados
+  // AC-4A-01: Actividad proxima con fecha pasada
   // ==========================================================================
   console.log('\n--- Ejecutando AC-4A-01 ---');
   try {
@@ -141,7 +139,6 @@ async function runCheckInTests() {
       title: 'Cata Pasada pero Próxima',
       date: '2020-01-01',
       time: '18:00',
-      endTime: '20:00',
       status: 'proxima',
       totalSpots: 10,
       bookedSpots: 2,
@@ -224,14 +221,14 @@ async function runCheckInTests() {
 
     recordResult(
       'AC-4A-01',
-      'Actividad proxima con date + endTime pasados',
+      'Actividad proxima con fecha pasada',
       pass,
       pass 
         ? 'Ambos botones disponibles. Asistió y No presentado ejecutados y auditados sin alterar actividad ni bookedSpots (2).'
         : `Fallo en aserciones: res1=${res1.success}, res2=${res2.success}, p1Status=${p1Data?.status}, p2Status=${p2Data?.status}, actSpots=${actDataAfter?.bookedSpots}`
     );
   } catch (err: any) {
-    recordResult('AC-4A-01', 'Actividad proxima con date + endTime pasados', false, `Excepción: ${err.message}`);
+    recordResult('AC-4A-01', 'Actividad proxima con fecha pasada', false, `Excepción: ${err.message}`);
   }
 
   // ==========================================================================
@@ -248,7 +245,6 @@ async function runCheckInTests() {
       title: 'Cata Futura',
       date: '2029-12-31',
       time: '20:00',
-      endTime: '22:00',
       status: 'proxima',
       totalSpots: 10,
       bookedSpots: 1,
@@ -307,7 +303,7 @@ async function runCheckInTests() {
   }
 
   // ==========================================================================
-  // AC-4A-03: Actividad proxima sin endTime
+  // AC-4A-03: Actividad proxima con fecha futura
   // ==========================================================================
   console.log('\n--- Ejecutando AC-4A-03 ---');
   try {
@@ -330,8 +326,8 @@ async function runCheckInTests() {
     await adminDb.doc(`participants/${pId3}`).set({
       id: pId3,
       activityId: actId3,
-      fullName: 'Participante Sin EndTime',
-      email: 'p-noend@example.com',
+      fullName: 'Participante Futuro Pendiente',
+      email: 'p-futuro@example.com',
       status: 'pendiente_pago',
       totalAmount: 20,
       paidAmount: 0,
@@ -372,14 +368,14 @@ async function runCheckInTests() {
 
     recordResult(
       'AC-4A-03',
-      'Actividad proxima sin endTime',
+      'Actividad proxima con fecha futura',
       pass,
       pass
-        ? 'No presentado disponible y persistido canónicamente sin depender ni fallar por ausencia de endTime.'
+        ? 'No presentado disponible y persistido canónicamente según estado administrativo proxima.'
         : `Fallo: res=${res.success}, status=${pData?.status}, cancellationKind=${pData?.cancellationKind}`
     );
   } catch (err: any) {
-    recordResult('AC-4A-03', 'Actividad proxima sin endTime', false, `Excepción: ${err.message}`);
+    recordResult('AC-4A-03', 'Actividad proxima con fecha futura', false, `Excepción: ${err.message}`);
   }
 
   // ==========================================================================
@@ -397,7 +393,6 @@ async function runCheckInTests() {
       title: 'Cata Ya Celebrada',
       date: '2026-01-01',
       time: '19:00',
-      endTime: '21:00',
       status: 'celebrada',
       totalSpots: 10,
       bookedSpots: 2,

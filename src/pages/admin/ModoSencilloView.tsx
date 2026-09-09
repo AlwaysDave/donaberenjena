@@ -28,6 +28,8 @@ import {
   AlertTriangle,
   AlertCircle,
   Wine,
+  ChefHat,
+  Compass,
   Clock,
   MapPin,
   Globe,
@@ -53,6 +55,7 @@ export const ModoSencilloView: React.FC<ModoSencilloViewProps> = ({ onNavigateTo
     members, 
     unreadNotificationsCount, 
     addActivity, 
+    addTwoShiftCata,
     quickUpdateActivity, 
     deleteActivity,
     closeActivityAsCelebrated 
@@ -432,8 +435,7 @@ export const ModoSencilloView: React.FC<ModoSencilloViewProps> = ({ onNavigateTo
           updatedAt: new Date().toISOString().split('T')[0],
         };
 
-        await addActivity(recordShift1);
-        await addActivity(recordShift2);
+        await addTwoShiftCata(recordShift1, recordShift2);
 
         setSavedSuccess(`¡Se han creado con éxito los 2 turnos independientes de la cata en Firestore!`);
       } else {
@@ -1134,8 +1136,17 @@ export const ModoSencilloView: React.FC<ModoSencilloViewProps> = ({ onNavigateTo
                   <div className="flex items-start gap-2.5">
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[10px] px-2 py-0.5 rounded font-bold uppercase bg-[#521849]/10 text-[#521849]">
-                          {act.type}
+                        <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
+                          act.type === 'cata' 
+                            ? 'bg-[#521849]/10 text-[#521849] border border-[#521849]/20' 
+                            : act.type === 'curso'
+                            ? 'bg-[#C96043]/10 text-[#C96043] border border-[#C96043]/20'
+                            : 'bg-[#4D6233]/10 text-[#4D6233] border border-[#4D6233]/20'
+                        }`}>
+                          {act.type === 'cata' && <Wine className="w-3 h-3" />}
+                          {act.type === 'curso' && <ChefHat className="w-3 h-3" />}
+                          {act.type === 'viaje' && <Compass className="w-3 h-3" />}
+                          <span>{act.type}</span>
                         </span>
                         <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${regState.colorClass}`}>
                           {regState.badge}
@@ -1351,8 +1362,17 @@ export const ModoSencilloView: React.FC<ModoSencilloViewProps> = ({ onNavigateTo
                           <div className="flex items-start gap-2.5">
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-[10px] px-2 py-0.5 rounded font-bold uppercase bg-[#521849]/10 text-[#521849]">
-                                  {act.type}
+                                <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
+                                  act.type === 'cata' 
+                                    ? 'bg-[#521849]/10 text-[#521849] border border-[#521849]/20' 
+                                    : act.type === 'curso'
+                                    ? 'bg-[#C96043]/10 text-[#C96043] border border-[#C96043]/20'
+                                    : 'bg-[#4D6233]/10 text-[#4D6233] border border-[#4D6233]/20'
+                                }`}>
+                                  {act.type === 'cata' && <Wine className="w-3 h-3" />}
+                                  {act.type === 'curso' && <ChefHat className="w-3 h-3" />}
+                                  {act.type === 'viaje' && <Compass className="w-3 h-3" />}
+                                  <span>{act.type}</span>
                                 </span>
                                 <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border border-emerald-300 bg-emerald-50 text-emerald-800">
                                   <CheckCircle className="w-3 h-3 text-emerald-600" />

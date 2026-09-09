@@ -42,36 +42,6 @@ export function checkAttendanceSheetComplete(
 }
 
 /**
- * Validates that endTime is strictly after startTime (for same-day activities).
- */
-export function validateActivityTimes(time?: string, endTime?: string): { valid: boolean; error?: string } {
-  if (!time || !endTime) {
-    return { valid: true };
-  }
-  const cleanStart = time.replace(/[^0-9:]/g, '').trim();
-  const cleanEnd = endTime.replace(/[^0-9:]/g, '').trim();
-
-  const [startH, startM = 0] = cleanStart.split(':').map(Number);
-  const [endH, endM = 0] = cleanEnd.split(':').map(Number);
-
-  if (isNaN(startH) || isNaN(endH)) {
-    return { valid: true };
-  }
-
-  const startMinutes = startH * 60 + startM;
-  const endMinutes = endH * 60 + endM;
-
-  if (endMinutes <= startMinutes) {
-    return {
-      valid: false,
-      error: `La hora de fin (${endTime}) debe ser posterior a la hora de inicio (${time}).`
-    };
-  }
-
-  return { valid: true };
-}
-
-/**
  * Checks whether an activity has already started (date + time).
  */
 export function hasActivityStarted(activity: Activity): boolean {
@@ -96,10 +66,10 @@ export interface AttendanceResolutionCheck {
  * Pure, typed, and shared function that determines if attendance actions
  * (Asistió, No presentado) can be resolved for an activity.
  *
- * Contract (T-04A):
+ * Contract (T-04A / T-04C):
  * - Governed strictly by administrative status: only allowed for status === 'proxima'.
  * - For status === 'celebrada', missing activity/status, or any other value: controlled rejection.
- * - Current time, date, and endTime do NOT authorize, block, or close attendance actions.
+ * - Current time and date do NOT authorize, block, or close attendance actions.
  */
 export function canResolveAttendance(activity?: Partial<Activity> | null): AttendanceResolutionCheck {
   if (!activity || !activity.status) {
@@ -140,26 +110,11 @@ export function isActivityTodayOrPast(activity: Activity): boolean {
 
 /**
  * Checks whether an activity has concluded.
- * A session is concluded ONLY when date + endTime <= now OR status is 'celebrada'.
- * If endTime is missing and status is not 'celebrada', it is NOT concluded by default.
+ * Governed strictly by administrative status: true if status === 'celebrada'.
+ * Date and time do NOT conclude an activity.
  */
 export function isActivityConcluded(activity: Activity): boolean {
-  if (activity.status === 'celebrada') return true;
-  if (!activity.date) return false;
-
-  // Safe strategy for legacy/activities without endTime: not concluded by default unless celebrada
-  if (!activity.endTime) {
-    return false;
-  }
-
-  const today = new Date().toISOString().split('T')[0];
-  if (activity.date < today) return true;
-  if (activity.date > today) return false;
-
-  const timeStr = activity.endTime;
-  const cleanTime = timeStr.replace(/[^0-9:]/g, '').trim() || '23:59';
-  const actEndDateTime = new Date(`${activity.date}T${cleanTime.padStart(5, '0')}:00`);
-  return !isNaN(actEndDateTime.getTime()) && new Date() >= actEndDateTime;
+  return activity.status === 'celebrada';
 }
 
 /**

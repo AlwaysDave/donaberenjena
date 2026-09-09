@@ -1,5 +1,4 @@
-import { Activity, Participant, Member, ContactMessage } from '../types';
-import { isActivityConcluded } from './participantTransitions';
+import { Activity, Participant, Member, ContactMessage, getContactSubjectLabel } from '../types';
 
 export type AlertSeverity = 'important' | 'attention' | 'info';
 
@@ -32,6 +31,7 @@ export interface AdminAlert {
     activityId?: string;
     searchQuery?: string;
     participantId?: string;
+    contactMessageId?: string;
   };
   detectedAt: string;
   sortTimestamp: number;
@@ -162,32 +162,40 @@ export function computeAdminAlerts({
   });
 
   // --------------------------------------------------------------------------
-  // 3. Nuevo mensaje de contacto sin revisar
-  // Disparador: registro en contactMessages pendiente de revisión (!read o status === 'nuevo')
+  // 3. Nuevo mensaje de contacto pendiente de ver aviso
+  // Disparador: registro en contactMessages donde contactAlertSeenAt no existe (CON-TACT-04)
   // Clave: unread-contact:{messageId}
-  // Severidad: Información
-  // Responsable: Comunicación
+  // Severidad: Atención si falló el email, Información si se envió o está pendiente
+  // Responsable: Comunicación / Secretaría
   // --------------------------------------------------------------------------
   contactMessages.forEach(msg => {
-    if (!msg.read || msg.status === 'nuevo') {
+    if (!msg.contactAlertSeenAt) {
       const dedupKey = `unread-contact:${msg.id}`;
+      const subjectHuman = getContactSubjectLabel(msg.subject || '');
+      const isEmailFailed = msg.emailDeliveryStatus === 'failed';
+
       alerts.push({
         id: dedupKey,
         dedupeKey: dedupKey,
         type: 'unread-contact',
-        severity: 'info',
-        severityLabel: 'Información',
-        title: 'Mensaje de contacto sin revisar',
-        whatHappened: `Mensaje recibido de "${msg.name}" (${msg.email}) con el asunto "${msg.subject || 'Consulta'}".`,
-        whyItMatters: 'Atención al socio y resolución de dudas sobre inscripciones o actividades antes de que caduquen.',
-        responsibleRole: 'Comunicación',
-        resolutionCriteria: 'Se resolverá al abrir el mensaje en el módulo de Contacto y marcarlo como revisado o respondido.',
+        severity: isEmailFailed ? 'attention' : 'info',
+        severityLabel: isEmailFailed ? 'Atención' : 'Información',
+        title: isEmailFailed ? 'Mensaje de contacto (Fallo en envío de email)' : 'Nuevo mensaje de contacto',
+        whatHappened: isEmailFailed 
+          ? `Mensaje recibido de "${msg.name}" (${msg.email}) con el asunto "${subjectHuman}". Ocurrió un fallo en el envío del email a la asociación: ${msg.emailErrorReason || 'Error SMTP'}.`
+          : `Mensaje recibido de "${msg.name}" (${msg.email}) con el asunto "${subjectHuman}".`,
+        whyItMatters: isEmailFailed 
+          ? 'El mensaje está registrado en el sistema pero la secretaría no recibió el aviso por correo; requiere atención directa.'
+          : 'Atención al socio/usuario y resolución de dudas sobre actividades o inscripciones.',
+        responsibleRole: 'Comunicación / Secretaría',
+        resolutionCriteria: 'Se resolverá al pulsar "Aviso visto" en este aviso o desde la bandeja de Contacto.',
         entityType: 'contactMessage',
         entityId: msg.id,
         contactMessageId: msg.id,
         actionLabel: 'Abrir en Bandeja de Contacto',
         actionTarget: {
           tab: 'contacto',
+          contactMessageId: msg.id,
           searchQuery: msg.name
         },
         detectedAt: msg.createdAt || todayStr,
@@ -204,7 +212,7 @@ export function computeAdminAlerts({
   // Responsable: Organización / Control de Asistencia
   // --------------------------------------------------------------------------
   activities.forEach(act => {
-    if (act.status === 'celebrada' || isActivityConcluded(act)) return;
+    if (act.status === 'celebrada') return;
 
     const waitlistCount = participants.filter(
       p => p.activityId === act.id && p.status === 'lista_de_espera'
@@ -240,14 +248,14 @@ export function computeAdminAlerts({
   });
 
   // --------------------------------------------------------------------------
-  // 5. Actividad celebrada con asistencia pendiente de cerrar
-  // Disparador: actividad que ya ha terminado y conserva participantes en pendiente_pago o pagada
+  // 5. Actividad celebrada con asistencia pendiente de cerrar o pasada pendiente
+  // Disparador: actividad celebrada o de fecha pasada que conserva participantes en pendiente_pago o pagada
   // Clave: attendance-open:{activityId}
   // Severidad: Importante
   // Responsable: Control de Asistencia
   // --------------------------------------------------------------------------
   activities.forEach(act => {
-    const isPast = act.status === 'celebrada' || isActivityConcluded(act) || (act.date && act.date < todayStr);
+    const isPast = act.status === 'celebrada' || (act.date && act.date < todayStr);
     if (!isPast) return;
 
     const pendingParticipants = participants.filter(
@@ -256,21 +264,26 @@ export function computeAdminAlerts({
 
     if (pendingParticipants.length > 0) {
       const dedupKey = `attendance-open:${act.id}`;
+      const isCelebrated = act.status === 'celebrada';
       alerts.push({
         id: dedupKey,
         dedupeKey: dedupKey,
         type: 'attendance-open',
         severity: 'important',
         severityLabel: 'Importante',
-        title: 'Actividad celebrada con asistencia pendiente de cerrar',
-        whatHappened: `"${act.title}" (${act.date}) ya ha concluido y mantiene ${pendingParticipants.length} asistente${pendingParticipants.length > 1 ? 's' : ''} en estado pendiente de pago o pagada sin confirmación de asistencia.`,
-        whyItMatters: 'Requiere ejecutar el cierre de asistencia para convertir las ausencias en cancelaciones «No presentado» y cuadrar las cuentas y el histórico de socios.',
+        title: isCelebrated
+          ? 'Actividad celebrada con asistencia pendiente de cerrar'
+          : 'Actividad pasada con asistencia pendiente de resolver',
+        whatHappened: isCelebrated
+          ? `"${act.title}" (${act.date}) está marcada como celebrada y mantiene ${pendingParticipants.length} asistente${pendingParticipants.length > 1 ? 's' : ''} en estado pendiente de pago o pagada sin confirmación de asistencia.`
+          : `"${act.title}" (${act.date}) es una actividad de fecha pasada y mantiene ${pendingParticipants.length} asistente${pendingParticipants.length > 1 ? 's' : ''} en estado pendiente de pago o pagada sin resolver en hoja de sala.`,
+        whyItMatters: 'Requiere resolver la asistencia en hoja de sala o ejecutar el cierre para cuadrar las cuentas y el histórico de socios.',
         responsibleRole: 'Control de Asistencia',
-        resolutionCriteria: 'Se resolverá al pulsar «Cerrar Asistencia» en Control de Asistencia o al registrar la asistencia / cancelación de los participantes pendientes.',
+        resolutionCriteria: 'Se resolverá al registrar la asistencia / cancelación de los participantes pendientes o cerrar la actividad.',
         entityType: 'activity',
         entityId: act.id,
         activityId: act.id,
-        actionLabel: 'Cerrar Asistencia en Control de Asistencia',
+        actionLabel: 'Gestionar Asistencia en Control de Asistencia',
         actionTarget: {
           tab: 'participantes',
           activityId: act.id

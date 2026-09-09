@@ -157,3 +157,45 @@ RESUMEN DE PRUEBAS: 9/9 PASADAS
 - `src/data/demoData.ts`: Casos canónicos celebrados y eliminación de propiedades legadas.
 - `api/index.ts`: Endpoint transaccional de reservas en servidor que previene división de grupos y garantiza asignación atómica de plaza o lista de espera.
 - `.env`: **Intacto y protegido sin ninguna modificación**, respetando estrictamente las instrucciones.
+
+---
+
+## Certificación AS IS — T-04C / T-04D
+
+### 1. Decisión Certificada
+- **Eliminación definitiva del concepto de hora fin (`endTime`)**: El estado de conclusión de una actividad queda gobernado exclusivamente por su estado administrativo (`status === 'celebrada'`).
+- La fecha y la hora no concluyen automáticamente una actividad ni bloquean la resolución de asistencia ni la promoción de lista de espera mientras la actividad permanezca en estado administrativo `proxima`.
+- **Lockfile reproducible y verificación real (T-04D)**: `package-lock.json` regenerado de manera limpia con Node v22.23.2 y npm 10.9.8. El runner de certificación T-04C ejecuta validaciones case-insensitive y pruebas reales de lint y compilación capturando evidencias verificables.
+
+### 2. Criterios de Aceptación (AC-01 a AC-05)
+- **AC-01 (Asistencia en actividad proxima pasada sin hora fin)**: CUMPLE. En una actividad `proxima` fechada en el pasado y sin `endTime`, se permite la transición ordinaria `pagada -> asistio` sin consultar ni requerir hora fin (`canResolveAttendance.allowed = true`, `spotsDelta = 0`).
+- **AC-02 (Promoción en actividad proxima pasada sin hora fin)**: CUMPLE. En una actividad `proxima` con plaza disponible fechada en el pasado, se permite la promoción canónica `lista_de_espera -> pendiente_pago` actualizando `spotsDelta = 1` y datos vigentes.
+- **AC-03 (Bloqueo estricto en actividad celebrada)**: CUMPLE. En una actividad `celebrada`, los intentos de asistencia ordinaria y de promoción de lista de espera son rechazados sin mutación de estado ni alteración del aforo (`bookedSpots` intacto).
+- **AC-04 (Ausencia total de endTime y regla estricta de isActivityConcluded)**: CUMPLE. Búsqueda insensible a mayúsculas/minúsculas (`grep -rni`) ejecutada con código de salida limpio (0 coincidencias de `endtime`, `validateactivitytimes`, `unitnoendtime` ni `hora fin` en `src/`, `api/` y `scripts/`). La función `isActivityConcluded` retorna estrictamente `true` solo para `celebrada` y `false` para `proxima` (futuras y pasadas).
+- **AC-05 (Instalación limpia, lint y build con Node 22.x)**: CUMPLE. `npm ci` ejecutado con éxito. `npm run test:t04c`, `npm run lint` y `npm run build` ejecutados y cronometrados realmente dentro del runner con código de salida 0.
+
+### 3. Comandos Realmente Ejecutados y Versiones
+- **Node**: `v22.23.2`
+- **npm**: `10.9.8`
+```bash
+# 1. Regeneración del lockfile
+npm install
+
+# 2. Verificación en instalación limpia
+npm ci
+
+# 3. Runner automatizado de certificación T-04C endurecido
+npm run test:t04c
+
+# 4. Verificación de tipos y build de producción
+npm run lint
+npm run build
+```
+
+### 4. Resultado
+- **Estado**: ✅ Certificación AS IS cerrada con éxito (Código 0 en todos los comandos y suites de validación con evidencias reales).
+
+### 5. Bloqueos
+- **Ninguno**.
+
+

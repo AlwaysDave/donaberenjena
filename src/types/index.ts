@@ -17,7 +17,6 @@ export interface BaseActivity {
   description: string;
   date: string; // e.g. "2026-04-10"
   time?: string; // e.g. "20:30 h" (Hora de inicio)
-  endTime?: string; // e.g. "22:30 h" (Hora de finalización)
   priceMember: number; // Precio para socios (€)
   priceNonMember: number; // Precio para no socios (€)
   totalSpots: number;
@@ -318,6 +317,8 @@ export interface AdvancedCorrectionResult {
   willReopen?: boolean;
 }
 
+export * from './contact';
+
 export interface ContactMessage {
   id: string;
   name: string;
@@ -331,6 +332,13 @@ export interface ContactMessage {
   createdAt: string;
   repliedAt?: string;
   replyNotes?: string;
+  emailDeliveryStatus?: 'sent' | 'failed' | 'simulated' | 'pending';
+  emailSentAt?: string;
+  emailFailedAt?: string;
+  emailErrorReason?: string;
+  contactAlertSeenAt?: string;
+  contactAlertSeenBy?: string;
+  contactAlertSeenByUid?: string;
 }
 
 export interface Member {

@@ -1,51 +1,87 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Mail, Phone, MapPin, Clock, Send, CheckCircle2, MessageSquare, Loader2 } from 'lucide-react';
+import { Mail, Phone, MapPin, Clock, Send, CheckCircle2, MessageSquare, Loader2, AlertTriangle, AlertCircle } from 'lucide-react';
 import { useData } from '../context/DataContext';
+import { CONTACT_SUBJECTS } from '../types';
 
 export const ContactoPage: React.FC = () => {
   const { sendContactMessage } = useData();
   const [searchParams] = useSearchParams();
   const initialAsunto = searchParams.get('asunto') || 'consulta_general';
+  const initialActividad = searchParams.get('actividad') || '';
 
   const [formData, setFormData] = useState({
     nombre: '',
     email: '',
     telefono: '',
     asunto: initialAsunto,
-    mensaje: ''
+    mensaje: '',
+    website: '' // Honeypot field
   });
-  useEffect(() => {
-    setFormData(prev => ({ ...prev, asunto: initialAsunto }));
-  }, [initialAsunto]);
 
-  const [submitted, setSubmitted] = useState(false);
+  const [feedback, setFeedback] = useState<{
+    type: 'success' | 'partial' | 'error';
+    message: string;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (initialAsunto) {
+      setFormData(prev => ({ ...prev, asunto: initialAsunto }));
+    }
+  }, [initialAsunto]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setFeedback(null);
     
-    await sendContactMessage({
-      name: formData.nombre.trim(),
-      email: formData.email.trim(),
-      phone: formData.telefono.trim() || undefined,
-      subject: formData.asunto,
-      message: formData.mensaje.trim()
-    });
-
-    setLoading(false);
-    setSubmitted(true);
-    setTimeout(() => {
-      setSubmitted(false);
-      setFormData({
-        nombre: '',
-        email: '',
-        telefono: '',
-        asunto: 'consulta_general',
-        mensaje: ''
+    try {
+      const result = await sendContactMessage({
+        name: formData.nombre.trim(),
+        email: formData.email.trim(),
+        phone: formData.telefono.trim() || undefined,
+        subject: formData.asunto,
+        message: formData.mensaje.trim(),
+        activityInterest: initialActividad || undefined,
+        website: formData.website || undefined
       });
-    }, 5000);
+
+      if (result.success) {
+        if (result.warning) {
+          setFeedback({
+            type: 'partial',
+            message: 'Tu mensaje ha quedado registrado correctamente en el buzón de la asociación. La secretaría lo atenderá en breve (notificación por correo temporalmente diferida).'
+          });
+        } else {
+          setFeedback({
+            type: 'success',
+            message: '¡Mensaje recibido con éxito! Gracias por ponerte en contacto con la Asociación Gastronómica Doña Berenjena. La secretaría te responderá a la mayor brevedad.'
+          });
+        }
+
+        setFormData({
+          nombre: '',
+          email: '',
+          telefono: '',
+          asunto: 'consulta_general',
+          mensaje: '',
+          website: ''
+        });
+      } else {
+        setFeedback({
+          type: 'error',
+          message: result.error || 'No se pudo enviar el mensaje. Por favor inténtalo de nuevo en unos momentos.'
+        });
+      }
+    } catch (err: any) {
+      setFeedback({
+        type: 'error',
+        message: err?.message || 'Ha ocurrido un error al procesar el formulario.'
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -72,16 +108,59 @@ export const ContactoPage: React.FC = () => {
             Envíanos un mensaje
           </h2>
 
-          {submitted ? (
-            <div className="p-6 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 space-y-2 text-center animate-fadeIn">
+          {feedback && feedback.type === 'success' ? (
+            <div className="p-6 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 space-y-3 text-center animate-fadeIn">
               <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto" />
-              <h3 className="text-base font-bold">¡Mensaje recibido con éxito!</h3>
-              <p className="text-xs text-emerald-700 max-w-sm mx-auto">
-                Gracias por ponerte en contacto con la Asociación Gastronómica Doña Berenjena. La secretaría te responderá a la mayor brevedad.
+              <h3 className="text-base font-bold">¡Mensaje enviado con éxito!</h3>
+              <p className="text-xs text-emerald-700 max-w-sm mx-auto leading-relaxed">
+                {feedback.message}
               </p>
+              <button
+                type="button"
+                onClick={() => setFeedback(null)}
+                className="mt-2 px-4 py-1.5 rounded-xl bg-emerald-700 text-white text-xs font-semibold hover:bg-emerald-800 transition-colors"
+              >
+                Enviar otra consulta
+              </button>
+            </div>
+          ) : feedback && feedback.type === 'partial' ? (
+            <div className="p-6 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 space-y-3 text-center animate-fadeIn">
+              <AlertTriangle className="w-10 h-10 text-amber-600 mx-auto" />
+              <h3 className="text-base font-bold">Consulta registrada en el sistema</h3>
+              <p className="text-xs text-amber-800 max-w-sm mx-auto leading-relaxed">
+                {feedback.message}
+              </p>
+              <button
+                type="button"
+                onClick={() => setFeedback(null)}
+                className="mt-2 px-4 py-1.5 rounded-xl bg-amber-700 text-white text-xs font-semibold hover:bg-amber-800 transition-colors"
+              >
+                Enviar otra consulta
+              </button>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
+              {feedback && feedback.type === 'error' && (
+                <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2 animate-fadeIn">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{feedback.message}</span>
+                </div>
+              )}
+
+              {/* Honeypot field (hidden from legitimate users) */}
+              <div className="hidden" aria-hidden="true">
+                <label htmlFor="website-field">Website</label>
+                <input
+                  id="website-field"
+                  name="website"
+                  type="text"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  value={formData.website}
+                  onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                />
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-[#26201D] mb-1">
                   Nombre completo *
@@ -129,7 +208,7 @@ export const ContactoPage: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-[#26201D] mb-1">
-                  Motivo de la consulta
+                  Motivo de la consulta *
                 </label>
                 <select
                   id="select-contacto-asunto"
@@ -137,10 +216,11 @@ export const ContactoPage: React.FC = () => {
                   onChange={(e) => setFormData({ ...formData, asunto: e.target.value })}
                   className="w-full px-4 py-2.5 rounded-xl border border-[#EDE4D7] bg-[#FCFAF7] text-sm focus:outline-none focus:border-[#521849] focus:bg-white"
                 >
-                  <option value="consulta_general">Información general de actividades</option>
-                  <option value="hazte_socio">Solicitud de alta como socio</option>
-                  <option value="propuesta_cata">Propuesta de cata para bodega/productor</option>
-                  <option value="alquiler_espacio">Colaboraciones y eventos privados</option>
+                  {CONTACT_SUBJECTS.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -183,7 +263,7 @@ export const ContactoPage: React.FC = () => {
 
         {/* Contact Info Sidebar */}
         <div className="lg:col-span-5 space-y-6">
-          {/* Logo Oficial Grande sin modificar */}
+          {/* Logo Oficial Grande */}
           <div className="bg-white p-6 sm:p-8 rounded-3xl border border-[#EDE4D7] shadow-xs flex flex-col items-center justify-center text-center overflow-hidden">
             <img
               src="/logo.jpg"
