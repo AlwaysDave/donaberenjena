@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useData } from '../../context/DataContext';
 import { Activity, ActivityType, CataActivity, WineDetail, BodegaItem } from '../../types';
-import { sortActivitiesNewestFirst, sortActivitiesOldestFirst } from '../../utils/dateUtils';
+import { sortActivitiesNewestFirst, sortActivitiesOldestFirst, formatDisplayDate } from '../../utils/dateUtils';
 import { extractTextFromPdf, parseCataText, DEFAULT_OFFICIAL_LOCATION, getDefaultStartTime } from '../../services/pdfCataParser';
 import { searchBodegaLogo } from '../../services/bodegaLogoService';
 import { BodegaLogoSearchModal } from '../../components/admin/BodegaLogoSearchModal';
@@ -1226,7 +1226,7 @@ export const ModoSencilloView: React.FC<ModoSencilloViewProps> = ({ onNavigateTo
                     ) : (
                       <span className="font-bold text-[#26201D] flex items-center gap-1">
                         <Calendar className="w-3.5 h-3.5 text-[#521849]" />
-                        {new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })} {act.time ? `(${act.time})` : ''}
+                        {formatDisplayDate(act.date)} {act.time ? `(${act.time})` : ''}
                       </span>
                     )}
                   </div>
@@ -1405,7 +1405,7 @@ export const ModoSencilloView: React.FC<ModoSencilloViewProps> = ({ onNavigateTo
                             <span className="text-[#574B45] block">Fecha y Hora:</span>
                             <span className="font-bold text-[#26201D] flex items-center gap-1 mt-0.5">
                               <Calendar className="w-3.5 h-3.5 text-[#521849]" />
-                              {new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })} {act.time ? `(${act.time})` : ''}
+                              {formatDisplayDate(act.date)} {act.time ? `(${act.time})` : ''}
                             </span>
                           </div>
 

@@ -12,7 +12,7 @@ import {
   XCircle,
   ArrowLeft
 } from 'lucide-react';
-import { sortActivitiesAscending } from '../../utils/dateUtils';
+import { sortActivitiesAscending, formatDisplayDate, formatDateSpanish } from '../../utils/dateUtils';
 import { canResolveAttendance } from '../../services/participantTransitions';
 
 interface QuickCheckInProps {
@@ -186,7 +186,7 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId, o
             >
               {sortedActivities.map(act => (
                 <option key={act.id} value={act.id}>
-                  {new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })} — {act.title} ({act.time || 'Sin hora'})
+                  {formatDisplayDate(act.date)} — {act.title} ({act.time || 'Sin hora'})
                 </option>
               ))}
             </select>
@@ -209,7 +209,7 @@ export const QuickCheckIn: React.FC<QuickCheckInProps> = ({ initialActivityId, o
                 <div className="flex flex-wrap items-center gap-4 text-xs text-[#574B45] mt-1">
                   <span className="flex items-center gap-1 font-medium">
                     <Calendar className="w-3.5 h-3.5 text-[#521849]" />
-                    {new Date(currentActivity.date).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                    {formatDateSpanish(currentActivity.date)}
                   </span>
                   <span className="flex items-center gap-1 font-medium">
                     <Clock className="w-3.5 h-3.5 text-[#521849]" />

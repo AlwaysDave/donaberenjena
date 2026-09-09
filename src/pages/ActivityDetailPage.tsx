@@ -23,10 +23,11 @@ import {
   Sparkles,
   UtensilsCrossed,
   Droplets,
-  HeartHandshake
+  HeartHandshake,
+  Repeat
 } from 'lucide-react';
 
-import { formatDisplayDate } from '../utils/dateUtils';
+import { formatDisplayDate, formatDateSpanish } from '../utils/dateUtils';
 import { trackGAViewItem } from '../utils/googleAnalytics';
 
 export const ActivityDetailPage: React.FC = () => {
@@ -194,10 +195,22 @@ export const ActivityDetailPage: React.FC = () => {
 
             {/* Quick Meta Row */}
             <div className="pt-3 flex flex-wrap items-center gap-y-2 gap-x-6 text-xs sm:text-sm text-[#3D3430] border-t border-[#F6F1EA]">
-              <span className="inline-flex items-center gap-1.5 font-medium">
-                <Calendar className="w-4 h-4 text-[#521849]" />
-                {formatDisplayDate(activity.date)}
-              </span>
+              {curso && (curso.daysOfWeekText || (curso.sessionDates && curso.sessionDates.length > 1)) ? (
+                <span className="inline-flex items-center gap-1.5 font-semibold text-[#C96043]">
+                  <Repeat className="w-4 h-4 text-[#C96043]" />
+                  <span>{curso.daysOfWeekText || 'Curso Multisesión'} ({curso.sessionsCount || curso.sessionDates?.length || 4} sesiones)</span>
+                </span>
+              ) : viaje && (viaje.departureDate && viaje.returnDate) ? (
+                <span className="inline-flex items-center gap-1.5 font-semibold text-[#4D6233]">
+                  <Calendar className="w-4 h-4 text-[#4D6233]" />
+                  <span>Ida: {formatDateSpanish(viaje.departureDate)} — Vuelta: {formatDateSpanish(viaje.returnDate)} ({viaje.durationDays} días)</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 font-medium">
+                  <Calendar className="w-4 h-4 text-[#521849]" />
+                  {formatDisplayDate(activity.date)}
+                </span>
+              )}
               {activity.time && (
                 <span className="inline-flex items-center gap-1.5">
                   <Clock className="w-4 h-4 text-[#521849]" />
@@ -402,6 +415,59 @@ export const ActivityDetailPage: React.FC = () => {
           {/* ========================================================================= */}
           {activity.type === 'curso' && curso && (
             <div className="space-y-6">
+              {/* Multi-day schedule and sessions breakdown */}
+              {(curso.isMultiDay || curso.daysOfWeekText || (curso.sessionDates && curso.sessionDates.length > 0)) && (
+                <div className="rounded-2xl bg-white p-6 sm:p-8 border border-[#EDE4D7] shadow-xs space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#EDE4D7] pb-4">
+                    <div>
+                      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#C96043]">
+                        <Repeat className="w-4 h-4" />
+                        <span>Calendario y Días del Curso</span>
+                      </div>
+                      <h3 className="text-xl font-bold font-serif text-[#26201D] mt-1">
+                        {curso.daysOfWeekText || 'Fechas y Sesiones Programadas'}
+                      </h3>
+                    </div>
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#C96043]/10 text-[#C96043] text-xs font-bold self-start sm:self-auto">
+                      <span>{curso.sessionsCount || curso.sessionDates?.length || 4} Sesiones incluidas</span>
+                    </div>
+                  </div>
+
+                  <p className="text-xs sm:text-sm text-[#574B45]">
+                    Este curso se imparte de forma progresiva. Todas las sesiones indicadas a continuación forman parte de la misma inscripción:
+                  </p>
+
+                  {/* Grid of session dates */}
+                  {curso.sessionDates && curso.sessionDates.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+                      {curso.sessionDates.map((dStr, idx) => (
+                        <div 
+                          key={idx}
+                          className="p-3.5 rounded-xl bg-[#FCFAF7] border border-[#EDE4D7] hover:border-[#C96043]/40 transition-colors space-y-1"
+                        >
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#C96043] block">
+                            Sesión {idx + 1} de {curso.sessionDates?.length}
+                          </span>
+                          <p className="text-sm font-bold font-serif text-[#26201D]">
+                            {formatDateSpanish(dStr)}
+                          </p>
+                          {activity.time && (
+                            <p className="text-xs text-[#574B45] flex items-center gap-1 pt-0.5">
+                              <Clock className="w-3 h-3 text-[#C96043]" />
+                              <span>{activity.time}</span>
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl bg-[#FAF8F5] border border-[#EDE4D7] text-xs text-[#574B45]">
+                      Del {formatDateSpanish(curso.startDate || activity.date)} al {formatDateSpanish(curso.endDate || activity.date)} ({curso.daysOfWeekText || 'Días fijados'})
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Chef Card */}
               <div className="rounded-2xl bg-[#F9ECE8] p-6 sm:p-8 border border-[#C96043]/30 space-y-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#C96043]">
@@ -446,6 +512,53 @@ export const ActivityDetailPage: React.FC = () => {
           {/* ========================================================================= */}
           {activity.type === 'viaje' && viaje && (
             <div className="space-y-6">
+              {/* Trip dates & continuous nature card */}
+              {(viaje.departureDate || viaje.returnDate || viaje.durationDays > 1) && (
+                <div className="rounded-2xl bg-white p-6 sm:p-8 border border-[#EDE4D7] shadow-xs space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#EDE4D7] pb-4">
+                    <div>
+                      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#4D6233]">
+                        <Compass className="w-4 h-4" />
+                        <span>Fechas de Ida y Vuelta</span>
+                      </div>
+                      <h3 className="text-xl font-bold font-serif text-[#26201D] mt-1">
+                        Viaje Continuo de {viaje.durationDays} Días
+                      </h3>
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#4D6233]/10 text-[#4D6233] text-xs font-bold self-start sm:self-auto">
+                      Ida y Vuelta incluidas
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                    <div className="p-4 rounded-xl bg-[#FCFAF7] border border-[#EDE4D7] space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#4D6233] block">
+                        Fecha de Salida (Ida)
+                      </span>
+                      <p className="text-base font-bold font-serif text-[#26201D]">
+                        {formatDateSpanish(viaje.departureDate || viaje.startDate || activity.date)}
+                      </p>
+                      {activity.time && (
+                        <p className="text-xs text-[#574B45]">
+                          Horario de salida: {activity.time}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-[#FCFAF7] border border-[#EDE4D7] space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#4D6233] block">
+                        Fecha de Regreso (Vuelta)
+                      </span>
+                      <p className="text-base font-bold font-serif text-[#26201D]">
+                        {formatDateSpanish(viaje.returnDate || viaje.endDate || activity.date)}
+                      </p>
+                      <p className="text-xs text-[#574B45]">
+                        Llegada estimada a última hora de la tarde
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* Included Services */}
               {viaje.includedServices && viaje.includedServices.length > 0 && (
                 <div className="rounded-2xl bg-[#EFF4E9] p-6 sm:p-8 border border-[#4D6233]/30 space-y-4">

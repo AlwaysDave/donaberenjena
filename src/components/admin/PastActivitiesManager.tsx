@@ -338,7 +338,7 @@ export const PastActivitiesManager: React.FC<PastActivitiesManagerProps> = ({ on
 
                     {/* Fecha */}
                     <td className="p-4 text-[#26201D] font-medium whitespace-nowrap">
-                      {new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      {formatDisplayDate(act.date)}
                     </td>
 
                     {/* Precios Socio / No Socio */}

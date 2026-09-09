@@ -158,7 +158,11 @@ export const ActivityCard: React.FC<ActivityCardProps> = ({ activity }) => {
             <div className="flex items-center gap-4 text-xs text-[#574B45]">
               <span className="inline-flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-[#521849]" />
-                {formatDisplayDate(activity.date)}
+                {activity.type === 'curso' && (activity as CursoActivity).daysOfWeekText
+                  ? `${(activity as CursoActivity).daysOfWeekText} (${(activity as CursoActivity).sessionsCount || 4} ses.)`
+                  : activity.type === 'viaje' && (activity as ViajeActivity).departureDate && (activity as ViajeActivity).returnDate
+                  ? `${formatDisplayDate((activity as ViajeActivity).departureDate)} al ${formatDisplayDate((activity as ViajeActivity).returnDate)}`
+                  : formatDisplayDate(activity.date)}
               </span>
               {activity.time && (
                 <span className="inline-flex items-center gap-1 hidden sm:inline-flex">

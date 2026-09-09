@@ -185,20 +185,20 @@ const mockIdempotencyStore = new Map<string, {
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [participants, setParticipants] = useState<Participant[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [adminNotifications, setAdminNotifications] = useState<AdminNotification[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [sponsorships, setSponsorships] = useState<Sponsorship[]>([]);
-  const [generalIncomes, setGeneralIncomes] = useState<GeneralIncome[]>([]);
-  const [generalExpenses, setGeneralExpenses] = useState<GeneralExpense[]>([]);
-  const [annualMembershipFees, setAnnualMembershipFees] = useState<AnnualMembershipFeesRecord[]>([]);
-  const [contactMessages, setContactMessages] = useState<ContactMessage[]>([]);
-  const [metrics, setMetrics] = useState<WebMetric>(DEFAULT_METRICS);
+  const [activities, setActivities] = useState<Activity[]>(DEMO_ACTIVITIES);
+  const [participants, setParticipants] = useState<Participant[]>(DEMO_PARTICIPANTS);
+  const [members, setMembers] = useState<Member[]>(DEMO_MEMBERS);
+  const [adminNotifications, setAdminNotifications] = useState<AdminNotification[]>(DEMO_NOTIFICATIONS);
+  const [expenses, setExpenses] = useState<Expense[]>(DEMO_EXPENSES);
+  const [sponsorships, setSponsorships] = useState<Sponsorship[]>(DEMO_SPONSORSHIPS);
+  const [generalIncomes, setGeneralIncomes] = useState<GeneralIncome[]>(DEMO_GENERAL_INCOMES);
+  const [generalExpenses, setGeneralExpenses] = useState<GeneralExpense[]>(DEMO_GENERAL_EXPENSES);
+  const [annualMembershipFees, setAnnualMembershipFees] = useState<AnnualMembershipFeesRecord[]>(DEMO_ANNUAL_FEES);
+  const [contactMessages, setContactMessages] = useState<ContactMessage[]>(DEMO_CONTACT_MESSAGES);
+  const [metrics, setMetrics] = useState<WebMetric>(DEMO_METRICS);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
-  const [useMockData, setUseMockData] = useState(false);
+  const [useMockData, setUseMockData] = useState<boolean>(() => !isFirebaseConfigured());
   const [demoActivities, setDemoActivities] = useState<Activity[]>(DEMO_ACTIVITIES);
   const [demoParticipants, setDemoParticipants] = useState<Participant[]>(DEMO_PARTICIPANTS);
   const [demoMembers, setDemoMembers] = useState<Member[]>(DEMO_MEMBERS);
@@ -215,17 +215,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUseMockData(prev => !prev);
   };
 
-  const displayActivities = useMockData ? demoActivities : activities;
-  const displayParticipants = useMockData ? demoParticipants : participants;
-  const displayMembers = useMockData ? demoMembers : members;
-  const displayNotifications = useMockData ? demoNotifications : adminNotifications;
-  const displayExpenses = useMockData ? demoExpenses : expenses;
-  const displaySponsorships = useMockData ? demoSponsorships : sponsorships;
-  const displayGeneralIncomes = useMockData ? demoGeneralIncomes : generalIncomes;
-  const displayGeneralExpenses = useMockData ? demoGeneralExpenses : generalExpenses;
-  const displayAnnualMembershipFees = useMockData ? demoAnnualMembershipFees : annualMembershipFees;
-  const displayContactMessages = useMockData ? demoContactMessages : contactMessages;
-  const displayMetrics = useMockData ? demoMetrics : metrics;
+  const isUsingMock = useMockData || !isFirebaseConfigured();
+  const displayActivities = (isUsingMock || activities.length === 0) ? demoActivities : activities;
+  const displayParticipants = (isUsingMock || participants.length === 0) ? demoParticipants : participants;
+  const displayMembers = (isUsingMock || members.length === 0) ? demoMembers : members;
+  const displayNotifications = (isUsingMock || adminNotifications.length === 0) ? demoNotifications : adminNotifications;
+  const displayExpenses = (isUsingMock || expenses.length === 0) ? demoExpenses : expenses;
+  const displaySponsorships = (isUsingMock || sponsorships.length === 0) ? demoSponsorships : sponsorships;
+  const displayGeneralIncomes = (isUsingMock || generalIncomes.length === 0) ? demoGeneralIncomes : generalIncomes;
+  const displayGeneralExpenses = (isUsingMock || generalExpenses.length === 0) ? demoGeneralExpenses : generalExpenses;
+  const displayAnnualMembershipFees = (isUsingMock || annualMembershipFees.length === 0) ? demoAnnualMembershipFees : annualMembershipFees;
+  const displayContactMessages = (isUsingMock || contactMessages.length === 0) ? demoContactMessages : contactMessages;
+  const displayMetrics = isUsingMock ? demoMetrics : metrics;
 
   const unreadNotificationsCount = displayNotifications.filter(n => !n.read).length;
   const unreadMessagesCount = displayContactMessages.filter(m => !m.read || m.status === 'nuevo').length;

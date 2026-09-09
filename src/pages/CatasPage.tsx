@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { ActivityCard } from '../components/common/ActivityCard';
+import { UpcomingActivitiesBanner } from '../components/common/UpcomingActivitiesBanner';
 import { CataCategory } from '../types';
 import { Wine, Sparkles, History, Calendar, Filter } from 'lucide-react';
 import { sortActivitiesAscending } from '../utils/dateUtils';
@@ -38,10 +39,14 @@ export const CatasPage: React.FC = () => {
         <p className="text-sm sm:text-base text-[#574B45] max-w-3xl mt-3 leading-relaxed">
           Sesiones sensoriales dirigidas por sumilleres, enólogos y maestros artesanos. Descubrimos la riqueza vinícola y los productos nobles de España a través de copas oficiales, maridajes estudiados y tertulias enológicas.
         </p>
+      </div>
 
-        {/* Tab Selector: Próximas vs Celebradas */}
-        <div className="mt-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="inline-flex p-1.5 rounded-xl bg-[#EDE4D7]/70 border border-[#DFD3C2] w-fit">
+      {/* Banner de Próximas Actividades / Línea Temporal */}
+      <UpcomingActivitiesBanner activities={catas} category="cata" />
+
+      {/* Tab Selector: Próximas vs Celebradas y Filtro */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="inline-flex p-1.5 rounded-xl bg-[#EDE4D7]/70 border border-[#DFD3C2] w-fit">
             <button
               id="tab-catas-proximas"
               type="button"
@@ -88,7 +93,6 @@ export const CatasPage: React.FC = () => {
             </select>
           </div>
         </div>
-      </div>
 
       {/* Grid of Catas */}
       {filteredCatas.length > 0 ? (

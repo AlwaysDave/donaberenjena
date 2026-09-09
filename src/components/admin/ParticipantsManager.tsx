@@ -34,7 +34,7 @@ import {
   Compass
 } from 'lucide-react';
 import { AdvancedAttendanceCorrectionModal } from './AdvancedAttendanceCorrectionModal';
-import { sortActivitiesAscending, getActivityYear } from '../../utils/dateUtils';
+import { sortActivitiesAscending, getActivityYear, formatDisplayDate } from '../../utils/dateUtils';
 import { Pagination } from '../common/Pagination';
 import { 
   isActivityConcluded, 
@@ -1048,7 +1048,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                   const isConcluded = isActivityConcluded(act);
                   return (
                     <option key={act.id} value={act.id}>
-                      {act.title} — {new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })} ({actOccupied}/{act.totalSpots} plazas) {isConcluded ? '[Celebrada]' : ''}
+                      {act.title} — {formatDisplayDate(act.date)} ({actOccupied}/{act.totalSpots} plazas) {isConcluded ? '[Celebrada]' : ''}
                     </option>
                   );
                 })}
@@ -1587,7 +1587,7 @@ export const ParticipantsManager: React.FC<ParticipantsManagerProps> = ({
                   <option value="">-- Selecciona una actividad --</option>
                   {activeActivities.map(act => (
                     <option key={act.id} value={act.id}>
-                      {new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })} — {act.title} ({act.bookedSpots}/{act.totalSpots} plazas ocupadas)
+                      {formatDisplayDate(act.date)} — {act.title} ({act.bookedSpots}/{act.totalSpots} plazas ocupadas)
                     </option>
                   ))}
                 </select>

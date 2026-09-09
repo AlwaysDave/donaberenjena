@@ -1042,7 +1042,7 @@ export const ModoAvanzadoView: React.FC<ModoAvanzadoViewProps> = ({
                         <p className="text-[11px] text-[#574B45] truncate font-sans font-normal">{act.subtitle}</p>
                       </td>
                       <td className="p-4 text-[#26201D] font-medium whitespace-nowrap">
-                        {new Date(act.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })} {act.time ? `(${act.time})` : ''}
+                        {formatDisplayDate(act.date)} {act.time ? `(${act.time})` : ''}
                       </td>
                       <td className="p-4 text-xs">
                         {act.priceMember !== act.priceNonMember ? (

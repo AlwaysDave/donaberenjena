@@ -15,8 +15,11 @@ export interface BaseActivity {
   title: string;
   subtitle: string;
   description: string;
-  date: string; // e.g. "2026-04-10"
-  time?: string; // e.g. "20:30 h" (Hora de inicio)
+  date: string; // e.g. "2026-10-09" or "2026-10-15 a 2026-10-18" (Fecha principal o representativa)
+  startDate?: string; // Fecha de inicio / ida (e.g. "2026-10-06" o "2026-10-15")
+  endDate?: string;   // Fecha de fin / vuelta (e.g. "2026-10-27" o "2026-10-18")
+  isMultiDay?: boolean; // Indica si la actividad se desarrolla en varias jornadas
+  time?: string; // e.g. "20:30 h" (Hora de inicio o franja horaria)
   priceMember: number; // Precio para socios (€)
   priceNonMember: number; // Precio para no socios (€)
   totalSpots: number;
@@ -104,6 +107,8 @@ export interface ViajeActivity extends BaseActivity {
   type: 'viaje';
   destination: string;
   durationDays: number;
+  departureDate?: string; // Fecha de ida / salida (e.g. "2026-10-15")
+  returnDate?: string;    // Fecha de vuelta / regreso (e.g. "2026-10-18")
   itinerary: ItineraryDay[];
   includedServices: string[];
   pastEventGallery?: string[];
@@ -123,6 +128,12 @@ export interface CursoActivity extends BaseActivity {
   chef: ChefInfo;
   syllabus: string[];
   includesTasting: boolean;
+  // Planificación de cursos multisesión / varios días
+  sessionDaysOfWeek?: number[]; // [2] para martes (0=Domingo, 1=Lunes, 2=Martes, 3=Miércoles, 4=Jueves, 5=Viernes, 6=Sábado)
+  daysOfWeekText?: string;      // e.g. "Todos los martes de octubre" o "Lunes y Miércoles"
+  sessionDates?: string[];      // Fechas exactas de cada sesión: ["2026-10-06", "2026-10-13", "2026-10-20", "2026-10-27"]
+  sessionsCount?: number;       // Número de clases/sesiones (e.g. 4)
+  scheduleDescription?: string; // e.g. "4 sesiones: 6, 13, 20 y 27 de octubre de 10:00 a 13:00 h"
   pastEventGallery?: string[];
   pastEventSummary?: string;
 }

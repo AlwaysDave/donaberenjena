@@ -1,28 +1,26 @@
-import React, { useState, useMemo } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { useData } from '../context/DataContext';
-import { ActivityCard } from '../components/common/ActivityCard';
-import { Wine, ChefHat, Compass, ArrowRight, Sparkles, Award, Users, BookOpen, Calendar, MapPin } from 'lucide-react';
-import { sortActivitiesAscending } from '../utils/dateUtils';
+import { HomeVariation2 } from '../components/home/variations/HomeVariation2';
+import { 
+  Wine, 
+  ChefHat, 
+  Compass, 
+  ArrowRight, 
+  Sparkles, 
+  Award, 
+  Users, 
+  BookOpen, 
+  MapPin, 
+  Clock
+} from 'lucide-react';
 
 export const HomePage: React.FC = () => {
   const { activities } = useData();
-  const [filterType, setFilterType] = useState<'all' | 'cata' | 'curso' | 'viaje'>('all');
-
-  const upcomingActivities = useMemo(() => {
-    return activities.filter(a => a.status === 'proxima');
-  }, [activities]);
-
-  const featuredActivities = useMemo(() => {
-    const matching = upcomingActivities.filter(a => {
-      if (filterType === 'all') return true;
-      return a.type === filterType;
-    });
-    return sortActivitiesAscending(matching);
-  }, [upcomingActivities, filterType]);
 
   return (
-    <div className="space-y-16 md:space-y-24 pb-16">
+    <div className="space-y-12 md:space-y-16 pb-16">
+      
       {/* Hero Section */}
       <section className="relative bg-[#290824] text-white overflow-hidden">
         {/* Background ambient lighting and pattern */}
@@ -170,87 +168,10 @@ export const HomePage: React.FC = () => {
         </div>
       </section>
 
-      {/* Featured Upcoming Activities Section with dynamic filters */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6 sm:mb-8 border-b border-[#EDE4D7] pb-4 sm:pb-6">
-          <div>
-            <span className="text-xs uppercase tracking-widest font-semibold text-[#521849]">
-              Agenda Oficial
-            </span>
-            <h2 className="text-2xl sm:text-3xl font-bold font-serif text-[#26201D] mt-1">
-              Próximas actividades programadas
-            </h2>
-          </div>
-
-          {/* Activity Category Filters (Horizontally scrollable on mobile) */}
-          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1.5 sm:pb-0 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-none">
-            <button
-              id="filter-home-all"
-              type="button"
-              onClick={() => setFilterType('all')}
-              className={`px-3.5 py-2 sm:py-1.5 rounded-xl text-xs font-semibold transition-all shrink-0 cursor-pointer min-h-[38px] flex items-center ${
-                filterType === 'all'
-                  ? 'bg-[#521849] text-white shadow-xs'
-                  : 'bg-white text-[#574B45] border border-[#EDE4D7] hover:bg-[#F6F1EA]'
-              }`}
-            >
-              Todas ({upcomingActivities.length})
-            </button>
-            <button
-              id="filter-home-catas"
-              type="button"
-              onClick={() => setFilterType('cata')}
-              className={`px-3.5 py-2 sm:py-1.5 rounded-xl text-xs font-semibold transition-all shrink-0 cursor-pointer min-h-[38px] flex items-center ${
-                filterType === 'cata'
-                  ? 'bg-[#521849] text-white shadow-xs'
-                  : 'bg-white text-[#574B45] border border-[#EDE4D7] hover:bg-[#F6F1EA]'
-              }`}
-            >
-              Catas
-            </button>
-            <button
-              id="filter-home-cursos"
-              type="button"
-              onClick={() => setFilterType('curso')}
-              className={`px-3.5 py-2 sm:py-1.5 rounded-xl text-xs font-semibold transition-all shrink-0 cursor-pointer min-h-[38px] flex items-center ${
-                filterType === 'curso'
-                  ? 'bg-[#521849] text-white shadow-xs'
-                  : 'bg-white text-[#574B45] border border-[#EDE4D7] hover:bg-[#F6F1EA]'
-              }`}
-            >
-              Cursos
-            </button>
-            <button
-              id="filter-home-viajes"
-              type="button"
-              onClick={() => setFilterType('viaje')}
-              className={`px-3.5 py-2 sm:py-1.5 rounded-xl text-xs font-semibold transition-all shrink-0 cursor-pointer min-h-[38px] flex items-center ${
-                filterType === 'viaje'
-                  ? 'bg-[#521849] text-white shadow-xs'
-                  : 'bg-white text-[#574B45] border border-[#EDE4D7] hover:bg-[#F6F1EA]'
-              }`}
-            >
-              Viajes
-            </button>
-          </div>
-        </div>
-
-        {/* Activity Grid */}
-        {featuredActivities.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6 md:gap-8">
-            {featuredActivities.map((activity) => (
-              <ActivityCard key={activity.id} activity={activity} />
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-12 bg-white rounded-2xl border border-[#EDE4D7]">
-            <Calendar className="w-10 h-10 text-[#DFD3C2] mx-auto mb-3" />
-            <p className="text-sm text-[#574B45]">
-              No hay actividades programadas en esta categoría actualmente.
-            </p>
-          </div>
-        )}
-      </section>
+      {/* Agenda Oficial y Calendario Interactivo (Inicio 2 Oficial con fotos en calendario) */}
+      <div id="agenda-seccion">
+        <HomeVariation2 activities={activities} />
+      </div>
 
       {/* Institutional Philosophy Banner */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -310,3 +231,4 @@ export const HomePage: React.FC = () => {
     </div>
   );
 };
+

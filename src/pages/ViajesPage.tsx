@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { ActivityCard } from '../components/common/ActivityCard';
+import { UpcomingActivitiesBanner } from '../components/common/UpcomingActivitiesBanner';
 import { Compass, Calendar, History, MapPin, Bus, Hotel } from 'lucide-react';
 import { sortActivitiesAscending } from '../utils/dateUtils';
 
@@ -33,10 +34,14 @@ export const ViajesPage: React.FC = () => {
         <p className="text-sm sm:text-base text-[#574B45] max-w-3xl mt-3 leading-relaxed">
           Experiencias inmersivas en origen: visitamos los viñedos más singulares, presenciamos faenas tradicionales (como el ronqueo del atún o la recogida de trufas) y nos alojamos en entornos de ensueño con la comunidad de Doña Berenjena.
         </p>
+      </div>
 
-        {/* Tab Selector: Próximos vs Celebrados */}
-        <div className="mt-8 flex items-center justify-between">
-          <div className="inline-flex p-1.5 rounded-xl bg-[#EDE4D7]/70 border border-[#DFD3C2]">
+      {/* Banner de Próximas Actividades / Línea Temporal */}
+      <UpcomingActivitiesBanner activities={viajes} category="viaje" />
+
+      {/* Tab Selector: Próximos vs Celebrados */}
+      <div className="mt-8 flex items-center justify-between">
+        <div className="inline-flex p-1.5 rounded-xl bg-[#EDE4D7]/70 border border-[#DFD3C2]">
             <button
               id="tab-viajes-proximos"
               type="button"
@@ -65,7 +70,6 @@ export const ViajesPage: React.FC = () => {
             </button>
           </div>
         </div>
-      </div>
 
       {/* Grid of Viajes */}
       {filteredViajes.length > 0 ? (

@@ -1,4 +1,4 @@
-import { Activity, Participant, WebMetric, CataActivity, Member, AdminNotification, ContactMessage, ParticipantStatus, GeneralIncome, GeneralExpense, AnnualMembershipFeesRecord } from '../types';
+import { Activity, Participant, WebMetric, CataActivity, CursoActivity, ViajeActivity, Member, AdminNotification, ContactMessage, ParticipantStatus, GeneralIncome, GeneralExpense, AnnualMembershipFeesRecord } from '../types';
 
 // ==========================================
 // 1. BASE DE PERSONAS REALISTAS Y FIJAS
@@ -84,19 +84,20 @@ export const DEMO_ACTIVITIES: Activity[] = [
   } as CataActivity,
   {
     id: 'demo-cata-2-terruno',
-    title: 'La Expresión del Terruño',
-    subtitle: 'Vino Artesano y Ecologico',
+    title: 'La Expresión del Terruño (Turno 1)',
+    subtitle: 'Vino Artesano y Ecológico',
     type: 'cata',
-    date: '2026-04-10',
+    date: '2026-10-09',
     time: '21:00 h',
-    
+    shiftName: 'Turno 1',
+    tastingGroupId: 'grupo-cata-terruno-2026',
     priceMember: 20,
     priceNonMember: 25,
     totalSpots: 14,
     bookedSpots: 14,
     location: 'Polígono Industrial "El Salobral" - Centro de Formación – Bolaños de Calatrava',
     images: ['https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'],
-    description: 'Especial Colaboracion Bodegueros: Eva Imedio y Venancio Castillo.',
+    description: 'Especial Colaboración Bodegueros: Eva Imedio y Venancio Castillo. Turno 1 del viernes 9 de octubre.',
     category: 'vino',
     cataType: 'bodega_unica',
     sumiller: 'Ana García',
@@ -104,11 +105,46 @@ export const DEMO_ACTIVITIES: Activity[] = [
     bodegas: [
       {
         name: 'Bodega La Uveja Negra',
-        region: 'Carrion de Calatrava – Ciudad real',
+        region: 'Carrión de Calatrava – Ciudad Real',
         wines: [
-          { type: 'Blanco', name: 'El Jalbegandero', grape: '100 % Airen', pairing: 'Arroz Meloso con Veduritas y Atun en Escabeche' },
+          { type: 'Blanco', name: 'El Jalbegandero', grape: '100 % Airén', pairing: 'Arroz Meloso con Verduritas y Atún en Escabeche' },
           { type: 'Tinto', name: 'La Uveja Negra', grape: '100 % Cencibel', pairing: 'Pan Bao de Pollo Especiado y Cebolla Morada' },
-          { type: 'Espumoso', name: 'Pomposo', grape: '100 % Airen', pairing: 'Nachos con Guacamoles y Palomitas Dulces' }
+          { type: 'Espumoso', name: 'Pomposo', grape: '100 % Airén', pairing: 'Nachos con Guacamole y Palomitas Dulces' }
+        ]
+      }
+    ],
+    status: 'proxima',
+    createdAt: new Date('2026-02-01').toISOString(),
+    updatedAt: new Date().toISOString()
+  } as CataActivity,
+  {
+    id: 'demo-cata-2-terruno-t2',
+    title: 'La Expresión del Terruño (Turno 2)',
+    subtitle: 'Vino Artesano y Ecológico',
+    type: 'cata',
+    date: '2026-10-23',
+    time: '21:00 h',
+    shiftName: 'Turno 2',
+    tastingGroupId: 'grupo-cata-terruno-2026',
+    priceMember: 20,
+    priceNonMember: 25,
+    totalSpots: 14,
+    bookedSpots: 9,
+    location: 'Polígono Industrial "El Salobral" - Centro de Formación – Bolaños de Calatrava',
+    images: ['https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'],
+    description: 'Especial Colaboración Bodegueros: Eva Imedio y Venancio Castillo. Turno 2 del viernes 23 de octubre.',
+    category: 'vino',
+    cataType: 'bodega_unica',
+    sumiller: 'Ana García',
+    aove: '"Quinto Don Otilio" (Bolaños de Calatrava) - Picual',
+    bodegas: [
+      {
+        name: 'Bodega La Uveja Negra',
+        region: 'Carrión de Calatrava – Ciudad Real',
+        wines: [
+          { type: 'Blanco', name: 'El Jalbegandero', grape: '100 % Airén', pairing: 'Arroz Meloso con Verduritas y Atún en Escabeche' },
+          { type: 'Tinto', name: 'La Uveja Negra', grape: '100 % Cencibel', pairing: 'Pan Bao de Pollo Especiado y Cebolla Morada' },
+          { type: 'Espumoso', name: 'Pomposo', grape: '100 % Airén', pairing: 'Nachos con Guacamole y Palomitas Dulces' }
         ]
       }
     ],
@@ -121,7 +157,7 @@ export const DEMO_ACTIVITIES: Activity[] = [
     title: 'Experiencia S.A.T. COLOMAN',
     subtitle: 'Con S.A.T. COLOMAN',
     type: 'cata',
-    date: '2026-06-05',
+    date: '2026-11-20',
     time: '21:00 h',
     
     priceMember: 20,
@@ -153,19 +189,60 @@ export const DEMO_ACTIVITIES: Activity[] = [
   } as CataActivity,
   {
     id: 'demo-cata-4-vermut2',
-    title: 'LA HORA DEL VERMUT',
+    title: 'LA HORA DEL VERMUT (Turno 1)',
     subtitle: 'El Encuentro Mediterraneo y Clásico Reinventado',
     type: 'cata',
-    date: '2026-06-21',
+    date: '2026-10-11',
     time: '13:00 h',
-    
+    shiftName: 'Turno 1',
+    tastingGroupId: 'grupo-cata-vermut-2026',
     priceMember: 20,
     priceNonMember: 25,
     totalSpots: 14,
     bookedSpots: 12,
     location: 'Polígono Industrial "El Salobral" - Centro de Formación – Bolaños de Calatrava',
     images: ['https://images.unsplash.com/photo-1557682250-33bd709cbe85?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'],
-    description: 'Durante la cata los asistentes podrán elaborar su propio maridaje de "GILDAS". Opción de comida por 30€.',
+    description: 'Durante la cata los asistentes podrán elaborar su propio maridaje de "GILDAS". Turno 1 del domingo 11 de octubre.',
+    category: 'vermut',
+    cataType: 'varias_bodegas',
+    sumiller: 'Ana García',
+    bodegas: [
+      {
+        name: 'Bodegas S.A.T. Coloman',
+        region: 'Pedro Muñoz – Ciudad Real',
+        wines: [{ type: 'Vermut', name: 'VERMUT 5 TENTACIONES', grape: '', pairing: 'Tartar de Fuet con Manzana Verde y Queso' }]
+      },
+      {
+        name: 'Bodegas Martinez Lacuesta',
+        region: 'Haro – La Rioja',
+        wines: [{ type: 'Vermut', name: 'VERMUT MARTINEZ LACUESTA ROJO', grape: '', pairing: 'Matrimonio sobre Baston Crujiente' }]
+      },
+      {
+        name: 'Bodegas Reconquista',
+        region: 'Miguelturra – Ciudad Real',
+        wines: [{ type: 'Vermut', name: 'VERMUT RECONQUISTA', grape: '', pairing: 'Brocheta de Azucar Tostada al Fuego y Fruta de Estacion' }]
+      }
+    ],
+    status: 'proxima',
+    createdAt: new Date('2026-03-01').toISOString(),
+    updatedAt: new Date().toISOString()
+  } as CataActivity,
+  {
+    id: 'demo-cata-4-vermut2-t2',
+    title: 'LA HORA DEL VERMUT (Turno 2)',
+    subtitle: 'El Encuentro Mediterraneo y Clásico Reinventado',
+    type: 'cata',
+    date: '2026-10-25',
+    time: '13:00 h',
+    shiftName: 'Turno 2',
+    tastingGroupId: 'grupo-cata-vermut-2026',
+    priceMember: 20,
+    priceNonMember: 25,
+    totalSpots: 14,
+    bookedSpots: 8,
+    location: 'Polígono Industrial "El Salobral" - Centro de Formación – Bolaños de Calatrava',
+    images: ['https://images.unsplash.com/photo-1557682250-33bd709cbe85?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'],
+    description: 'Durante la cata los asistentes podrán elaborar su propio maridaje de "GILDAS". Turno 2 del domingo 25 de octubre.',
     category: 'vermut',
     cataType: 'varias_bodegas',
     sumiller: 'Ana García',
@@ -191,39 +268,46 @@ export const DEMO_ACTIVITIES: Activity[] = [
     updatedAt: new Date().toISOString()
   } as CataActivity,
 
-  // CURSO 1: Próximo, ocupado
+  // CURSO 1: Próximo, multisesión todos los martes de octubre
   {
     id: 'demo-curso-1-lleno',
     title: 'Cocina en Vivo: Producto de Cercanía',
     subtitle: 'Un menú completo con ingredientes de la Comarca de Calatrava',
     type: 'curso',
-    date: '2026-10-15',
-    time: '10:00 h',
-    
+    date: '2026-10-06',
+    startDate: '2026-10-06',
+    endDate: '2026-10-27',
+    isMultiDay: true,
+    sessionDaysOfWeek: [2],
+    daysOfWeekText: 'Todos los martes de octubre',
+    sessionDates: ['2026-10-06', '2026-10-13', '2026-10-20', '2026-10-27'],
+    sessionsCount: 4,
+    scheduleDescription: '4 sesiones: 6, 13, 20 y 27 de octubre de 10:00 a 13:30 h',
+    time: '10:00 - 13:30 h',
     priceMember: 50,
     priceNonMember: 65,
     totalSpots: 16,
     bookedSpots: 14,
     location: 'Polígono Industrial "El Salobral" - Centro de Formación – Bolaños de Calatrava',
     images: ['https://images.unsplash.com/photo-1556910103-1c02745aae4d?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'],
-    description: 'Aprende a elaborar un menú completo maridado con vinos de la tierra, utilizando el mejor producto de la huerta y ganadería de Calatrava.',
-    theme: 'Cocina de temporada',
+    description: 'Curso monográfico de 4 sesiones los martes de octubre. Aprende a elaborar un menú completo maridado con vinos de la tierra, utilizando el mejor producto de la huerta y ganadería de Calatrava.',
+    theme: 'Cocina de temporada y cercanía',
     chef: {
       name: 'Rafael Peláez',
       bio: 'Chef manchego con más de 15 años en cocina de mercado, formado en el Basque Culinary Center',
       restaurant: 'Restaurante El Yantar (Bolaños de Calatrava)'
     },
     syllabus: [
-      'Fondos y bases de cocina tradicional',
-      'Elaboración de un menú de 3 platos con producto local',
-      'Técnicas de emplatado',
-      'Maridaje del menú con vinos de la zona'
+      'Sesión 1 (6 oct): Fondos y bases de cocina tradicional y caldos madre',
+      'Sesión 2 (13 oct): Verduras de la vega del Jabalón y técnicas de confitado',
+      'Sesión 3 (20 oct): Carnes de monte, reducciones y punto de cocción',
+      'Sesión 4 (27 oct): Emplatado de vanguardia y menú completo maridado'
     ],
     includesTasting: true,
     status: 'proxima',
     createdAt: new Date('2026-04-01').toISOString(),
     updatedAt: new Date().toISOString()
-  },
+  } as CursoActivity,
 
   // CURSO 2: Próximo, recién publicado, vacío
   {
@@ -291,43 +375,66 @@ export const DEMO_ACTIVITIES: Activity[] = [
     updatedAt: new Date('2025-10-16').toISOString()
   },
 
-  // VIAJE 1: Próximo, ocupado
+  // VIAJE 1: Próximo, 4 días continuos (15 a 18 octubre 2026)
   {
     id: 'demo-viaje-1-lleno',
     title: 'Ruta Enológica por la Ribera del Guadiana',
-    subtitle: 'Dos días de bodegas, gastronomía y patrimonio en Extremadura',
+    subtitle: '4 días de bodegas singulares, dehesa y patrimonio histórico en Extremadura',
     type: 'viaje',
-    date: '2026-11-15',
+    date: '2026-10-15',
+    startDate: '2026-10-15',
+    endDate: '2026-10-18',
+    departureDate: '2026-10-15',
+    returnDate: '2026-10-18',
+    isMultiDay: true,
+    durationDays: 4,
     time: '08:00 h',
-    
+    scheduleDescription: 'Salida jueves 15 oct 08:00 h — Regreso domingo 18 oct 20:00 h (4 días)',
     priceMember: 150,
     priceNonMember: 180,
     totalSpots: 25,
     bookedSpots: 22,
     location: 'Salida: Plaza de España (Bolaños de Calatrava)',
     images: ['https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80'],
-    description: 'Fin de semana descubriendo los singulares viñedos y bodegas de Extremadura, maridados con la gastronomía de la dehesa.',
-    destination: 'Ribera del Guadiana, Badajoz',
-    durationDays: 2,
+    description: 'Gran viaje enogastronómico de 4 días recorriendo las mejores bodegas y viñedos de la D.O. Ribera del Guadiana, la dehesa extremeña y los conjuntos monumentales de Mérida y Zafra.',
+    destination: 'Ribera del Guadiana, Zafra y Mérida (Badajoz)',
     itinerary: [
       {
         day: 1,
-        title: 'Salida y bodega histórica',
-        description: 'Salida desde Bolaños de Calatrava, visita y cata en una bodega centenaria, comida típica extremeña.',
-        highlights: ['Cata guiada', 'Comida típica', 'Visita a viñedo centenario']
+        title: 'Jueves 15: Salida, Tierra de Barros y bodega histórica',
+        description: 'Salida en autobús privado desde Bolaños de Calatrava. Almuerzo tradicional extremeño en Almendralejo y cata privada en bodega de crianza.',
+        highlights: ['Cata de 4 vinos de parcela', 'Comida tradicional de la dehesa', 'Paseo por Almendralejo']
       },
       {
         day: 2,
-        title: 'Ruta del queso y regreso',
-        description: 'Visita a una quesería artesanal, paseo por el casco histórico de Almendralejo, comida de despedida y regreso.',
-        highlights: ['Quesería artesanal', 'Casco histórico', 'Comida de despedida']
+        title: 'Viernes 16: Viñedos de Matanegra y dehesa de ibéricos',
+        description: 'Visita a viñedos de altura en la subzona de Matanegra. Degustación guiada de jamón de bellota 100% ibérico D.O. Dehesa de Extremadura.',
+        highlights: ['Viñedos de altura', 'Cata de ibéricos maridada', 'Cena en Zafra la Chica']
+      },
+      {
+        day: 3,
+        title: 'Sábado 17: Mérida romana y vinos de vanguardia',
+        description: 'Paseo guiado por el Teatro y Anfiteatro Romano de Mérida. Visita a bodega boutique de vinos de autor y almuerzo degustación.',
+        highlights: ['Conjunto arqueológico de Mérida', 'Cata de vinos de autor', 'Tiempo libre para callejear']
+      },
+      {
+        day: 4,
+        title: 'Domingo 18: Quesería de la Serena, almuerzo de clausura y regreso',
+        description: 'Visita a quesería artesana de Torta de la Serena con taller de cata. Comida de despedida con caldereta y regreso a Bolaños.',
+        highlights: ['Taller de Torta de la Serena', 'Almuerzo de despedida', 'Llegada a Bolaños a las 20:00 h']
       }
     ],
-    includedServices: ['Autobús ida y vuelta', '1 noche de hotel', '2 comidas', '2 catas guiadas'],
+    includedServices: [
+      'Autobús discrecional privado de gran confort durante todo el recorrido',
+      '3 noches de hotel 4* en habitación doble con desayuno',
+      '4 comidas gastronómicas y 2 cenas maridadas con vinos D.O.',
+      'Visitas privadas y catas en 4 bodegas singulares y quesería',
+      'Guía sumiller acompañante y seguro de viaje'
+    ],
     status: 'proxima',
     createdAt: new Date('2026-03-20').toISOString(),
     updatedAt: new Date().toISOString()
-  },
+  } as ViajeActivity,
 
   // VIAJE 2: Próximo, recién publicado, vacío
   {

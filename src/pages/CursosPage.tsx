@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { ActivityCard } from '../components/common/ActivityCard';
+import { UpcomingActivitiesBanner } from '../components/common/UpcomingActivitiesBanner';
 import { ChefHat, Calendar, History, Sparkles, UtensilsCrossed } from 'lucide-react';
 import { sortActivitiesAscending } from '../utils/dateUtils';
 
@@ -33,10 +34,14 @@ export const CursosPage: React.FC = () => {
         <p className="text-sm sm:text-base text-[#574B45] max-w-3xl mt-3 leading-relaxed">
           Talleres presenciales en grupos reducidos en nuestra cocina profesional equipada. Aprende técnicas de alta cocina adaptadas a casa, secretos de los grandes fondos y recetas de temporada con chefs invitados.
         </p>
+      </div>
 
-        {/* Tab Selector: Próximos vs Celebrados */}
-        <div className="mt-8 flex items-center justify-between">
-          <div className="inline-flex p-1.5 rounded-xl bg-[#EDE4D7]/70 border border-[#DFD3C2]">
+      {/* Banner de Próximas Actividades / Línea Temporal */}
+      <UpcomingActivitiesBanner activities={cursos} category="curso" />
+
+      {/* Tab Selector: Próximos vs Celebrados */}
+      <div className="flex items-center justify-between">
+        <div className="inline-flex p-1.5 rounded-xl bg-[#EDE4D7]/70 border border-[#DFD3C2]">
             <button
               id="tab-cursos-proximos"
               type="button"
@@ -65,7 +70,6 @@ export const CursosPage: React.FC = () => {
             </button>
           </div>
         </div>
-      </div>
 
       {/* Grid of Cursos */}
       {filteredCursos.length > 0 ? (
