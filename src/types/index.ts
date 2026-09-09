@@ -279,6 +279,9 @@ export interface Participant {
   correctedBy?: string;
   correctionReason?: string;
   spotsCount?: number;
+  spots?: number;
+  justificationReason?: string;
+  refundAmount?: number;
   totalAmount: number;
   paidAmount?: number;
   paymentMethod: PaymentMethod;
@@ -327,6 +330,7 @@ export interface ContactMessage {
   subject: string;
   message: string;
   activityInterest?: string;
+  website?: string;
   read: boolean;
   status: 'nuevo' | 'leido' | 'respondido';
   createdAt: string;

@@ -146,7 +146,7 @@ interface DataContextType {
   annualMembershipFees: AnnualMembershipFeesRecord[];
   saveAnnualMembershipFees: (record: AnnualMembershipFeesRecord) => Promise<{ success: boolean; message: string }>;
   // Contact Messages
-  sendContactMessage: (msgData: Omit<ContactMessage, 'id' | 'createdAt' | 'read' | 'status'>) => Promise<{ success: boolean; message: string; messageSaved?: boolean; emailSent?: boolean; messageId?: string }>;
+  sendContactMessage: (msgData: Omit<ContactMessage, 'id' | 'createdAt' | 'read' | 'status'>) => Promise<{ success: boolean; message: string; messageSaved?: boolean; emailSent?: boolean; messageId?: string; warning?: boolean; error?: string }>;
   markContactMessageRead: (id: string, read?: boolean) => Promise<void>;
   markContactAlertSeen: (id: string, seenBy?: string, seenByUid?: string) => Promise<void>;
   updateContactMessageStatus: (id: string, status: 'nuevo' | 'leido' | 'respondido', replyNotes?: string) => Promise<void>;
@@ -523,11 +523,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     if (useMockData) {
-      setDemoActivities(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
+      setDemoActivities(prev => prev.map(a => a.id === id ? ({ ...a, ...updates } as Activity) : a));
       return;
     }
     // Optimistic local state update so the UI reacts immediately
-    setActivities(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
+    setActivities(prev => prev.map(a => a.id === id ? ({ ...a, ...updates } as Activity) : a));
     try {
       if (isFirebaseConfigured() && db) {
         await updateActivityFirestore(id, updates);
@@ -1154,7 +1154,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (useMockData) {
       setDemoParticipants(prev => prev.map(p => p.id === params.participantId ? { ...p, ...partUpdates } : p));
-      setDemoActivities(prev => prev.map(a => a.id === params.activityId ? { ...a, ...actUpdates } : a));
+      setDemoActivities(prev => prev.map(a => a.id === params.activityId ? ({ ...a, ...actUpdates } as Activity) : a));
       return {
         success: true,
         updatedParticipant: partUpdates,
@@ -1169,7 +1169,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const res = await executeAdvancedAttendanceCorrectionFirestore(params);
         if (res.success) {
           setParticipants(prev => prev.map(p => p.id === params.participantId ? { ...p, ...partUpdates } : p));
-          setActivities(prev => prev.map(a => a.id === params.activityId ? { ...a, ...actUpdates } : a));
+          setActivities(prev => prev.map(a => a.id === params.activityId ? ({ ...a, ...actUpdates } as Activity) : a));
         }
         return res;
       } catch (err: any) {
@@ -1179,7 +1179,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     setParticipants(prev => prev.map(p => p.id === params.participantId ? { ...p, ...partUpdates } : p));
-    setActivities(prev => prev.map(a => a.id === params.activityId ? { ...a, ...actUpdates } : a));
+    setActivities(prev => prev.map(a => a.id === params.activityId ? ({ ...a, ...actUpdates } as Activity) : a));
     return {
       success: true,
       updatedParticipant: partUpdates,
@@ -1915,7 +1915,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Contact Message Handlers
   const sendContactMessage = async (
     msgData: Omit<ContactMessage, 'id' | 'createdAt' | 'read' | 'status'>
-  ): Promise<{ success: boolean; message: string; messageSaved?: boolean; emailSent?: boolean; messageId?: string }> => {
+  ): Promise<{ success: boolean; message: string; messageSaved?: boolean; emailSent?: boolean; messageId?: string; warning?: boolean; error?: string }> => {
     if (useMockData) {
       const newId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
       const newMsg: ContactMessage = {
@@ -1955,7 +1955,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else if (data.messageSaved && !data.emailSent) {
         // Warning case: saved in Firestore, but SMTP failed (status 207)
         return {
-          success: false,
+          success: true,
+          warning: true,
           messageSaved: true,
           emailSent: false,
           messageId: data.messageId,
@@ -1964,6 +1965,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         return {
           success: false,
+          error: data.error || 'Error al procesar el mensaje de contacto.',
           messageSaved: false,
           emailSent: false,
           message: data.error || 'Error al procesar el mensaje de contacto.'
@@ -1973,6 +1975,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error sending contact message:', error);
       return { 
         success: false, 
+        error: error.message || 'Error de conexión al enviar el mensaje de contacto.',
         messageSaved: false,
         emailSent: false,
         message: error.message || 'Error de conexión al enviar el mensaje de contacto.' 

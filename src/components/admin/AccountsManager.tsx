@@ -261,7 +261,9 @@ export function AccountsManager() {
     let ingresosCobrados = 0;
     let ingresosFacturados = 0;
     let reservasCobradas = 0;
+    let reservasFacturadas = 0;
     let patrociniosCobrados = 0;
+    let patrociniosFacturados = 0;
     let gastos = 0;
     let totalAsistentes = 0;
     const typeBreakdown = { cata: 0, curso: 0, viaje: 0 };
@@ -272,7 +274,9 @@ export function AccountsManager() {
       ingresosCobrados += f.ingresosCobrados;
       ingresosFacturados += f.ingresosFacturados;
       reservasCobradas += f.reservasCobradas;
+      reservasFacturadas += f.reservasFacturadas;
       patrociniosCobrados += f.patrociniosCobrados;
+      patrociniosFacturados += f.patrociniosFacturados;
       gastos += f.gastos;
       totalAsistentes += f.asistentes;
       typeBreakdown[a.type] += f.balance;
@@ -282,7 +286,9 @@ export function AccountsManager() {
       ingresosCobrados,
       ingresosFacturados,
       reservasCobradas,
+      reservasFacturadas,
       patrociniosCobrados,
+      patrociniosFacturados,
       gastos,
       balance: ingresosCobrados - gastos,
       totalAsistentes,

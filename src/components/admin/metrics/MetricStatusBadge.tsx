@@ -8,7 +8,7 @@ import {
   Info
 } from 'lucide-react';
 
-export type MetricBadgeState = 'real' | 'demo' | 'unconfigured' | 'nodata' | 'error' | 'configured';
+export type MetricBadgeState = 'real' | 'demo' | 'unconfigured' | 'nodata' | 'error' | 'configured' | 'collecting';
 
 interface MetricStatusBadgeProps {
   state: MetricBadgeState;
@@ -62,6 +62,13 @@ export const MetricStatusBadge: React.FC<MetricStatusBadgeProps> = ({
           bg: 'bg-slate-50 text-slate-600 border-slate-200',
           dot: 'bg-slate-400',
           defaultLabel: 'Sin datos',
+          icon: Info
+        };
+      case 'collecting':
+        return {
+          bg: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+          dot: 'bg-indigo-500',
+          defaultLabel: 'Recopilando datos',
           icon: Info
         };
       case 'error':
