@@ -2,7 +2,7 @@
   "version": 2,
   "functions": {
     "api/index.ts": {
-      "includeFiles": "api/prompts/**"
+      "includeFiles": "{api/prompts/**,shared/reservationTransaction.js}"
     }
   },
   "rewrites": [
