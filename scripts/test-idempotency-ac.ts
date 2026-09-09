@@ -20,7 +20,7 @@ import {
   validateIdempotencyKey,
   classifyReservationFailure,
   CryptoProvider
-} from '../src/services/reservationTransaction.ts';
+} from '../src/services/reservationTransaction';
 import { ReservationResult } from '../src/types';
 
 let passedTests = 0;

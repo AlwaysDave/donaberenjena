@@ -1,4 +1,4 @@
-import { Participant, ParticipantStatus, ReservationFailureKind, ReservationFormData } from '../types';
+import type { Participant, ParticipantStatus, ReservationFailureKind, ReservationFormData } from '../types';
 
 export interface ReservationTransactionResult {
   success: boolean;
@@ -381,3 +381,4 @@ export async function executeReservationInTransaction(
 
   return responsePayload;
 }
+

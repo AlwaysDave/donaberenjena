@@ -403,3 +403,77 @@ export interface Sponsorship {
   createdBy?: string;
 }
 
+// ==========================================
+// CONTABILIDAD GENERAL DE LA ASOCIACIÓN
+// ==========================================
+export type GeneralIncomeType = 'cuota_socio' | 'subvencion' | 'patrocinio_general' | 'donacion' | 'otros';
+export type GeneralIncomeStatus = 'pendiente' | 'cobrado' | 'cancelado';
+
+export interface GeneralIncome {
+  id: string;
+  concept: string;
+  payerName?: string;
+  amount: number;
+  paidAmount: number;
+  type: GeneralIncomeType;
+  status: GeneralIncomeStatus;
+  date: string;
+  receiptImageUrl?: string;
+  notes?: string;
+  isConsolidatedFeeRecord?: boolean;
+  feeYear?: number;
+  createdAt: string;
+  createdBy?: string;
+}
+
+export type GeneralExpenseCategory = 
+  | 'equipamiento'
+  | 'comida_asociacion'
+  | 'menaje_copas'
+  | 'suministros_local'
+  | 'administracion_legal'
+  | 'mantenimiento'
+  | 'otros';
+
+export interface GeneralExpense {
+  id: string;
+  concept: string;
+  supplierName?: string;
+  amount: number;
+  category: GeneralExpenseCategory;
+  date: string;
+  receiptImageUrl?: string;
+  notes?: string;
+  createdAt: string;
+  createdBy?: string;
+}
+
+// ==========================================
+// ESTADO DE CUOTAS DE SOCIOS (POR AÑO)
+// ==========================================
+export interface MemberFeeItem {
+  memberId: string;
+  memberName: string;
+  membershipNumber?: string;
+  email?: string;
+  phone?: string;
+  feeAmount: number;
+  status: 'pagada' | 'pendiente';
+  paidDate?: string;
+  paymentMethod?: PaymentMethod;
+  notes?: string;
+}
+
+export interface AnnualMembershipFeesRecord {
+  id: string; // "fees_2026"
+  year: number;
+  defaultFeeAmount: number;
+  fees: Record<string, MemberFeeItem>; // memberId -> MemberFeeItem
+  totalAssigned: number;
+  totalCollected: number;
+  totalMembers: number;
+  paidMembersCount: number;
+  updatedAt: string;
+}
+
+

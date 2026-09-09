@@ -9,7 +9,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { initializeApp, getApps, App, cert } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import { validateIdempotencyKey, executeReservationInTransaction } from "../src/services/reservationTransaction.ts";
+import { validateIdempotencyKey, executeReservationInTransaction } from "./_services/reservationTransaction";
 
 const currentDir = typeof __dirname !== "undefined"
   ? __dirname

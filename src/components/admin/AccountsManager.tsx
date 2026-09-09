@@ -28,7 +28,8 @@ import {
   Eye,
   Wine,
   ChefHat,
-  Compass
+  Compass,
+  Building2
 } from 'lucide-react';
 import { storage } from '../../services/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -36,6 +37,7 @@ import { exportAccountingToExcel } from '../../utils/accountingExport';
 import { exportReportToPdf } from '../../utils/pdfExport';
 import { formatDisplayDate, getActivityYear, sortActivitiesAscending } from '../../utils/dateUtils';
 import { Pagination } from '../common/Pagination';
+import { GeneralAccountsSection } from './GeneralAccountsSection';
 
 const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   bodega_proveedor: 'Bodega / Proveedor',
@@ -71,6 +73,8 @@ export function AccountsManager() {
     participants, 
     expenses, 
     sponsorships,
+    generalIncomes,
+    generalExpenses,
     addExpense, 
     updateExpense, 
     deleteExpense,
@@ -80,6 +84,7 @@ export function AccountsManager() {
   } = useData();
 
   const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
+  const [mainSectionTab, setMainSectionTab] = useState<'asociacion' | 'actividades'>('asociacion');
   
   // Drill-down Modal State
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
@@ -285,6 +290,71 @@ export function AccountsManager() {
       typeBreakdown
     };
   }, [filteredActivities, financesByActivity]);
+
+  // General Incomes & Expenses filtered by year
+  const filteredGeneralIncomes = useMemo(() => {
+    return generalIncomes.filter(inc => {
+      if (selectedYear !== 'all') {
+        const itemYear = (inc.date || '').substring(0, 4);
+        if (itemYear !== selectedYear) return false;
+      }
+      return true;
+    });
+  }, [generalIncomes, selectedYear]);
+
+  const filteredGeneralExpenses = useMemo(() => {
+    return generalExpenses.filter(exp => {
+      if (selectedYear !== 'all') {
+        const itemYear = (exp.date || '').substring(0, 4);
+        if (itemYear !== selectedYear) return false;
+      }
+      return true;
+    });
+  }, [generalExpenses, selectedYear]);
+
+  // General Totals (Asociación)
+  const generalTotals = useMemo(() => {
+    let cobrados = 0;
+    let facturados = 0;
+    let gastos = 0;
+
+    filteredGeneralIncomes.forEach(inc => {
+      if (inc.status !== 'cancelado') {
+        facturados += inc.amount || 0;
+        cobrados += inc.paidAmount ?? 0;
+      }
+    });
+
+    filteredGeneralExpenses.forEach(exp => {
+      gastos += exp.amount || 0;
+    });
+
+    return {
+      cobrados,
+      facturados,
+      gastos,
+      balance: cobrados - gastos,
+      countIncomes: filteredGeneralIncomes.length,
+      countExpenses: filteredGeneralExpenses.length
+    };
+  }, [filteredGeneralIncomes, filteredGeneralExpenses]);
+
+  // Global Combined Totals
+  const globalTotals = useMemo(() => {
+    const totalCobrados = totals.ingresosCobrados + generalTotals.cobrados;
+    const totalFacturados = totals.ingresosFacturados + generalTotals.facturados;
+    const totalGastos = totals.gastos + generalTotals.gastos;
+    const totalBalance = totalCobrados - totalGastos;
+
+    return {
+      totalCobrados,
+      totalFacturados,
+      totalGastos,
+      totalBalance,
+      actividadesBalance: totals.balance,
+      asociacionBalance: generalTotals.balance
+    };
+  }, [totals, generalTotals]);
 
   // Handlers for Detail Modal
   const handleOpenFinancialDetail = (activity: Activity, defaultTab: 'ingresos' | 'gastos' = 'ingresos') => {
@@ -513,7 +583,9 @@ export function AccountsManager() {
       participants,
       sponsorships,
       expenses,
-      financesByActivity
+      financesByActivity,
+      generalIncomes,
+      generalExpenses
     });
   };
 
@@ -657,13 +729,12 @@ export function AccountsManager() {
           </div>
           <div className="mt-3">
             <span className="text-3xl font-light text-slate-900 tracking-tight">
-              {formatCurrency(totals.ingresosCobrados)}
+              {formatCurrency(globalTotals.totalCobrados)}
             </span>
-            {totals.ingresosFacturados !== totals.ingresosCobrados && (
-              <p className="text-[11px] text-slate-500 mt-1">
-                Facturado: <span className="font-semibold">{formatCurrency(totals.ingresosFacturados)}</span> (Pendiente: {formatCurrency(totals.ingresosFacturados - totals.ingresosCobrados)})
-              </p>
-            )}
+            <div className="text-[11px] text-slate-500 mt-1 flex flex-col gap-0.5">
+              <span>Actividades: <strong className="text-slate-700">{formatCurrency(totals.ingresosCobrados)}</strong></span>
+              <span>Asociación: <strong className="text-slate-700">{formatCurrency(generalTotals.cobrados)}</strong></span>
+            </div>
           </div>
         </div>
 
@@ -677,61 +748,109 @@ export function AccountsManager() {
           </div>
           <div className="mt-3">
             <span className="text-3xl font-light text-rose-600 tracking-tight">
-              {formatCurrency(totals.gastos)}
+              {formatCurrency(globalTotals.totalGastos)}
             </span>
-            <p className="text-[11px] text-slate-500 mt-1">
-              Coste medio: <span className="font-semibold">{totals.totalAsistentes > 0 ? `${formatCurrency(totals.costeMedioAsistente)} / asistente` : '-'}</span>
-            </p>
+            <div className="text-[11px] text-slate-500 mt-1 flex flex-col gap-0.5">
+              <span>Actividades: <strong className="text-slate-700">{formatCurrency(totals.gastos)}</strong></span>
+              <span>Asociación: <strong className="text-slate-700">{formatCurrency(generalTotals.gastos)}</strong></span>
+            </div>
           </div>
         </div>
 
         {/* Balance Neto */}
-        <div className={`rounded-2xl shadow-xs border p-5 flex flex-col justify-between ${totals.balance >= 0 ? 'border-emerald-200 bg-emerald-50/60' : 'border-rose-200 bg-rose-50/60'}`}>
+        <div className={`rounded-2xl shadow-xs border p-5 flex flex-col justify-between ${globalTotals.totalBalance >= 0 ? 'border-emerald-200 bg-emerald-50/60' : 'border-rose-200 bg-rose-50/60'}`}>
           <div className="flex items-center justify-between">
-            <span className={`text-xs font-bold uppercase tracking-wider ${totals.balance >= 0 ? 'text-emerald-800' : 'text-rose-800'}`}>Balance Neto</span>
-            <div className={`p-2 rounded-xl ${totals.balance >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+            <span className={`text-xs font-bold uppercase tracking-wider ${globalTotals.totalBalance >= 0 ? 'text-emerald-800' : 'text-rose-800'}`}>Balance Neto Total</span>
+            <div className={`p-2 rounded-xl ${globalTotals.totalBalance >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
               <TrendingUp className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <span className={`text-3xl font-bold tracking-tight ${totals.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-              {totals.balance >= 0 ? '+' : ''}{formatCurrency(totals.balance)}
+            <span className={`text-3xl font-bold tracking-tight ${globalTotals.totalBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+              {globalTotals.totalBalance >= 0 ? '+' : ''}{formatCurrency(globalTotals.totalBalance)}
             </span>
-            <p className={`text-[11px] mt-1 ${totals.balance >= 0 ? 'text-emerald-700/90' : 'text-rose-700/90'}`}>
-              Resultado financiero de {filteredActivities.length} actividades
+            <p className={`text-[11px] mt-1 ${globalTotals.totalBalance >= 0 ? 'text-emerald-700/90' : 'text-rose-700/90'}`}>
+              Fondo combinado ({selectedYear === 'all' ? 'Histórico completo' : `Año ${selectedYear}`})
             </p>
           </div>
         </div>
         
-        {/* Breakdown by type */}
+        {/* Breakdown by scope */}
         <div className="bg-white rounded-2xl shadow-xs border border-slate-200 p-4 flex flex-col justify-between">
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Balance por tipo</span>
-          <div className="space-y-1.5">
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Balance por origen</span>
+          <div className="space-y-2">
             <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-600 font-medium">Catas</span>
-              <span className={`font-semibold ${totals.typeBreakdown.cata >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {totals.typeBreakdown.cata >= 0 ? '+' : ''}{formatCurrency(totals.typeBreakdown.cata)}
+              <span className="text-slate-600 font-medium flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5 text-wine-700" />
+                <span>Asociación</span>
+              </span>
+              <span className={`font-semibold ${generalTotals.balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {generalTotals.balance >= 0 ? '+' : ''}{formatCurrency(generalTotals.balance)}
               </span>
             </div>
             <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-600 font-medium">Cursos</span>
-              <span className={`font-semibold ${totals.typeBreakdown.curso >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {totals.typeBreakdown.curso >= 0 ? '+' : ''}{formatCurrency(totals.typeBreakdown.curso)}
+              <span className="text-slate-600 font-medium flex items-center gap-1.5">
+                <ActivityIcon className="w-3.5 h-3.5 text-[#521849]" />
+                <span>Actividades</span>
+              </span>
+              <span className={`font-semibold ${totals.balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {totals.balance >= 0 ? '+' : ''}{formatCurrency(totals.balance)}
               </span>
             </div>
-            <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-600 font-medium">Viajes</span>
-              <span className={`font-semibold ${totals.typeBreakdown.viaje >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {totals.typeBreakdown.viaje >= 0 ? '+' : ''}{formatCurrency(totals.typeBreakdown.viaje)}
-              </span>
+            <div className="pt-1.5 border-t border-slate-100 flex justify-between items-center text-[11px] text-slate-400">
+              <span>{filteredActivities.length} actividades</span>
+              <span>{filteredGeneralIncomes.length + filteredGeneralExpenses.length} mov. generales</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ACTIVITIES ACCOUNTING TABLE */}
-      <div className="bg-white rounded-2xl shadow-xs border border-slate-200 overflow-hidden">
-        <div className="p-4 bg-slate-50/70 border-b border-slate-200 flex justify-between items-center">
+      {/* SECTION TABS (Sobre la asociación / Sobre las actividades) */}
+      <div className="flex bg-slate-200/60 p-1.5 rounded-2xl gap-1.5 border border-slate-200/80">
+        <button
+          id="tab-btn-asociacion"
+          onClick={() => setMainSectionTab('asociacion')}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
+            mainSectionTab === 'asociacion'
+              ? 'bg-white text-wine-900 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
+        >
+          <Building2 className="w-4 h-4 text-wine-700" />
+          <span>Sobre la asociación</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+            mainSectionTab === 'asociacion' ? 'bg-wine-100 text-wine-800' : 'bg-slate-200/80 text-slate-600'
+          }`}>
+            {generalTotals.balance >= 0 ? '+' : ''}{formatCurrency(generalTotals.balance)}
+          </span>
+        </button>
+
+        <button
+          id="tab-btn-actividades"
+          onClick={() => setMainSectionTab('actividades')}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
+            mainSectionTab === 'actividades'
+              ? 'bg-white text-wine-900 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
+        >
+          <ActivityIcon className="w-4 h-4 text-[#521849]" />
+          <span>Sobre las actividades</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+            mainSectionTab === 'actividades' ? 'bg-wine-100 text-wine-800' : 'bg-slate-200/80 text-slate-600'
+          }`}>
+            {totals.balance >= 0 ? '+' : ''}{formatCurrency(totals.balance)}
+          </span>
+        </button>
+      </div>
+
+      {/* SECTION CONTENT CONDITIONAL RENDERING */}
+      {mainSectionTab === 'asociacion' ? (
+        <GeneralAccountsSection selectedYear={selectedYear} />
+      ) : (
+        /* ACTIVITIES ACCOUNTING TABLE */
+        <div className="bg-white rounded-2xl shadow-xs border border-slate-200 overflow-hidden">
+          <div className="p-4 bg-slate-50/70 border-b border-slate-200 flex justify-between items-center">
           <div className="flex items-center gap-2">
             <h3 className="font-medium text-slate-900 text-sm">Cuentas por Actividad ({filteredActivities.length})</h3>
             <span className="text-xs text-slate-400 font-normal">· Pulsa en Ingresos o Gastos para desglosar</span>
@@ -971,6 +1090,7 @@ export function AccountsManager() {
           itemLabel="actividades"
         />
       </div>
+      )}
 
       {/* ========================================================================= */}
       {/* MODAL: DETALLE FINANCIERO (INGRESOS / GASTOS) */}

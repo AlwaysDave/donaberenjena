@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Activity, AdminNotification, CataActivity, CursoActivity, Member, Participant, ParticipantStatus, ReservationFailureKind, ReservationFormData, ReservationResult, ViajeActivity, WebMetric, Expense, Sponsorship, ContactMessage, AdvancedAttendanceCorrectionParams, AdvancedCorrectionResult } from '../types';
+import { Activity, AdminNotification, CataActivity, CursoActivity, Member, Participant, ParticipantStatus, ReservationFailureKind, ReservationFormData, ReservationResult, ViajeActivity, WebMetric, Expense, Sponsorship, ContactMessage, AdvancedAttendanceCorrectionParams, AdvancedCorrectionResult, GeneralIncome, GeneralExpense, GeneralIncomeStatus, AnnualMembershipFeesRecord, MemberFeeItem } from '../types';
 import { useAuth } from './AuthContext';
 import { db, isFirebaseConfigured } from '../services/firebase';
 import { INITIAL_PARTICIPANTS } from '../data/mockData';
-import { DEMO_ACTIVITIES, DEMO_PARTICIPANTS, DEMO_MEMBERS, DEMO_NOTIFICATIONS, DEMO_METRICS, DEMO_EXPENSES, DEMO_SPONSORSHIPS, DEMO_CONTACT_MESSAGES } from '../data/demoData';
+import { DEMO_ACTIVITIES, DEMO_PARTICIPANTS, DEMO_MEMBERS, DEMO_NOTIFICATIONS, DEMO_METRICS, DEMO_EXPENSES, DEMO_SPONSORSHIPS, DEMO_CONTACT_MESSAGES, DEMO_GENERAL_INCOMES, DEMO_GENERAL_EXPENSES, DEMO_ANNUAL_FEES } from '../data/demoData';
 import {
   subscribeToActivitiesFirestore,
   subscribeToMetricsFirestore,
@@ -31,6 +31,16 @@ import {
   saveSponsorshipFirestore,
   updateSponsorshipFirestore,
   deleteSponsorshipFirestore,
+  subscribeToGeneralIncomesFirestore,
+  saveGeneralIncomeFirestore,
+  updateGeneralIncomeFirestore,
+  deleteGeneralIncomeFirestore,
+  subscribeToGeneralExpensesFirestore,
+  saveGeneralExpenseFirestore,
+  updateGeneralExpenseFirestore,
+  deleteGeneralExpenseFirestore,
+  subscribeToAnnualMembershipFeesFirestore,
+  saveAnnualMembershipFeesFirestore,
   saveAdminNotificationFirestore,
   markAdminNotificationReadFirestore,
   deleteAdminNotificationFirestore,
@@ -122,6 +132,19 @@ interface DataContextType {
   addSponsorship: (sponsorshipData: Omit<Sponsorship, 'id' | 'createdAt'>) => Promise<{ success: boolean; message: string }>;
   updateSponsorship: (id: string, updates: Partial<Sponsorship>) => Promise<void>;
   deleteSponsorship: (id: string) => Promise<void>;
+  // General Incomes (Asociación)
+  generalIncomes: GeneralIncome[];
+  addGeneralIncome: (incomeData: Omit<GeneralIncome, 'id' | 'createdAt'>) => Promise<{ success: boolean; message: string }>;
+  updateGeneralIncome: (id: string, updates: Partial<GeneralIncome>) => Promise<void>;
+  deleteGeneralIncome: (id: string) => Promise<void>;
+  // General Expenses (Asociación)
+  generalExpenses: GeneralExpense[];
+  addGeneralExpense: (expenseData: Omit<GeneralExpense, 'id' | 'createdAt'>) => Promise<{ success: boolean; message: string }>;
+  updateGeneralExpense: (id: string, updates: Partial<GeneralExpense>) => Promise<void>;
+  deleteGeneralExpense: (id: string) => Promise<void>;
+  // Annual Membership Fees (Estado de Cuotas)
+  annualMembershipFees: AnnualMembershipFeesRecord[];
+  saveAnnualMembershipFees: (record: AnnualMembershipFeesRecord) => Promise<{ success: boolean; message: string }>;
   // Contact Messages
   sendContactMessage: (msgData: Omit<ContactMessage, 'id' | 'createdAt' | 'read' | 'status'>) => Promise<{ success: boolean; message: string; messageSaved?: boolean; emailSent?: boolean; messageId?: string }>;
   markContactMessageRead: (id: string, read?: boolean) => Promise<void>;
@@ -168,6 +191,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [adminNotifications, setAdminNotifications] = useState<AdminNotification[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [sponsorships, setSponsorships] = useState<Sponsorship[]>([]);
+  const [generalIncomes, setGeneralIncomes] = useState<GeneralIncome[]>([]);
+  const [generalExpenses, setGeneralExpenses] = useState<GeneralExpense[]>([]);
+  const [annualMembershipFees, setAnnualMembershipFees] = useState<AnnualMembershipFeesRecord[]>([]);
   const [contactMessages, setContactMessages] = useState<ContactMessage[]>([]);
   const [metrics, setMetrics] = useState<WebMetric>(DEFAULT_METRICS);
   const [isConnected, setIsConnected] = useState<boolean>(false);
@@ -179,6 +205,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [demoNotifications, setDemoNotifications] = useState<AdminNotification[]>(DEMO_NOTIFICATIONS);
   const [demoExpenses, setDemoExpenses] = useState<Expense[]>(DEMO_EXPENSES);
   const [demoSponsorships, setDemoSponsorships] = useState<Sponsorship[]>(DEMO_SPONSORSHIPS);
+  const [demoGeneralIncomes, setDemoGeneralIncomes] = useState<GeneralIncome[]>(DEMO_GENERAL_INCOMES);
+  const [demoGeneralExpenses, setDemoGeneralExpenses] = useState<GeneralExpense[]>(DEMO_GENERAL_EXPENSES);
+  const [demoAnnualMembershipFees, setDemoAnnualMembershipFees] = useState<AnnualMembershipFeesRecord[]>(DEMO_ANNUAL_FEES);
   const [demoContactMessages, setDemoContactMessages] = useState<ContactMessage[]>(DEMO_CONTACT_MESSAGES);
   const [demoMetrics, setDemoMetrics] = useState<WebMetric>(DEMO_METRICS);
 
@@ -192,6 +221,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const displayNotifications = useMockData ? demoNotifications : adminNotifications;
   const displayExpenses = useMockData ? demoExpenses : expenses;
   const displaySponsorships = useMockData ? demoSponsorships : sponsorships;
+  const displayGeneralIncomes = useMockData ? demoGeneralIncomes : generalIncomes;
+  const displayGeneralExpenses = useMockData ? demoGeneralExpenses : generalExpenses;
+  const displayAnnualMembershipFees = useMockData ? demoAnnualMembershipFees : annualMembershipFees;
   const displayContactMessages = useMockData ? demoContactMessages : contactMessages;
   const displayMetrics = useMockData ? demoMetrics : metrics;
 
@@ -256,6 +288,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setAdminNotifications([]);
         setExpenses([]);
         setSponsorships([]);
+        setGeneralIncomes([]);
+        setGeneralExpenses([]);
       }
       return;
     }
@@ -265,6 +299,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let unsubNotifications: (() => void) | null = null;
     let unsubExpenses: (() => void) | null = null;
     let unsubSponsorships: (() => void) | null = null;
+    let unsubGeneralIncomes: (() => void) | null = null;
+    let unsubGeneralExpenses: (() => void) | null = null;
+    let unsubAnnualFees: (() => void) | null = null;
     let unsubContactMessages: (() => void) | null = null;
 
     try {
@@ -343,6 +380,51 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
+      unsubGeneralIncomes = subscribeToGeneralIncomesFirestore(
+        (firestoreGeneralIncomes) => {
+          if (firestoreGeneralIncomes) {
+            setGeneralIncomes(firestoreGeneralIncomes);
+          }
+        },
+        (err) => {
+          console.warn('General Incomes subscription notice:', err);
+        }
+      );
+    } catch (err) {
+      console.warn('Could not initialize general incomes subscription:', err);
+    }
+
+    try {
+      unsubGeneralExpenses = subscribeToGeneralExpensesFirestore(
+        (firestoreGeneralExpenses) => {
+          if (firestoreGeneralExpenses) {
+            setGeneralExpenses(firestoreGeneralExpenses);
+          }
+        },
+        (err) => {
+          console.warn('General Expenses subscription notice:', err);
+        }
+      );
+    } catch (err) {
+      console.warn('Could not initialize general expenses subscription:', err);
+    }
+
+    try {
+      unsubAnnualFees = subscribeToAnnualMembershipFeesFirestore(
+        (firestoreFees) => {
+          if (firestoreFees) {
+            setAnnualMembershipFees(firestoreFees);
+          }
+        },
+        (err) => {
+          console.warn('Annual membership fees subscription notice:', err);
+        }
+      );
+    } catch (err) {
+      console.warn('Could not initialize annual fees subscription:', err);
+    }
+
+    try {
       unsubContactMessages = subscribeToContactMessagesFirestore(
         (firestoreMessages) => {
           if (firestoreMessages) {
@@ -363,6 +445,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (unsubNotifications) unsubNotifications();
       if (unsubExpenses) unsubExpenses();
       if (unsubSponsorships) unsubSponsorships();
+      if (unsubGeneralIncomes) unsubGeneralIncomes();
+      if (unsubGeneralExpenses) unsubGeneralExpenses();
+      if (unsubAnnualFees) unsubAnnualFees();
       if (unsubContactMessages) unsubContactMessages();
     };
   }, [isAuthenticated, useMockData]);
@@ -1582,6 +1667,251 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // General Incomes (Asociación)
+  const addGeneralIncome = async (incomeData: Omit<GeneralIncome, 'id' | 'createdAt'>) => {
+    const newId = `gen-inc-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const nowIso = new Date().toISOString();
+    
+    const newIncome: GeneralIncome = {
+      ...incomeData,
+      id: newId,
+      createdAt: nowIso
+    };
+
+    if (useMockData) {
+      setDemoGeneralIncomes(prev => [newIncome, ...prev]);
+      return { success: true, message: 'Ingreso general registrado en modo demo.' };
+    }
+
+    setGeneralIncomes(prev => [newIncome, ...prev]);
+    try {
+      if (isFirebaseConfigured() && db) {
+        await saveGeneralIncomeFirestore(newIncome);
+      }
+      return { success: true, message: 'Ingreso general registrado con éxito.' };
+    } catch (error: any) {
+      console.error('Error saving general income:', error);
+      setGeneralIncomes(prev => prev.filter(i => i.id !== newId));
+      return { success: false, message: error.message || 'Error al guardar el ingreso general.' };
+    }
+  };
+
+  const updateGeneralIncome = async (id: string, updates: Partial<GeneralIncome>) => {
+    if (useMockData) {
+      setDemoGeneralIncomes(prev => prev.map(i => i.id === id ? { ...i, ...updates } : i));
+      return;
+    }
+
+    setGeneralIncomes(prev => prev.map(i => i.id === id ? { ...i, ...updates } : i));
+    try {
+      if (isFirebaseConfigured() && db) {
+        await updateGeneralIncomeFirestore(id, updates);
+      }
+    } catch (error) {
+      console.error('Error updating general income:', error);
+    }
+  };
+
+  const deleteGeneralIncome = async (id: string) => {
+    if (useMockData) {
+      setDemoGeneralIncomes(prev => prev.filter(i => i.id !== id));
+      return;
+    }
+
+    setGeneralIncomes(prev => prev.filter(i => i.id !== id));
+    try {
+      if (isFirebaseConfigured() && db) {
+        await deleteGeneralIncomeFirestore(id);
+      }
+    } catch (error) {
+      console.error('Error deleting general income:', error);
+    }
+  };
+
+  // General Expenses (Asociación)
+  const addGeneralExpense = async (expenseData: Omit<GeneralExpense, 'id' | 'createdAt'>) => {
+    const newId = `gen-exp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const nowIso = new Date().toISOString();
+    
+    const newExpense: GeneralExpense = {
+      ...expenseData,
+      id: newId,
+      createdAt: nowIso
+    };
+
+    if (useMockData) {
+      setDemoGeneralExpenses(prev => [newExpense, ...prev]);
+      return { success: true, message: 'Gasto general registrado en modo demo.' };
+    }
+
+    setGeneralExpenses(prev => [newExpense, ...prev]);
+    try {
+      if (isFirebaseConfigured() && db) {
+        await saveGeneralExpenseFirestore(newExpense);
+      }
+      return { success: true, message: 'Gasto general registrado con éxito.' };
+    } catch (error: any) {
+      console.error('Error saving general expense:', error);
+      setGeneralExpenses(prev => prev.filter(e => e.id !== newId));
+      return { success: false, message: error.message || 'Error al guardar el gasto general.' };
+    }
+  };
+
+  const updateGeneralExpense = async (id: string, updates: Partial<GeneralExpense>) => {
+    if (useMockData) {
+      setDemoGeneralExpenses(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
+      return;
+    }
+
+    setGeneralExpenses(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
+    try {
+      if (isFirebaseConfigured() && db) {
+        await updateGeneralExpenseFirestore(id, updates);
+      }
+    } catch (error) {
+      console.error('Error updating general expense:', error);
+    }
+  };
+
+  const deleteGeneralExpense = async (id: string) => {
+    if (useMockData) {
+      setDemoGeneralExpenses(prev => prev.filter(e => e.id !== id));
+      return;
+    }
+
+    setGeneralExpenses(prev => prev.filter(e => e.id !== id));
+    try {
+      if (isFirebaseConfigured() && db) {
+        await deleteGeneralExpenseFirestore(id);
+      }
+    } catch (error) {
+      console.error('Error deleting general expense:', error);
+    }
+  };
+
+  // Annual Membership Fees (Estado de Cuotas de Socios)
+  const saveAnnualMembershipFees = async (record: AnnualMembershipFeesRecord): Promise<{ success: boolean; message: string }> => {
+    const feeItems = Object.values(record.fees || {});
+    const totalMembers = feeItems.length;
+    const paidItems = feeItems.filter(f => f.status === 'pagada');
+    const paidMembersCount = paidItems.length;
+    const totalAssigned = feeItems.reduce((sum, f) => sum + (Number(f.feeAmount) || 0), 0);
+    const totalCollected = paidItems.reduce((sum, f) => sum + (Number(f.feeAmount) || 0), 0);
+
+    const updatedRecord: AnnualMembershipFeesRecord = {
+      ...record,
+      totalAssigned,
+      totalCollected,
+      totalMembers,
+      paidMembersCount,
+      updatedAt: new Date().toISOString()
+    };
+
+    const consolidatedIncomeId = `cuotas_socios_${record.year}`;
+    const consolidatedIncomeConcept = `CUOTAS SOCIOS AÑO ${record.year}`;
+    const consolidatedPayer = `Socios Asociación (${paidMembersCount}/${totalMembers} pagadas)`;
+    const status: GeneralIncomeStatus = (totalCollected >= totalAssigned && totalAssigned > 0) ? 'cobrado' : 'pendiente';
+
+    if (useMockData) {
+      setDemoAnnualMembershipFees(prev => {
+        const idx = prev.findIndex(r => r.id === record.id || r.year === record.year);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = updatedRecord;
+          return next;
+        }
+        return [updatedRecord, ...prev];
+      });
+
+      setDemoGeneralIncomes(prev => {
+        const existingIdx = prev.findIndex(i => i.id === consolidatedIncomeId || (i.isConsolidatedFeeRecord && i.feeYear === record.year));
+        if (existingIdx >= 0) {
+          const updatedIncomes = [...prev];
+          updatedIncomes[existingIdx] = {
+            ...updatedIncomes[existingIdx],
+            concept: consolidatedIncomeConcept,
+            payerName: consolidatedPayer,
+            amount: totalAssigned,
+            paidAmount: totalCollected,
+            status,
+            date: `${record.year}-01-01`,
+            isConsolidatedFeeRecord: true,
+            feeYear: record.year
+          };
+          return updatedIncomes;
+        } else {
+          const newConsolidated: GeneralIncome = {
+            id: consolidatedIncomeId,
+            concept: consolidatedIncomeConcept,
+            payerName: consolidatedPayer,
+            amount: totalAssigned,
+            paidAmount: totalCollected,
+            type: 'cuota_socio',
+            status,
+            date: `${record.year}-01-01`,
+            notes: `Registro permanente consolidado de cuotas anuales de socios del ejercicio ${record.year}.`,
+            isConsolidatedFeeRecord: true,
+            feeYear: record.year,
+            createdAt: new Date().toISOString()
+          };
+          return [newConsolidated, ...prev];
+        }
+      });
+
+      return { success: true, message: `Cuotas de socios del año ${record.year} actualizadas correctamente en modo demo.` };
+    }
+
+    setAnnualMembershipFees(prev => {
+      const idx = prev.findIndex(r => r.id === record.id || r.year === record.year);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = updatedRecord;
+        return next;
+      }
+      return [updatedRecord, ...prev];
+    });
+
+    try {
+      if (isFirebaseConfigured() && db) {
+        await saveAnnualMembershipFeesFirestore(updatedRecord);
+
+        // Find or create consolidated general income
+        const existingIncome = generalIncomes.find(i => i.id === consolidatedIncomeId || (i.isConsolidatedFeeRecord && i.feeYear === record.year));
+        if (existingIncome) {
+          await updateGeneralIncomeFirestore(existingIncome.id, {
+            concept: consolidatedIncomeConcept,
+            payerName: consolidatedPayer,
+            amount: totalAssigned,
+            paidAmount: totalCollected,
+            status,
+            date: `${record.year}-01-01`,
+            isConsolidatedFeeRecord: true,
+            feeYear: record.year
+          });
+        } else {
+          await saveGeneralIncomeFirestore({
+            id: consolidatedIncomeId,
+            concept: consolidatedIncomeConcept,
+            payerName: consolidatedPayer,
+            amount: totalAssigned,
+            paidAmount: totalCollected,
+            type: 'cuota_socio',
+            status,
+            date: `${record.year}-01-01`,
+            notes: `Registro permanente consolidado de cuotas anuales de socios del ejercicio ${record.year}.`,
+            isConsolidatedFeeRecord: true,
+            feeYear: record.year,
+            createdAt: new Date().toISOString()
+          });
+        }
+      }
+      return { success: true, message: `Cuotas de socios del año ${record.year} sincronizadas con el registro permanente.` };
+    } catch (error: any) {
+      console.error('Error saving annual membership fees:', error);
+      return { success: false, message: error.message || 'Error al guardar el estado de cuotas de socios.' };
+    }
+  };
+
   // Contact Message Handlers
   const sendContactMessage = async (
     msgData: Omit<ContactMessage, 'id' | 'createdAt' | 'read' | 'status'>
@@ -1784,6 +2114,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       addSponsorship,
       updateSponsorship,
       deleteSponsorship,
+      // general association accounting
+      generalIncomes: displayGeneralIncomes,
+      addGeneralIncome,
+      updateGeneralIncome,
+      deleteGeneralIncome,
+      generalExpenses: displayGeneralExpenses,
+      addGeneralExpense,
+      updateGeneralExpense,
+      deleteGeneralExpense,
+      // annual membership fees
+      annualMembershipFees: displayAnnualMembershipFees,
+      saveAnnualMembershipFees,
       // contact messages
       sendContactMessage,
       markContactMessageRead,

@@ -1,4 +1,4 @@
-import { Activity, Participant, WebMetric, CataActivity, Member, AdminNotification, ContactMessage, ParticipantStatus } from '../types';
+import { Activity, Participant, WebMetric, CataActivity, Member, AdminNotification, ContactMessage, ParticipantStatus, GeneralIncome, GeneralExpense, AnnualMembershipFeesRecord } from '../types';
 
 // ==========================================
 // 1. BASE DE PERSONAS REALISTAS Y FIJAS
@@ -1172,6 +1172,136 @@ export const DEMO_CONTACT_MESSAGES: ContactMessage[] = [
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 36).toISOString() // Hace día y medio
   }
 ];
+
+// ==========================================
+// 10. ESTADO DE CUOTAS ANUALES DE DEMO
+// ==========================================
+export const DEMO_ANNUAL_FEES: AnnualMembershipFeesRecord[] = [
+  {
+    id: 'fees_2026',
+    year: 2026,
+    defaultFeeAmount: 50,
+    fees: {
+      'mem-1': { memberId: 'mem-1', memberName: 'María José Fernández Ruiz', membershipNumber: 'SOC-001', email: 'mariajose.fernandez@example.com', phone: '611 222 001', feeAmount: 50, status: 'pagada', paidDate: '2026-01-15', paymentMethod: 'transferencia' },
+      'mem-2': { memberId: 'mem-2', memberName: 'Antonio Sánchez Gómez', membershipNumber: 'SOC-002', email: 'antonio.sanchez@example.com', phone: '611 222 002', feeAmount: 50, status: 'pagada', paidDate: '2026-01-18', paymentMethod: 'bizum' },
+      'mem-3': { memberId: 'mem-3', memberName: 'Carmen Jiménez Díaz', membershipNumber: 'SOC-003', email: 'carmen.jimenez@example.com', phone: '611 222 003', feeAmount: 50, status: 'pagada', paidDate: '2026-01-20', paymentMethod: 'transferencia' },
+      'mem-4': { memberId: 'mem-4', memberName: 'Francisco Torres Molina', membershipNumber: 'SOC-004', email: 'francisco.torres@example.com', phone: '611 222 004', feeAmount: 50, status: 'pagada', paidDate: '2026-01-22', paymentMethod: 'bizum' },
+      'mem-5': { memberId: 'mem-5', memberName: 'Isabel Romero Navarro', membershipNumber: 'SOC-005', email: 'isabel.romero@example.com', phone: '611 222 005', feeAmount: 50, status: 'pagada', paidDate: '2026-01-25', paymentMethod: 'transferencia' },
+      'mem-6': { memberId: 'mem-6', memberName: 'David Muñoz Cabrera', membershipNumber: 'SOC-006', email: 'david.munoz@example.com', phone: '611 222 010', feeAmount: 50, status: 'pagada', paidDate: '2026-02-01', paymentMethod: 'transferencia' },
+      'mem-7': { memberId: 'mem-7', memberName: 'Alberto Ramírez Flores', membershipNumber: 'SOC-007', email: 'alberto.ramirez@example.com', phone: '611 222 012', feeAmount: 50, status: 'pagada', paidDate: '2026-02-05', paymentMethod: 'bizum' },
+      'mem-8': { memberId: 'mem-8', memberName: 'Cristina Herrera Reyes', membershipNumber: 'SOC-008', email: 'cristina.herrera@example.com', phone: '611 222 013', feeAmount: 50, status: 'pendiente' },
+      'mem-9': { memberId: 'mem-9', memberName: 'Sergio Guerrero Pascual', membershipNumber: 'SOC-009', email: 'sergio.guerrero@example.com', phone: '611 222 014', feeAmount: 50, status: 'pendiente' }
+    },
+    totalAssigned: 450,
+    totalCollected: 350,
+    totalMembers: 9,
+    paidMembersCount: 7,
+    updatedAt: '2026-02-15T12:00:00.000Z'
+  }
+];
+
+// ==========================================
+// 10.1. INGRESOS GENERALES DE DEMO (ASOCIACIÓN)
+// ==========================================
+export const DEMO_GENERAL_INCOMES: GeneralIncome[] = [
+  {
+    id: 'cuotas_socios_2026',
+    concept: 'CUOTAS SOCIOS AÑO 2026',
+    payerName: 'Socios Asociación (7/9 pagadas)',
+    amount: 450.00,
+    paidAmount: 350.00,
+    type: 'cuota_socio',
+    status: 'pendiente',
+    date: '2026-01-01',
+    isConsolidatedFeeRecord: true,
+    feeYear: 2026,
+    notes: 'Registro permanente consolidado de cuotas anuales de socios del ejercicio 2026.',
+    createdAt: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'gen-inc-demo-subvencion-ayto',
+    concept: 'Subvención anual para fomento de la cultura gastronómica',
+    payerName: 'Excmo. Ayuntamiento de Bolaños de Calatrava',
+    amount: 2500.00,
+    paidAmount: 2500.00,
+    type: 'subvencion',
+    status: 'cobrado',
+    date: '2026-02-10',
+    notes: 'Convocatoria de ayudas a asociaciones culturales locales 2026.',
+    createdAt: '2026-02-10T11:30:00.000Z'
+  },
+  {
+    id: 'gen-inc-demo-patrocinio-general',
+    concept: 'Patrocinio anual institucional y equipamiento de sala',
+    payerName: 'Globalcaja / Fundación Caja Rural',
+    amount: 1500.00,
+    paidAmount: 1500.00,
+    type: 'patrocinio_general',
+    status: 'cobrado',
+    date: '2026-02-28',
+    notes: 'Convenio de patrocinio global para promoción enológica y talleres.',
+    createdAt: '2026-02-28T09:15:00.000Z'
+  },
+  {
+    id: 'gen-inc-demo-subvencion-diputacion',
+    concept: 'Ayuda provincial para digitalización y actividades de difusión',
+    payerName: 'Diputación Provincial de Ciudad Real',
+    amount: 1800.00,
+    paidAmount: 0.00,
+    type: 'subvencion',
+    status: 'pendiente',
+    date: '2026-04-05',
+    notes: 'Resolución provisional aprobada, pendiente de abono en cuenta bancaria.',
+    createdAt: '2026-04-05T08:00:00.000Z'
+  }
+];
+
+// ==========================================
+// 11. GASTOS GENERALES DE DEMO (ASOCIACIÓN)
+// ==========================================
+export const DEMO_GENERAL_EXPENSES: GeneralExpense[] = [
+  {
+    id: 'gen-exp-demo-horno',
+    concept: 'Compra de un horno de convección profesional para la sede',
+    supplierName: 'Hostelería Industrial Ciudad Real S.L.',
+    amount: 850.00,
+    category: 'equipamiento',
+    date: '2026-01-20',
+    notes: 'Horno con vapor para talleres de cocina y maridajes calientes.',
+    createdAt: '2026-01-20T16:00:00.000Z'
+  },
+  {
+    id: 'gen-exp-demo-copas-cata',
+    concept: 'Compra de 60 copas de cata técnica y copas borgoña',
+    supplierName: 'Schott Zwiesel Distribución España',
+    amount: 340.00,
+    category: 'menaje_copas',
+    date: '2026-02-05',
+    notes: 'Renovación de cristalería para catas de vinos tintos de guarda y blancos.',
+    createdAt: '2026-02-05T12:00:00.000Z'
+  },
+  {
+    id: 'gen-exp-demo-comida-asociacion',
+    concept: 'Comida anual y asamblea general de socios',
+    supplierName: 'Restaurante Los Arcos - Bolaños',
+    amount: 620.00,
+    category: 'comida_asociacion',
+    date: '2026-03-05',
+    notes: 'Almuerzo de convivencia de inicio de temporada para socios de número.',
+    createdAt: '2026-03-05T18:30:00.000Z'
+  },
+  {
+    id: 'gen-exp-demo-suministros',
+    concept: 'Suministros de limpieza, mantelería y material de cata',
+    supplierName: 'Comercial Calatrava',
+    amount: 145.50,
+    category: 'suministros_local',
+    date: '2026-02-18',
+    notes: 'Manteles individuales para notas de cata y productos de higiene.',
+    createdAt: '2026-02-18T10:00:00.000Z'
+  }
+];
+
 
 
 

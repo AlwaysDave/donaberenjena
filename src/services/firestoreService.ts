@@ -15,7 +15,7 @@ import {
   Unsubscribe 
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { Activity, AdminRole, WebMetric, Participant, Member, AdminNotification, Expense, Sponsorship, ContactMessage, ParticipantStatus, AdvancedAttendanceCorrectionParams, AdvancedCorrectionResult } from '../types';
+import { Activity, AdminRole, WebMetric, Participant, Member, AdminNotification, Expense, Sponsorship, ContactMessage, ParticipantStatus, AdvancedAttendanceCorrectionParams, AdvancedCorrectionResult, GeneralIncome, GeneralExpense, AnnualMembershipFeesRecord } from '../types';
 import { sortActivitiesAscending } from '../utils/dateUtils';
 import { validateAndPrepareTransition, isActivityConcluded, checkAttendanceSheetComplete, validateAndPrepareAdvancedCorrection } from './participantTransitions';
 import { normalizeParticipantRecord } from './participantMigration';
@@ -37,6 +37,9 @@ const ADMIN_NOTIFICATIONS_COLLECTION = 'adminNotifications';
 const EXPENSES_COLLECTION = 'expenses';
 const SPONSORSHIPS_COLLECTION = 'sponsorships';
 const CONTACT_MESSAGES_COLLECTION = 'contactMessages';
+const GENERAL_INCOMES_COLLECTION = 'generalIncomes';
+const GENERAL_EXPENSES_COLLECTION = 'generalExpenses';
+const ANNUAL_MEMBERSHIP_FEES_COLLECTION = 'annualMembershipFees';
 
 
 /**
@@ -603,6 +606,184 @@ export async function deleteSponsorshipFirestore(id: string): Promise<void> {
   const docRef = doc(db, SPONSORSHIPS_COLLECTION, id);
   await deleteDoc(docRef);
 }
+
+// =========================================================================
+// GENERAL INCOMES (ASOCIACIÓN) CRUD FUNCTIONS
+// =========================================================================
+
+/**
+ * Subscribe to the `generalIncomes` collection in real-time
+ */
+export function subscribeToGeneralIncomesFirestore(
+  onData: (incomes: GeneralIncome[]) => void,
+  onError: (error: Error) => void
+): Unsubscribe {
+  if (!db) {
+    throw new Error('Firestore is not initialized');
+  }
+
+  const incomesRef = collection(db, GENERAL_INCOMES_COLLECTION);
+  return onSnapshot(
+    incomesRef,
+    (snapshot) => {
+      const list: GeneralIncome[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({
+          ...(docSnap.data() as GeneralIncome),
+          id: docSnap.id
+        });
+      });
+      list.sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+      onData(list);
+    },
+    (err) => {
+      console.warn('Firestore generalIncomes subscription error:', err);
+      onError(err);
+    }
+  );
+}
+
+/**
+ * Save a General Income document
+ */
+export async function saveGeneralIncomeFirestore(income: GeneralIncome): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const docRef = doc(db, GENERAL_INCOMES_COLLECTION, income.id);
+  const cleanData = sanitizeForFirestore(income);
+  await setDoc(docRef, cleanData);
+}
+
+/**
+ * Update a General Income document
+ */
+export async function updateGeneralIncomeFirestore(id: string, updates: Partial<GeneralIncome>): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const docRef = doc(db, GENERAL_INCOMES_COLLECTION, id);
+  const cleanUpdates = sanitizeForFirestore(updates);
+  await updateDoc(docRef, cleanUpdates);
+}
+
+/**
+ * Delete a General Income document
+ */
+export async function deleteGeneralIncomeFirestore(id: string): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const docRef = doc(db, GENERAL_INCOMES_COLLECTION, id);
+  await deleteDoc(docRef);
+}
+
+// =========================================================================
+// GENERAL EXPENSES (ASOCIACIÓN) CRUD FUNCTIONS
+// =========================================================================
+
+/**
+ * Subscribe to the `generalExpenses` collection in real-time
+ */
+export function subscribeToGeneralExpensesFirestore(
+  onData: (expenses: GeneralExpense[]) => void,
+  onError: (error: Error) => void
+): Unsubscribe {
+  if (!db) {
+    throw new Error('Firestore is not initialized');
+  }
+
+  const expensesRef = collection(db, GENERAL_EXPENSES_COLLECTION);
+  return onSnapshot(
+    expensesRef,
+    (snapshot) => {
+      const list: GeneralExpense[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({
+          ...(docSnap.data() as GeneralExpense),
+          id: docSnap.id
+        });
+      });
+      list.sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+      onData(list);
+    },
+    (err) => {
+      console.warn('Firestore generalExpenses subscription error:', err);
+      onError(err);
+    }
+  );
+}
+
+/**
+ * Save a General Expense document
+ */
+export async function saveGeneralExpenseFirestore(expense: GeneralExpense): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const docRef = doc(db, GENERAL_EXPENSES_COLLECTION, expense.id);
+  const cleanData = sanitizeForFirestore(expense);
+  await setDoc(docRef, cleanData);
+}
+
+/**
+ * Update a General Expense document
+ */
+export async function updateGeneralExpenseFirestore(id: string, updates: Partial<GeneralExpense>): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const docRef = doc(db, GENERAL_EXPENSES_COLLECTION, id);
+  const cleanUpdates = sanitizeForFirestore(updates);
+  await updateDoc(docRef, cleanUpdates);
+}
+
+/**
+ * Delete a General Expense document
+ */
+export async function deleteGeneralExpenseFirestore(id: string): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const docRef = doc(db, GENERAL_EXPENSES_COLLECTION, id);
+  await deleteDoc(docRef);
+}
+
+// =========================================================================
+// ANNUAL MEMBERSHIP FEES (ESTADO CUOTAS SOCIOS) CRUD FUNCTIONS
+// =========================================================================
+
+/**
+ * Subscribe to all annual membership fees records
+ */
+export function subscribeToAnnualMembershipFeesFirestore(
+  onData: (records: AnnualMembershipFeesRecord[]) => void,
+  onError: (error: Error) => void
+): Unsubscribe {
+  if (!db) {
+    throw new Error('Firestore is not initialized');
+  }
+
+  const feesRef = collection(db, ANNUAL_MEMBERSHIP_FEES_COLLECTION);
+  return onSnapshot(
+    feesRef,
+    (snapshot) => {
+      const list: AnnualMembershipFeesRecord[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({
+          ...(docSnap.data() as AnnualMembershipFeesRecord),
+          id: docSnap.id
+        });
+      });
+      list.sort((a, b) => b.year - a.year);
+      onData(list);
+    },
+    (err) => {
+      console.warn('Firestore annualMembershipFees subscription error:', err);
+      onError(err);
+    }
+  );
+}
+
+/**
+ * Save / update an Annual Membership Fees record
+ */
+export async function saveAnnualMembershipFeesFirestore(record: AnnualMembershipFeesRecord): Promise<void> {
+  if (!db) throw new Error('Firestore is not initialized');
+  const docRef = doc(db, ANNUAL_MEMBERSHIP_FEES_COLLECTION, record.id);
+  const cleanData = sanitizeForFirestore(record);
+  await setDoc(docRef, cleanData, { merge: true });
+}
+
+
 
 /**
  * Subscribe to contact messages in real-time

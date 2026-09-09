@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { Activity, Participant, Sponsorship, Expense } from '../types';
+import { Activity, Participant, Sponsorship, Expense, GeneralIncome, GeneralExpense } from '../types';
 import { formatDisplayDate } from './dateUtils';
 
 interface ActivityFinances {
@@ -25,6 +25,8 @@ interface ExportAccountingOptions {
   sponsorships: Sponsorship[];
   expenses: Expense[];
   financesByActivity: Record<string, ActivityFinances>;
+  generalIncomes?: GeneralIncome[];
+  generalExpenses?: GeneralExpense[];
 }
 
 function formatDate(dateStr?: string): string {
@@ -293,6 +295,74 @@ export function generateAccountingWorkbook(options: ExportAccountingOptions): XL
     wsGastos['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { c: 0, r: 0 }, e: { c: 9, r: gastosRows.length } }) };
   }
   XLSX.utils.book_append_sheet(wb, wsGastos, 'Gastos');
+
+  // -------------------------------------------------------------
+  // 6. HOJA: INGRESOS ASOCIACIÓN (GENERAL)
+  // -------------------------------------------------------------
+  if (options.generalIncomes && options.generalIncomes.length > 0) {
+    const generalIncomesFiltered = options.generalIncomes.filter(inc => {
+      if (year !== 'all') {
+        const itemYear = (inc.date || '').substring(0, 4);
+        if (itemYear !== year) return false;
+      }
+      return true;
+    });
+
+    const incRows = generalIncomesFiltered.map(inc => ({
+      'ID': inc.id,
+      'Fecha': formatDate(inc.date),
+      'Concepto': inc.concept,
+      'Tipo': inc.type,
+      'Pagador / Entidad': inc.payerName || '',
+      'Importe Facturado (€)': Number((inc.amount || 0).toFixed(2)),
+      'Importe Cobrado (€)': Number(((inc.paidAmount ?? inc.amount) || 0).toFixed(2)),
+      'Estado': inc.status,
+      'Notas': inc.notes || '',
+      'Justificante': inc.receiptImageUrl || ''
+    }));
+
+    const wsGenInc = XLSX.utils.json_to_sheet(
+      incRows.length > 0 ? incRows : [{ 'Aviso': 'No hay ingresos generales en el período' }]
+    );
+    wsGenInc['!cols'] = calculateColumnWidths(incRows);
+    if (incRows.length > 0) {
+      wsGenInc['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { c: 0, r: 0 }, e: { c: 9, r: incRows.length } }) };
+    }
+    XLSX.utils.book_append_sheet(wb, wsGenInc, 'Ingresos Asociación');
+  }
+
+  // -------------------------------------------------------------
+  // 7. HOJA: GASTOS ASOCIACIÓN (GENERAL)
+  // -------------------------------------------------------------
+  if (options.generalExpenses && options.generalExpenses.length > 0) {
+    const generalExpensesFiltered = options.generalExpenses.filter(exp => {
+      if (year !== 'all') {
+        const itemYear = (exp.date || '').substring(0, 4);
+        if (itemYear !== year) return false;
+      }
+      return true;
+    });
+
+    const expRows = generalExpensesFiltered.map(exp => ({
+      'ID': exp.id,
+      'Fecha': formatDate(exp.date),
+      'Concepto': exp.concept,
+      'Categoría': exp.category,
+      'Proveedor': exp.supplierName || '',
+      'Importe (€)': Number((exp.amount || 0).toFixed(2)),
+      'Notas': exp.notes || '',
+      'Justificante': exp.receiptImageUrl || ''
+    }));
+
+    const wsGenExp = XLSX.utils.json_to_sheet(
+      expRows.length > 0 ? expRows : [{ 'Aviso': 'No hay gastos generales en el período' }]
+    );
+    wsGenExp['!cols'] = calculateColumnWidths(expRows);
+    if (expRows.length > 0) {
+      wsGenExp['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { c: 0, r: 0 }, e: { c: 7, r: expRows.length } }) };
+    }
+    XLSX.utils.book_append_sheet(wb, wsGenExp, 'Gastos Asociación');
+  }
 
   return wb;
 }

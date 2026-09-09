@@ -141,6 +141,34 @@ service cloud.firestore {
     }
 
     // =========================================================================
+    // 8.1. GENERAL INCOMES (ASOCIACIÓN) COLLECTION
+    // Financial data, strictly for authenticated advanced administrators only
+    // =========================================================================
+    match /generalIncomes/{incomeId} {
+      allow read: if isAdmin();
+      allow write: if isAdvancedAdmin();
+    }
+
+    // =========================================================================
+    // 8.2. GENERAL EXPENSES (ASOCIACIÓN) COLLECTION
+    // Financial data, strictly for authenticated advanced administrators only
+    // =========================================================================
+    match /generalExpenses/{expenseId} {
+      allow read: if isAdmin();
+      allow write: if isAdvancedAdmin();
+    }
+
+    // =========================================================================
+    // 8.3. ANNUAL MEMBERSHIP FEES COLLECTION
+    // Member fee tracking records, strictly for authenticated advanced admins
+    // =========================================================================
+    match /annualMembershipFees/{feeDocId} {
+      allow read: if isAdmin();
+      allow write: if isAdvancedAdmin();
+    }
+
+
+    // =========================================================================
     // 9. CONTACT MESSAGES COLLECTION
     // Public creation with field size and anti-spam checks; Admin-only read, update, delete
     // =========================================================================
